@@ -137,7 +137,7 @@ export function FeedItem({ link }: FeedItemProps) {
       <CardFooter className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
           {link.aiCategory && <Badge variant="secondary">{link.aiCategory}</Badge>}
-          {link.aiTags?.slice(0, 3).map((tag) => (
+          {link.aiTags?.map((tag) => (
             <Badge key={tag} variant="outline" className="text-xs">
               {tag}
             </Badge>
