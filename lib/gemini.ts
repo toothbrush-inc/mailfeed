@@ -54,12 +54,28 @@ export async function analyzeContent(
     truncatedContent
   )
 
+  // Log the input
+  console.log("\n" + "=".repeat(80))
+  console.log("[Gemini] Analyzing article:", title)
+  console.log("[Gemini] Content length:", content.length, "chars (truncated:", truncatedContent.length, "chars)")
+  console.log("[Gemini] Prompt preview:", prompt.slice(0, 500) + "...")
+  console.log("=".repeat(80))
+
+  const startTime = Date.now()
+
   const response = await genAI.models.generateContent({
     model: "gemini-1.5-flash",
     contents: prompt,
   })
 
+  const elapsed = Date.now() - startTime
   const text = response.text || ""
+
+  // Log the raw response
+  console.log("\n" + "-".repeat(80))
+  console.log("[Gemini] Response received in", elapsed, "ms")
+  console.log("[Gemini] Raw response:", text)
+  console.log("-".repeat(80))
 
   try {
     // Clean potential markdown code blocks
@@ -71,7 +87,7 @@ export async function analyzeContent(
     const parsed = JSON.parse(cleanJson) as AnalysisResult
 
     // Validate and sanitize the response
-    return {
+    const result = {
       summary: parsed.summary || "No summary available",
       keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.slice(0, 5) : [],
       category: parsed.category || "Uncategorized",
@@ -81,8 +97,15 @@ export async function analyzeContent(
       isHighlighted: Boolean(parsed.isHighlighted),
       highlightReason: parsed.highlightReason || undefined,
     }
-  } catch {
-    console.error("Failed to parse Gemini response:", text)
+
+    // Log the parsed result
+    console.log("[Gemini] Parsed result:", JSON.stringify(result, null, 2))
+    console.log("=".repeat(80) + "\n")
+
+    return result
+  } catch (error) {
+    console.error("[Gemini] Failed to parse response:", text)
+    console.error("[Gemini] Parse error:", error)
     throw new Error("Failed to parse AI analysis response")
   }
 }
@@ -92,17 +115,26 @@ export async function batchAnalyze(
 ): Promise<Map<string, AnalysisResult>> {
   const results = new Map<string, AnalysisResult>()
 
+  console.log("\n" + "#".repeat(80))
+  console.log("[Gemini Batch] Starting batch analysis of", articles.length, "articles")
+  console.log("#".repeat(80))
+
   // Process in batches of 3 to respect rate limits
   const batchSize = 3
   for (let i = 0; i < articles.length; i += batchSize) {
     const batch = articles.slice(i, i + batchSize)
+    const batchNum = Math.floor(i / batchSize) + 1
+    const totalBatches = Math.ceil(articles.length / batchSize)
+
+    console.log(`\n[Gemini Batch] Processing batch ${batchNum}/${totalBatches} (${batch.length} articles)`)
 
     const promises = batch.map(async (article) => {
       try {
         const analysis = await analyzeContent(article.title, article.content)
         results.set(article.id, analysis)
+        console.log(`[Gemini Batch] ✓ Completed: ${article.title.slice(0, 50)}...`)
       } catch (error) {
-        console.error(`Failed to analyze article ${article.id}:`, error)
+        console.error(`[Gemini Batch] ✗ Failed: ${article.id}`, error)
       }
     })
 
@@ -110,9 +142,14 @@ export async function batchAnalyze(
 
     // Rate limiting: wait 1 second between batches
     if (i + batchSize < articles.length) {
+      console.log("[Gemini Batch] Rate limiting: waiting 1s before next batch...")
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
   }
+
+  console.log("\n" + "#".repeat(80))
+  console.log("[Gemini Batch] Completed:", results.size, "/", articles.length, "articles analyzed successfully")
+  console.log("#".repeat(80) + "\n")
 
   return results
 }

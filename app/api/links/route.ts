@@ -3,7 +3,12 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 
 export async function GET(request: NextRequest) {
+  const startTime = Date.now()
+  console.log("[/api/links] Request started")
+
+  const authStart = Date.now()
   const session = await auth()
+  console.log("[/api/links] Auth completed in", Date.now() - authStart, "ms")
 
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -43,6 +48,7 @@ export async function GET(request: NextRequest) {
     where.fetchStatus = status
   }
 
+  const queryStart = Date.now()
   const [links, total] = await Promise.all([
     prisma.link.findMany({
       where,
@@ -56,6 +62,7 @@ export async function GET(request: NextRequest) {
       include: {
         email: {
           select: {
+            gmailId: true,
             subject: true,
             receivedAt: true,
           },
@@ -69,6 +76,8 @@ export async function GET(request: NextRequest) {
     }),
     prisma.link.count({ where }),
   ])
+  console.log("[/api/links] DB query completed in", Date.now() - queryStart, "ms")
+  console.log("[/api/links] Total request time:", Date.now() - startTime, "ms")
 
   return NextResponse.json({
     links,

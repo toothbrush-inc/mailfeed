@@ -4,6 +4,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { Mail, ExternalLink, Clock, AlertTriangle } from "lucide-react"
 
 interface FeedItemProps {
   link: {
@@ -25,12 +26,20 @@ interface FeedItemProps {
     paywallType: string | null
     fetchStatus: string
     createdAt: string
+    email: {
+      gmailId: string
+      subject: string | null
+      receivedAt: string
+    } | null
   }
 }
 
 export function FeedItem({ link }: FeedItemProps) {
   const isProcessing = ["PENDING", "FETCHING", "ANALYZING"].includes(link.fetchStatus)
   const hasFailed = link.fetchStatus === "FAILED"
+  const gmailUrl = link.email?.gmailId
+    ? `https://mail.google.com/mail/u/0/#inbox/${link.email.gmailId}`
+    : null
 
   return (
     <Card
@@ -64,7 +73,7 @@ export function FeedItem({ link }: FeedItemProps) {
                 <>
                   <span>·</span>
                   <span className="flex items-center gap-1">
-                    <ClockIcon className="h-3 w-3" />
+                    <Clock className="h-3 w-3" />
                     {link.readingTimeMin} min read
                   </span>
                 </>
@@ -84,7 +93,7 @@ export function FeedItem({ link }: FeedItemProps) {
       <CardContent className="space-y-4">
         {link.isPaywalled && (
           <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
-            <AlertIcon className="h-4 w-4" />
+            <AlertTriangle className="h-4 w-4" />
             <span>
               {link.paywallType === "hard" && "Paywalled content"}
               {link.paywallType === "soft" && "Limited free access"}
@@ -135,70 +144,23 @@ export function FeedItem({ link }: FeedItemProps) {
           ))}
         </div>
 
-        <Button variant="ghost" size="sm" asChild>
-          <a href={link.url} target="_blank" rel="noopener noreferrer">
-            Read Article
-            <ExternalLinkIcon className="ml-1 h-4 w-4" />
-          </a>
-        </Button>
+        <div className="flex gap-2">
+          {gmailUrl && (
+            <Button variant="ghost" size="sm" asChild>
+              <a href={gmailUrl} target="_blank" rel="noopener noreferrer">
+                <Mail className="mr-1 h-4 w-4" />
+                View Email
+              </a>
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" asChild>
+            <a href={link.url} target="_blank" rel="noopener noreferrer">
+              Read Article
+              <ExternalLink className="ml-1 h-4 w-4" />
+            </a>
+          </Button>
+        </div>
       </CardFooter>
     </Card>
-  )
-}
-
-function ClockIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={1.5}
-      stroke="currentColor"
-      className={className}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
-      />
-    </svg>
-  )
-}
-
-function AlertIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={1.5}
-      stroke="currentColor"
-      className={className}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
-      />
-    </svg>
-  )
-}
-
-function ExternalLinkIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={1.5}
-      stroke="currentColor"
-      className={className}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
-      />
-    </svg>
   )
 }

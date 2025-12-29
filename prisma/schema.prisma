@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// NextAuth.js models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  emails        Email[]
+  links         Link[]
+  lastSyncAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Application models
+model Email {
+  id          String    @id @default(cuid())
+  userId      String
+  gmailId     String    @unique
+  threadId    String?
+  subject     String?
+  snippet     String?
+  receivedAt  DateTime
+  processedAt DateTime?
+  rawContent  String?   @db.Text
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  links Link[]
+
+  @@index([userId])
+  @@index([gmailId])
+  @@index([receivedAt])
+}
+
+model Link {
+  id       String  @id @default(cuid())
+  userId   String
+  emailId  String?
+  url      String
+  urlHash  String
+  domain   String?
+  title    String?
+  description String?
+  imageUrl String?
+
+  // Content analysis
+  contentText    String? @db.Text
+  summary        String? @db.Text
+  readingTimeMin Int?
+  wordCount      Int?
+
+  // AI-generated fields
+  aiSummary       String?  @db.Text
+  aiKeyPoints     String[]
+  aiCategory      String?
+  aiTags          String[]
+  worthinessScore Float?
+  uniquenessScore Float?
+  isHighlighted   Boolean  @default(false)
+  highlightReason String?
+
+  // Fetch status
+  fetchStatus FetchStatus @default(PENDING)
+  fetchError  String?
+  isPaywalled Boolean     @default(false)
+  paywallType String?
+
+  // Timestamps
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  fetchedAt  DateTime?
+  analyzedAt DateTime?
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email      Email?        @relation(fields: [emailId], references: [id], onDelete: SetNull)
+  categories LinkCategory[]
+
+  @@unique([userId, urlHash])
+  @@index([userId])
+  @@index([emailId])
+  @@index([fetchStatus])
+  @@index([aiCategory])
+  @@index([isHighlighted])
+  @@index([createdAt])
+  @@index([worthinessScore])
+}
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  slug        String  @unique
+  description String?
+  color       String?
+  icon        String?
+
+  links LinkCategory[]
+
+  @@index([slug])
+}
+
+model LinkCategory {
+  linkId     String
+  categoryId String
+  confidence Float?
+
+  link     Link     @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([linkId, categoryId])
+}
+
+enum FetchStatus {
+  PENDING
+  FETCHING
+  FETCHED
+  ANALYZING
+  COMPLETED
+  FAILED
+  PAYWALL_DETECTED
+}
