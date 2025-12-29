@@ -14,12 +14,16 @@ interface EmailLink {
   isHighlighted: boolean
 }
 
+type EmailTag = "ARTICLE_LINK" | "REMINDER" | "MEETING_INFO" | "TODO" | "OTHER"
+
 interface Email {
   id: string
   gmailId: string
   subject: string | null
   snippet: string | null
   receivedAt: string
+  tags: EmailTag[]
+  ingestedAt: string | null
   links: EmailLink[]
 }
 

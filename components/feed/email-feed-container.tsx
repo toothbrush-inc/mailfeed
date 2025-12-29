@@ -6,7 +6,7 @@ import { EmailFeedSkeleton } from "./email-feed-skeleton"
 import { Button } from "@/components/ui/button"
 
 export function EmailFeedContainer() {
-  const { emails, pagination, isLoading, error } = useEmails()
+  const { emails, pagination, isLoading, error, mutate } = useEmails()
 
   if (isLoading) {
     return <EmailFeedSkeleton />
@@ -46,7 +46,7 @@ export function EmailFeedContainer() {
   return (
     <div className="space-y-4">
       {emails.map((email) => (
-        <EmailFeedItem key={email.id} email={email} />
+        <EmailFeedItem key={email.id} email={email} onIngestComplete={mutate} />
       ))}
 
       {pagination && pagination.totalPages > 1 && (

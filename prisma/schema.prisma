@@ -72,12 +72,24 @@ model Email {
   processedAt DateTime?
   rawContent  String?   @db.Text
 
+  // AI-extracted tags from BAML IngestEmail
+  tags        EmailTag[]
+  ingestedAt  DateTime?
+
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   links Link[]
 
   @@index([userId])
   @@index([gmailId])
   @@index([receivedAt])
+}
+
+enum EmailTag {
+  ARTICLE_LINK
+  REMINDER
+  MEETING_INFO
+  TODO
+  OTHER
 }
 
 model Link {

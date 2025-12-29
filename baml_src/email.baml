@@ -1,10 +1,10 @@
 class Email {
-  subject string
-  body string
-  from string
-  to string[]
-  cc string[]
-  date string
+//   subject string
+//   body string
+//   from string
+//   to string[]
+//   cc string[]
+//   date string
   attachments string[]
   links EmailLink[]
   tags EmailTag[]
@@ -23,16 +23,17 @@ class EmailLink {
   title string
 }
 
-function IngestEmail(email: string) -> Email {
+function IngestEmail(subject: string, body: string) -> Email {
   // Specify a client as provider/model-name
   // You can also use custom LLM params with a custom client name from clients.baml like "client CustomGPT5" or "client CustomSonnet4"
   client "CustomGemini" // Set OPENAI_API_KEY to use this client.
   prompt #"
-    You are a email ingestion agent. Your task is to extract all relevant email details.
+    You are a email ingestion agent. Your task is to extract all relevant email details from the subject and body.
     Focus on extracting links from the email content and classifying the type of email with tags.
     
     Email Content:
-    {{ email }}
+    Subject: {{ subject }}
+    Body: {{ body }}
 
     {{ ctx.output_format }}
   "#
@@ -41,7 +42,11 @@ function IngestEmail(email: string) -> Email {
 test vaibhav_other_email {
   functions [IngestEmail]
   args {
-    email #"
+    subject #"
+      Vaibhav Gupta
+      vbv@boundaryml.com
+    "#
+    body #"
       Vaibhav Gupta
       vbv@boundaryml.com
 
@@ -60,7 +65,10 @@ test vaibhav_other_email {
 test google_meet_email {
   functions [IngestEmail]
   args {
-    email #"
+    subject #"
+      Appointment booked: Office Hours w/ DVD (Hiroshi Mendoza) @ Tue Jul 15, 2025 10:30am - 11am (PDT) (David Dryjanski)
+    "#
+    body #"
       Delivered-To: dvd@thephotobase.com
 Received: by 2002:a05:6a11:ac95:b0:600:ab20:e90a with SMTP id fg21csp109254pxc;
         Mon, 14 Jul 2025 15:22:57 -0700 (PDT)

@@ -1,8 +1,10 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Mail, ExternalLink, Star } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Mail, ExternalLink, Star, Sparkles, Loader2 } from "lucide-react"
 
 interface EmailLink {
   id: string
@@ -16,6 +18,24 @@ interface EmailLink {
   isHighlighted: boolean
 }
 
+type EmailTag = "ARTICLE_LINK" | "REMINDER" | "MEETING_INFO" | "TODO" | "OTHER"
+
+const TAG_LABELS: Record<EmailTag, string> = {
+  ARTICLE_LINK: "Article",
+  REMINDER: "Reminder",
+  MEETING_INFO: "Meeting",
+  TODO: "To-Do",
+  OTHER: "Other",
+}
+
+const TAG_COLORS: Record<EmailTag, string> = {
+  ARTICLE_LINK: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  REMINDER: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  MEETING_INFO: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+  TODO: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  OTHER: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
+}
+
 interface EmailFeedItemProps {
   email: {
     id: string
@@ -23,17 +43,46 @@ interface EmailFeedItemProps {
     subject: string | null
     snippet: string | null
     receivedAt: string
+    tags: EmailTag[]
+    ingestedAt: string | null
     links: EmailLink[]
   }
+  onIngestComplete?: () => void
 }
 
-export function EmailFeedItem({ email }: EmailFeedItemProps) {
+export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
+  const [isIngesting, setIsIngesting] = useState(false)
+  const [localTags, setLocalTags] = useState<EmailTag[]>(email.tags || [])
+
   const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${email.gmailId}`
   const receivedDate = new Date(email.receivedAt).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   })
+
+  const handleIngest = async () => {
+    setIsIngesting(true)
+    try {
+      const response = await fetch(`/api/emails/${email.id}/ingest`, {
+        method: "POST",
+      })
+      const data = await response.json()
+
+      if (response.ok && data.email?.tags) {
+        setLocalTags(data.email.tags)
+        onIngestComplete?.()
+      } else {
+        console.error("Ingest failed:", data.error)
+      }
+    } catch (error) {
+      console.error("Ingest error:", error)
+    } finally {
+      setIsIngesting(false)
+    }
+  }
+
+  const hasBeenIngested = email.ingestedAt || localTags.length > 0
 
   return (
     <Card>
@@ -61,6 +110,40 @@ export function EmailFeedItem({ email }: EmailFeedItemProps) {
                 {email.snippet}
               </p>
             )}
+            <div className="flex items-center gap-2 pt-1">
+              {localTags.map((tag) => (
+                <span
+                  key={tag}
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TAG_COLORS[tag]}`}
+                >
+                  {TAG_LABELS[tag]}
+                </span>
+              ))}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleIngest}
+                disabled={isIngesting}
+                className="h-6 px-2 text-xs"
+              >
+                {isIngesting ? (
+                  <>
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : hasBeenIngested ? (
+                  <>
+                    <Sparkles className="mr-1 h-3 w-3" />
+                    Re-analyze
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-1 h-3 w-3" />
+                    Analyze
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </CardHeader>
