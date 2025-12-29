@@ -38,6 +38,7 @@ interface EmailsResponse {
 }
 
 interface UseEmailsOptions {
+  tag?: string | null
   page?: number
   limit?: number
 }
@@ -47,6 +48,7 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json())
 export function useEmails(options: UseEmailsOptions = {}) {
   const params = new URLSearchParams()
 
+  if (options.tag) params.set("tag", options.tag)
   if (options.page) params.set("page", options.page.toString())
   if (options.limit) params.set("limit", options.limit.toString())
 

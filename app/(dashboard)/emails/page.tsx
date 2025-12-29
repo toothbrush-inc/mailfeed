@@ -1,6 +1,7 @@
 import { Suspense } from "react"
 import { EmailFeedContainer } from "@/components/feed/email-feed-container"
 import { EmailFeedSkeleton } from "@/components/feed/email-feed-skeleton"
+import { EmailTagFilter } from "@/components/feed/email-tag-filter"
 
 export default function EmailsPage() {
   return (
@@ -11,6 +12,10 @@ export default function EmailsPage() {
           Emails you&apos;ve sent to yourself, grouped with their extracted links.
         </p>
       </div>
+
+      <Suspense fallback={null}>
+        <EmailTagFilter />
+      </Suspense>
 
       <Suspense fallback={<EmailFeedSkeleton />}>
         <EmailFeedContainer />

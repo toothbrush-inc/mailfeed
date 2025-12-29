@@ -17,13 +17,24 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const page = parseInt(searchParams.get("page") || "1")
   const limit = parseInt(searchParams.get("limit") || "20")
+  const tag = searchParams.get("tag")
+
+  // Build where clause
+  const where: {
+    userId: string
+    tags?: { has: string }
+  } = {
+    userId: session.user.id,
+  }
+
+  if (tag) {
+    where.tags = { has: tag }
+  }
 
   const queryStart = Date.now()
   const [emails, total] = await Promise.all([
     prisma.email.findMany({
-      where: {
-        userId: session.user.id,
-      },
+      where,
       orderBy: {
         receivedAt: "desc",
       },
@@ -48,11 +59,7 @@ export async function GET(request: NextRequest) {
         },
       },
     }),
-    prisma.email.count({
-      where: {
-        userId: session.user.id,
-      },
-    }),
+    prisma.email.count({ where }),
   ])
   console.log("[/api/emails] DB query completed in", Date.now() - queryStart, "ms")
   console.log("[/api/emails] Total request time:", Date.now() - startTime, "ms")

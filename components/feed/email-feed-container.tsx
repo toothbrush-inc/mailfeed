@@ -1,12 +1,16 @@
 "use client"
 
+import { useSearchParams } from "next/navigation"
 import { useEmails } from "@/hooks/use-emails"
 import { EmailFeedItem } from "./email-feed-item"
 import { EmailFeedSkeleton } from "./email-feed-skeleton"
 import { Button } from "@/components/ui/button"
 
 export function EmailFeedContainer() {
-  const { emails, pagination, isLoading, error, mutate } = useEmails()
+  const searchParams = useSearchParams()
+  const tag = searchParams.get("tag")
+
+  const { emails, pagination, isLoading, error, mutate } = useEmails({ tag })
 
   if (isLoading) {
     return <EmailFeedSkeleton />
