@@ -22,13 +22,8 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get("page") || "1")
   const limit = parseInt(searchParams.get("limit") || "20")
 
-  const where: {
-    userId: string
-    aiCategory?: string
-    aiTags?: { has: string }
-    isHighlighted?: boolean
-    fetchStatus?: string
-  } = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: any = {
     userId: session.user.id,
   }
 
@@ -37,7 +32,13 @@ export async function GET(request: NextRequest) {
   }
 
   if (tag) {
-    where.aiTags = { has: tag }
+    // Search across all tag types
+    where.OR = [
+      { linkTags: { has: tag } },
+      { contentTags: { has: tag } },
+      { metadataTags: { has: tag } },
+      { aiTags: { has: tag } },
+    ]
   }
 
   if (highlighted === "true") {

@@ -20,10 +20,8 @@ export async function GET(request: NextRequest) {
   const tag = searchParams.get("tag")
 
   // Build where clause
-  const where: {
-    userId: string
-    tags?: { has: string }
-  } = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: any = {
     userId: session.user.id,
   }
 

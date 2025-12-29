@@ -114,6 +114,10 @@ model Link {
   aiKeyPoints     String[]
   aiCategory      String?
   aiTags          String[]
+  // BAML IngestLink tag types
+  linkTags        String[]  // ARTICLE, VIDEO, IMAGE, AUDIO, etc.
+  contentTags     String[]  // TECHNOLOGY, BUSINESS, SCIENCE, etc.
+  metadataTags    String[]  // OPEN_ACCESS, LOGIN_REQUIRED, PAYMENT_REQUIRED, etc.
   worthinessScore Float?
   uniquenessScore Float?
   isHighlighted   Boolean  @default(false)

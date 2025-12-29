@@ -1,23 +1,39 @@
 "use client"
 
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import { useLinks } from "@/hooks/use-links"
 import { FeedItem } from "./feed-item"
 import { FeedSkeleton } from "./feed-skeleton"
 import { Button } from "@/components/ui/button"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 
 export function FeedContainer() {
   const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
 
   const category = searchParams.get("category")
   const tag = searchParams.get("tag")
   const highlighted = searchParams.get("highlighted") === "true"
+  const page = parseInt(searchParams.get("page") || "1")
 
-  const { links, pagination, isLoading, error } = useLinks({
+  const { links, pagination, isLoading, error, mutate } = useLinks({
     category,
     tag,
     highlighted,
+    page,
   })
+
+  const navigateToPage = (newPage: number) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (newPage === 1) {
+      params.delete("page")
+    } else {
+      params.set("page", newPage.toString())
+    }
+    const queryString = params.toString()
+    router.push(`${pathname}${queryString ? `?${queryString}` : ""}`)
+  }
 
   if (isLoading) {
     return <FeedSkeleton />
@@ -51,6 +67,8 @@ export function FeedContainer() {
               ? "No highlighted articles found. Check back after syncing more emails."
               : category
               ? `No articles found in the "${category}" category.`
+              : tag
+              ? `No links found with the "${tag.replace(/_/g, " ")}" tag.`
               : "Click the \"Sync Emails\" button to fetch links from emails you've sent to yourself."}
           </p>
         </div>
@@ -61,14 +79,35 @@ export function FeedContainer() {
   return (
     <div className="space-y-4">
       {links.map((link) => (
-        <FeedItem key={link.id} link={link} />
+        <FeedItem key={link.id} link={link} onAnalyzeComplete={mutate} />
       ))}
 
       {pagination && pagination.totalPages > 1 && (
-        <div className="flex justify-center gap-2 pt-4">
+        <div className="flex items-center justify-between border-t pt-4 mt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateToPage(page - 1)}
+            disabled={page <= 1}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Previous
+          </Button>
+
           <p className="text-sm text-muted-foreground">
-            Showing {links.length} of {pagination.total} links
+            Page {pagination.page} of {pagination.totalPages}
+            <span className="hidden sm:inline"> ({pagination.total} links)</span>
           </p>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateToPage(page + 1)}
+            disabled={page >= pagination.totalPages}
+          >
+            Next
+            <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
         </div>
       )}
     </div>

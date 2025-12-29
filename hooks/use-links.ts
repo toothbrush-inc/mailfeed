@@ -13,6 +13,9 @@ interface Link {
   aiKeyPoints: string[]
   aiCategory: string | null
   aiTags: string[]
+  linkTags: string[]
+  contentTags: string[]
+  metadataTags: string[]
   readingTimeMin: number | null
   wordCount: number | null
   worthinessScore: number | null
@@ -24,6 +27,7 @@ interface Link {
   fetchStatus: string
   createdAt: string
   email: {
+    gmailId: string
     subject: string | null
     receivedAt: string
   } | null

@@ -1,10 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2 } from "lucide-react"
 
 interface FeedItemProps {
   link: {
@@ -17,6 +18,9 @@ interface FeedItemProps {
     aiKeyPoints: string[]
     aiCategory: string | null
     aiTags: string[]
+    linkTags: string[]
+    contentTags: string[]
+    metadataTags: string[]
     readingTimeMin: number | null
     worthinessScore: number | null
     uniquenessScore: number | null
@@ -32,14 +36,36 @@ interface FeedItemProps {
       receivedAt: string
     } | null
   }
+  onAnalyzeComplete?: () => void
 }
 
-export function FeedItem({ link }: FeedItemProps) {
+export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const isProcessing = ["PENDING", "FETCHING", "ANALYZING"].includes(link.fetchStatus)
   const hasFailed = link.fetchStatus === "FAILED"
+  const hasBeenAnalyzed = link.linkTags?.length > 0 || link.contentTags?.length > 0 || link.aiCategory
+  const needsAnalysis = link.fetchStatus === "FETCHED" && !hasBeenAnalyzed
   const gmailUrl = link.email?.gmailId
     ? `https://mail.google.com/mail/u/0/#inbox/${link.email.gmailId}`
     : null
+
+  const handleAnalyze = async () => {
+    setIsAnalyzing(true)
+    try {
+      const response = await fetch(`/api/links/${link.id}/analyze`, {
+        method: "POST",
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Analysis failed")
+      }
+      onAnalyzeComplete?.()
+    } catch (error) {
+      console.error("Failed to analyze link:", error)
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
 
   return (
     <Card
@@ -134,17 +160,100 @@ export function FeedItem({ link }: FeedItemProps) {
         )}
       </CardContent>
 
-      <CardFooter className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-2">
-          {link.aiCategory && <Badge variant="secondary">{link.aiCategory}</Badge>}
-          {link.aiTags?.map((tag) => (
-            <Badge key={tag} variant="outline" className="text-xs">
-              {tag}
-            </Badge>
-          ))}
+      <CardFooter className="flex flex-col gap-3">
+        {/* Tag groupings */}
+        <div className="flex flex-col gap-2 w-full">
+          {/* Link Type Tags */}
+          {link.linkTags?.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground font-medium min-w-[60px]">Type:</span>
+              {link.linkTags.map((tag) => (
+                <Badge key={tag} variant="default" className="text-xs">
+                  {tag.replace(/_/g, " ")}
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          {/* Content Tags */}
+          {link.contentTags?.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground font-medium min-w-[60px]">Content:</span>
+              {link.contentTags.map((tag) => (
+                <Badge key={tag} variant="secondary" className="text-xs">
+                  {tag.replace(/_/g, " ")}
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          {/* Metadata Tags */}
+          {link.metadataTags?.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground font-medium min-w-[60px]">Meta:</span>
+              {link.metadataTags.map((tag) => (
+                <Badge key={tag} variant="outline" className="text-xs">
+                  {tag.replace(/_/g, " ")}
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          {/* Legacy aiTags fallback (for links analyzed before this update) */}
+          {!link.linkTags?.length && !link.contentTags?.length && link.aiTags?.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground font-medium min-w-[60px]">Tags:</span>
+              {link.aiCategory && <Badge variant="secondary" className="text-xs">{link.aiCategory}</Badge>}
+              {link.aiTags.map((tag) => (
+                <Badge key={tag} variant="outline" className="text-xs">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="flex gap-2">
+        {/* Action buttons */}
+        <div className="flex flex-wrap items-center justify-end gap-2 w-full">
+          {needsAnalysis ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleAnalyze}
+              disabled={isAnalyzing}
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-1 h-4 w-4" />
+                  Analyze
+                </>
+              )}
+            </Button>
+          ) : hasBeenAnalyzed && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleAnalyze}
+              disabled={isAnalyzing}
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  Re-analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-1 h-4 w-4" />
+                  Re-analyze
+                </>
+              )}
+            </Button>
+          )}
           {gmailUrl && (
             <Button variant="ghost" size="sm" asChild>
               <a href={gmailUrl} target="_blank" rel="noopener noreferrer">

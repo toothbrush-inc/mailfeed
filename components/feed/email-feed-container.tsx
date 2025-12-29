@@ -1,16 +1,32 @@
 "use client"
 
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import { useEmails } from "@/hooks/use-emails"
 import { EmailFeedItem } from "./email-feed-item"
 import { EmailFeedSkeleton } from "./email-feed-skeleton"
 import { Button } from "@/components/ui/button"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 
 export function EmailFeedContainer() {
   const searchParams = useSearchParams()
-  const tag = searchParams.get("tag")
+  const router = useRouter()
+  const pathname = usePathname()
 
-  const { emails, pagination, isLoading, error, mutate } = useEmails({ tag })
+  const tag = searchParams.get("tag")
+  const page = parseInt(searchParams.get("page") || "1")
+
+  const { emails, pagination, isLoading, error, mutate } = useEmails({ tag, page })
+
+  const navigateToPage = (newPage: number) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (newPage === 1) {
+      params.delete("page")
+    } else {
+      params.set("page", newPage.toString())
+    }
+    const queryString = params.toString()
+    router.push(`${pathname}${queryString ? `?${queryString}` : ""}`)
+  }
 
   if (isLoading) {
     return <EmailFeedSkeleton />
@@ -40,7 +56,9 @@ export function EmailFeedContainer() {
         <div className="mx-auto max-w-md">
           <h3 className="text-lg font-semibold">No emails yet</h3>
           <p className="mt-2 text-muted-foreground">
-            Click the &quot;Sync Emails&quot; button to fetch emails you&apos;ve sent to yourself.
+            {tag
+              ? `No emails found with the "${tag.replace(/_/g, " ")}" tag.`
+              : "Click the \"Sync Emails\" button to fetch emails you've sent to yourself."}
           </p>
         </div>
       </div>
@@ -54,10 +72,31 @@ export function EmailFeedContainer() {
       ))}
 
       {pagination && pagination.totalPages > 1 && (
-        <div className="flex justify-center gap-2 pt-4">
+        <div className="flex items-center justify-between border-t pt-4 mt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateToPage(page - 1)}
+            disabled={page <= 1}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Previous
+          </Button>
+
           <p className="text-sm text-muted-foreground">
-            Showing {emails.length} of {pagination.total} emails
+            Page {pagination.page} of {pagination.totalPages}
+            <span className="hidden sm:inline"> ({pagination.total} emails)</span>
           </p>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigateToPage(page + 1)}
+            disabled={page >= pagination.totalPages}
+          >
+            Next
+            <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
         </div>
       )}
     </div>
