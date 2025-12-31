@@ -1,6 +1,7 @@
 import { Readability } from "@mozilla/readability"
 import { JSDOM } from "jsdom"
 import { shouldUseOEmbed, fetchOEmbed, extractTextFromOEmbed } from "./oembed-fetcher"
+import { isMajorNewsSite, extractNewsMetadata } from "./news-extractor"
 
 interface FetchResult {
   success: boolean
@@ -117,6 +118,14 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
     // Check for paywall
     const paywallCheck = detectPaywall(html)
 
+    // For major news sites, extract rich metadata using JSON-LD and enhanced OG extraction
+    const isNewsSite = isMajorNewsSite(finalUrl)
+    const newsMetadata = isNewsSite ? extractNewsMetadata(html, finalUrl) : null
+
+    if (isNewsSite && newsMetadata) {
+      console.log(`[Content Fetcher] Using news metadata extraction for: ${finalUrl}`)
+    }
+
     // Extract Open Graph data (useful for paywalled sites)
     const ogData = extractOpenGraphData(dom.window.document)
 
@@ -125,20 +134,26 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
     const article = reader.parse()
 
     if (!article) {
-      // Readability failed, but we might have good OG metadata
-      // Consider it a partial success if we have title and description
-      if (ogData.title && ogData.description) {
-        console.log(`[Content Fetcher] Readability failed but using OG metadata for: ${url}`)
+      // Readability failed, but we might have good metadata from news extraction or OG
+      const hasNewsMetadata = newsMetadata?.title && newsMetadata?.description
+      const hasOgMetadata = ogData.title && ogData.description
+
+      if (hasNewsMetadata || hasOgMetadata) {
+        const title = newsMetadata?.title || ogData.title
+        const description = newsMetadata?.description || ogData.description
+        const author = newsMetadata?.author || ogData.author
+
+        console.log(`[Content Fetcher] Readability failed but using ${hasNewsMetadata ? "news" : "OG"} metadata for: ${url}`)
         return {
           success: true,
-          title: ogData.title,
-          excerpt: ogData.description,
-          textContent: ogData.description,
-          byline: ogData.author,
-          siteName: ogData.siteName,
-          imageUrl: ogData.image,
-          wordCount: ogData.description.split(/\s+/).filter(Boolean).length,
-          isPaywalled: paywallCheck.isPaywalled,
+          title,
+          excerpt: description,
+          textContent: description,
+          byline: author,
+          siteName: newsMetadata?.siteName || ogData.siteName,
+          imageUrl: newsMetadata?.image || ogData.image,
+          wordCount: description?.split(/\s+/).filter(Boolean).length || 0,
+          isPaywalled: newsMetadata?.isPaywalled || paywallCheck.isPaywalled,
           paywallType: paywallCheck.type,
           finalUrl,
           wasRedirected,
@@ -148,7 +163,7 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
 
       return {
         success: false,
-        isPaywalled: paywallCheck.isPaywalled,
+        isPaywalled: newsMetadata?.isPaywalled || paywallCheck.isPaywalled,
         paywallType: paywallCheck.type,
         error: "Could not parse article content",
         finalUrl,
@@ -157,20 +172,25 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
       }
     }
 
-    // Use OG data to supplement Readability results
-    const imageUrl = ogData.image || undefined
-    const siteName = ogData.siteName || article.siteName || undefined
+    // Use news metadata and OG data to supplement Readability results
+    const imageUrl = newsMetadata?.image || ogData.image || undefined
+    const siteName = newsMetadata?.siteName || ogData.siteName || article.siteName || undefined
 
     const textContent = article.textContent || ""
     const wordCount = textContent.split(/\s+/).filter(Boolean).length
 
-    // For paywalled content with minimal text, prefer OG description as excerpt
-    const excerpt = (paywallCheck.isPaywalled && ogData.description && wordCount < 200)
-      ? ogData.description
-      : (article.excerpt || ogData.description || undefined)
+    // For paywalled content with minimal text, prefer metadata description as excerpt
+    const isPaywalled = newsMetadata?.isPaywalled || paywallCheck.isPaywalled
+    const metaDescription = newsMetadata?.description || ogData.description
+    const excerpt = (isPaywalled && metaDescription && wordCount < 200)
+      ? metaDescription
+      : (article.excerpt || metaDescription || undefined)
 
-    // Prefer OG title if Readability gave us a generic one
-    const title = article.title || ogData.title || undefined
+    // Prefer metadata title if Readability gave us a generic one
+    const title = article.title || newsMetadata?.title || ogData.title || undefined
+
+    // Prefer news metadata author over Readability byline
+    const byline = newsMetadata?.author || article.byline || ogData.author || undefined
 
     return {
       success: true,
@@ -178,11 +198,11 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
       content: article.content || undefined,
       textContent: textContent || undefined,
       excerpt,
-      byline: article.byline || ogData.author || undefined,
+      byline,
       siteName,
       imageUrl,
       wordCount,
-      isPaywalled: paywallCheck.isPaywalled,
+      isPaywalled,
       paywallType: paywallCheck.type,
       finalUrl,
       wasRedirected,
