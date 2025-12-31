@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Star, Link2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -42,14 +42,47 @@ interface FeedItemProps {
     paywallType: string | null
     fetchStatus: string
     rawHtml: string | null
+    isRead: boolean
+    readAt: string | null
     createdAt: string
     email: {
       gmailId: string
       subject: string | null
       receivedAt: string
     } | null
+    childLinks: Array<{
+      id: string
+      url: string
+      title: string | null
+      domain: string | null
+      finalUrl: string | null
+      finalDomain: string | null
+      aiSummary: string | null
+      aiCategory: string | null
+      aiTags: string[]
+      linkTags: string[]
+      contentTags: string[]
+      fetchStatus: string
+      isHighlighted: boolean
+      isRead: boolean
+    }>
   }
   onAnalyzeComplete?: () => void
+}
+
+// Format date as "Jan 15" or "Jan 15, 2024" if different year
+function formatDate(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const isCurrentYear = date.getFullYear() === now.getFullYear()
+
+  const options: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    ...(isCurrentYear ? {} : { year: "numeric" }),
+  }
+
+  return date.toLocaleDateString("en-US", options)
 }
 
 export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
@@ -57,6 +90,8 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
   const [isRefetching, setIsRefetching] = useState(false)
   const [rawContent, setRawContent] = useState<string | null>(null)
   const [isLoadingRaw, setIsLoadingRaw] = useState(false)
+  const [isTogglingRead, setIsTogglingRead] = useState(false)
+  const [isRead, setIsRead] = useState(link.isRead)
 
   const isProcessing = ["PENDING", "FETCHING", "ANALYZING"].includes(link.fetchStatus)
   const hasFailed = link.fetchStatus === "FAILED"
@@ -66,6 +101,7 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
   const gmailUrl = link.email?.gmailId
     ? `https://mail.google.com/mail/u/0/#inbox/${link.email.gmailId}`
     : null
+  const emailDate = link.email?.receivedAt ? formatDate(link.email.receivedAt) : null
 
   const handleAnalyze = async () => {
     setIsAnalyzing(true)
@@ -124,11 +160,31 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
     }
   }
 
+  const handleToggleRead = async () => {
+    setIsTogglingRead(true)
+    try {
+      const response = await fetch(`/api/links/${link.id}/read`, {
+        method: isRead ? "DELETE" : "POST",
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to update read status")
+      }
+      setIsRead(!isRead)
+      onAnalyzeComplete?.()
+    } catch (error) {
+      console.error("Failed to toggle read status:", error)
+    } finally {
+      setIsTogglingRead(false)
+    }
+  }
+
   return (
     <Card
       className={cn(
         "transition-all hover:shadow-md",
-        link.isHighlighted && "ring-2 ring-amber-400 dark:ring-amber-500"
+        link.isHighlighted && "ring-2 ring-amber-400 dark:ring-amber-500",
+        isRead && "opacity-60"
       )}
     >
       <CardHeader className="space-y-2">
@@ -166,6 +222,15 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
                   </span>
                 </>
               )}
+              {emailDate && (
+                <>
+                  <span>·</span>
+                  <span className="flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    {emailDate}
+                  </span>
+                </>
+              )}
             </div>
           </div>
           {link.imageUrl && (
@@ -180,12 +245,70 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
 
       <CardContent className="space-y-4">
         {/* Social media embed (Twitter, Instagram, etc.) */}
-        {isEmbeddable(link.finalDomain || link.domain, link.rawHtml) && link.rawHtml && (
+        {isEmbeddable(link.finalDomain || link.domain, link.rawHtml, link.finalUrl || link.url) && link.rawHtml && (
           <SocialEmbed
             html={link.rawHtml}
             url={link.finalUrl || link.url}
             domain={link.finalDomain || link.domain}
           />
+        )}
+
+        {/* Nested/child links extracted from this post */}
+        {link.childLinks?.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+              <Link2 className="h-4 w-4" />
+              <span>Links in this post</span>
+            </div>
+            <div className="space-y-2">
+              {link.childLinks.map((childLink) => (
+                <div
+                  key={childLink.id}
+                  className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50",
+                    childLink.isRead && "opacity-60"
+                  )}
+                >
+                  {childLink.isHighlighted && (
+                    <Star className="h-4 w-4 mt-0.5 text-amber-500 fill-amber-500 shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={childLink.finalUrl || childLink.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium hover:underline truncate"
+                      >
+                        {childLink.title || childLink.finalUrl || childLink.url}
+                      </a>
+                      <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {childLink.finalDomain || childLink.domain}
+                    </p>
+                    {childLink.aiSummary && (
+                      <p className="text-sm text-muted-foreground line-clamp-2">
+                        {childLink.aiSummary}
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {childLink.linkTags?.map((tag) => (
+                        <Badge key={tag} variant="default" className="text-xs">
+                          {tag.replace(/_/g, " ")}
+                        </Badge>
+                      ))}
+                      {childLink.contentTags?.map((tag) => (
+                        <Badge key={tag} variant="secondary" className="text-xs">
+                          {tag.replace(/_/g, " ")}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {link.isPaywalled && (
@@ -286,6 +409,28 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
 
         {/* Action buttons */}
         <div className="flex flex-wrap items-center justify-end gap-2 w-full">
+          {/* Mark as read/unread button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleToggleRead}
+            disabled={isTogglingRead}
+          >
+            {isTogglingRead ? (
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            ) : isRead ? (
+              <>
+                <EyeOff className="mr-1 h-4 w-4" />
+                Mark Unread
+              </>
+            ) : (
+              <>
+                <Eye className="mr-1 h-4 w-4" />
+                Mark Read
+              </>
+            )}
+          </Button>
+
           {/* Refetch button - always available except during processing */}
           {!isProcessing && (
             <Button

@@ -21,12 +21,15 @@ export async function GET(request: NextRequest) {
   const domain = searchParams.get("domain")
   const highlighted = searchParams.get("highlighted")
   const status = searchParams.get("status")
+  const read = searchParams.get("read")
+  const search = searchParams.get("search")
   const page = parseInt(searchParams.get("page") || "1")
   const limit = parseInt(searchParams.get("limit") || "20")
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {
     userId: session.user.id,
+    parentLinkId: null, // Only show top-level links, not nested/child links
   }
 
   if (category) {
@@ -58,16 +61,39 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  if (andConditions.length > 0) {
-    where.AND = andConditions
-  }
-
   if (highlighted === "true") {
     where.isHighlighted = true
   }
 
   if (status) {
     where.fetchStatus = status
+  }
+
+  if (read === "read") {
+    where.isRead = true
+  } else if (read === "unread") {
+    where.isRead = false
+  }
+
+  // Full-text search across multiple fields
+  if (search && search.trim()) {
+    const searchTerm = search.trim()
+    andConditions.push({
+      OR: [
+        { title: { contains: searchTerm, mode: "insensitive" } },
+        { url: { contains: searchTerm, mode: "insensitive" } },
+        { finalUrl: { contains: searchTerm, mode: "insensitive" } },
+        { aiSummary: { contains: searchTerm, mode: "insensitive" } },
+        { contentText: { contains: searchTerm, mode: "insensitive" } },
+        { domain: { contains: searchTerm, mode: "insensitive" } },
+        { finalDomain: { contains: searchTerm, mode: "insensitive" } },
+      ],
+    })
+  }
+
+  // Apply AND conditions after all have been added
+  if (andConditions.length > 0) {
+    where.AND = andConditions
   }
 
   // Helper to check if a URL should be excluded
@@ -82,8 +108,6 @@ export async function GET(request: NextRequest) {
     prisma.link.findMany({
       where,
       orderBy: [
-        { isHighlighted: "desc" },
-        { worthinessScore: "desc" },
         { createdAt: "desc" },
       ],
       skip: (page - 1) * limit,
@@ -99,6 +123,27 @@ export async function GET(request: NextRequest) {
         categories: {
           include: {
             category: true,
+          },
+        },
+        childLinks: {
+          select: {
+            id: true,
+            url: true,
+            title: true,
+            domain: true,
+            finalUrl: true,
+            finalDomain: true,
+            aiSummary: true,
+            aiCategory: true,
+            aiTags: true,
+            linkTags: true,
+            contentTags: true,
+            fetchStatus: true,
+            isHighlighted: true,
+            isRead: true,
+          },
+          orderBy: {
+            createdAt: "desc",
           },
         },
       },

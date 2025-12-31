@@ -6,6 +6,7 @@ import { extractLinks, hashUrl, extractDomain, EXCLUDED_DOMAINS } from "@/lib/li
 import { fetchAndParseContent, estimateReadingTime, isPoorContent } from "@/lib/content-fetcher"
 import { analyzeContent } from "@/lib/gemini"
 import { parseHtmlWithAI } from "@/lib/ai-html-parser"
+import { processNestedLinks } from "@/lib/process-nested-links"
 
 // Helper to check if a URL should be excluded
 const isExcludedUrl = (url: string) => {
@@ -29,6 +30,8 @@ export async function POST() {
     linksAnalyzed: 0,
     linksSkippedExcluded: 0,
     linksSkippedDuplicate: 0,
+    nestedLinksCreated: 0,
+    nestedLinksFetched: 0,
     errors: [] as string[],
   }
 
@@ -162,6 +165,20 @@ export async function POST() {
                 syncResults.linksFetched++
                 syncResults.linksAnalyzed++
                 console.log(`[Sync] AI fallback succeeded for: ${url}`)
+
+                // Process nested links from social media posts
+                const nestedResult = await processNestedLinks({
+                  id: link.id,
+                  userId,
+                  emailId: email.id,
+                  rawHtml: rawHtml,
+                  finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
+                  domain: extractDomain(url),
+                })
+                syncResults.nestedLinksCreated += nestedResult.created
+                syncResults.nestedLinksFetched += nestedResult.fetched
+                syncResults.errors.push(...nestedResult.errors)
+
                 continue
               } catch (aiError) {
                 console.error(`[Sync] AI fallback failed for ${url}:`, aiError)
@@ -238,6 +255,19 @@ export async function POST() {
             })
 
             syncResults.linksFetched++
+
+            // Process nested links from social media posts
+            const nestedResult = await processNestedLinks({
+              id: link.id,
+              userId,
+              emailId: email.id,
+              rawHtml: content.rawHtml || null,
+              finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
+              domain: extractDomain(url),
+            })
+            syncResults.nestedLinksCreated += nestedResult.created
+            syncResults.nestedLinksFetched += nestedResult.fetched
+            syncResults.errors.push(...nestedResult.errors)
 
             // Analyze with AI if we have content
             if (content.textContent && content.title) {

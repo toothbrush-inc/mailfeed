@@ -3,6 +3,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { hashUrl, extractDomain, EXCLUDED_DOMAINS } from "@/lib/link-extractor"
 import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher"
+import { processNestedLinks } from "@/lib/process-nested-links"
 
 const isExcludedUrl = (url: string) => {
   const lowerUrl = url.toLowerCase()
@@ -114,11 +115,23 @@ export async function POST(
       },
     })
 
+    // Process nested links from social media posts
+    const nestedResult = await processNestedLinks({
+      id: updatedLink.id,
+      userId: session.user.id,
+      emailId: link.emailId,
+      rawHtml: content.rawHtml || null,
+      finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
+      domain: link.domain,
+    })
+
     console.log("[/api/links/[id]/refetch] Total time:", Date.now() - startTime, "ms")
+    console.log("[/api/links/[id]/refetch] Nested links:", nestedResult)
 
     return NextResponse.json({
       success: true,
       link: updatedLink,
+      nestedLinks: nestedResult,
     })
   } catch (error) {
     console.error("[/api/links/[id]/refetch] Error:", error)

@@ -36,7 +36,15 @@ const OEMBED_DOMAINS = [
  */
 export function shouldUseOEmbed(url: string): boolean {
   try {
-    const hostname = new URL(url).hostname.replace("www.", "")
+    const parsed = new URL(url)
+    const hostname = parsed.hostname.replace("www.", "")
+    const pathname = parsed.pathname.toLowerCase()
+
+    // X/Twitter article URLs should NOT use oEmbed - fetch them normally
+    if ((hostname.includes("x.com") || hostname.includes("twitter.com")) && pathname.startsWith("/i/article/")) {
+      return false
+    }
+
     return OEMBED_DOMAINS.some((d) => hostname.includes(d))
   } catch {
     return false

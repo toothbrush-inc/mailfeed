@@ -93,12 +93,13 @@ enum EmailTag {
 }
 
 model Link {
-  id       String  @id @default(cuid())
-  userId   String
-  emailId  String?
-  url      String
-  urlHash  String
-  domain   String?
+  id           String  @id @default(cuid())
+  userId       String
+  emailId      String?
+  parentLinkId String?
+  url          String
+  urlHash      String
+  domain       String?
 
   // Final URL after redirects (for deduplication and display)
   finalUrl      String?
@@ -137,6 +138,10 @@ model Link {
   isPaywalled Boolean     @default(false)
   paywallType String?
 
+  // Read status
+  isRead Boolean   @default(false)
+  readAt DateTime?
+
   // Timestamps
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
@@ -145,14 +150,18 @@ model Link {
 
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   email      Email?        @relation(fields: [emailId], references: [id], onDelete: SetNull)
+  parentLink Link?         @relation("NestedLinks", fields: [parentLinkId], references: [id], onDelete: SetNull)
+  childLinks Link[]        @relation("NestedLinks")
   categories LinkCategory[]
 
   @@unique([userId, urlHash])
   @@index([userId])
   @@index([emailId])
+  @@index([parentLinkId])
   @@index([fetchStatus])
   @@index([aiCategory])
   @@index([isHighlighted])
+  @@index([isRead])
   @@index([createdAt])
   @@index([worthinessScore])
   @@index([finalUrlHash])

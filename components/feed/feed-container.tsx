@@ -16,6 +16,8 @@ export function FeedContainer() {
   const tag = searchParams.get("tag")
   const domain = searchParams.get("domain")
   const highlighted = searchParams.get("highlighted") === "true"
+  const readFilter = searchParams.get("read") as "all" | "read" | "unread" | null
+  const search = searchParams.get("search")
   const page = parseInt(searchParams.get("page") || "1")
 
   const { links, pagination, isLoading, error, mutate } = useLinks({
@@ -23,6 +25,8 @@ export function FeedContainer() {
     tag,
     domain,
     highlighted,
+    read: readFilter || "all",
+    search,
     page,
   })
 
@@ -63,9 +67,15 @@ export function FeedContainer() {
     return (
       <div className="rounded-lg border bg-white p-12 text-center dark:bg-zinc-900">
         <div className="mx-auto max-w-md">
-          <h3 className="text-lg font-semibold">No links yet</h3>
+          <h3 className="text-lg font-semibold">No links found</h3>
           <p className="mt-2 text-muted-foreground">
-            {highlighted
+            {search
+              ? `No links matching "${search}". Try a different search term.`
+              : readFilter === "unread"
+              ? "No unread links. You're all caught up!"
+              : readFilter === "read"
+              ? "No read links yet. Start reading some articles!"
+              : highlighted
               ? "No highlighted articles found. Check back after syncing more emails."
               : category
               ? `No articles found in the "${category}" category.`

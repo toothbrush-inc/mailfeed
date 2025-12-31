@@ -45,9 +45,30 @@ const METADATA_TAGS = [
   { value: "SUBSCRIPTION_REQUIRED", label: "Subscription" },
 ]
 
+// Read status filter options
+const READ_STATUS = [
+  { value: "all", label: "All" },
+  { value: "unread", label: "Unread" },
+  { value: "read", label: "Read" },
+]
+
 export function LinkTagFilter() {
   const searchParams = useSearchParams()
   const currentTag = searchParams.get("tag")
+  const currentRead = searchParams.get("read") || "all"
+
+  // Build URL preserving other params but updating the read filter
+  const buildReadUrl = (readValue: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (readValue === "all") {
+      params.delete("read")
+    } else {
+      params.set("read", readValue)
+    }
+    params.delete("page") // Reset to page 1 when changing filters
+    const queryString = params.toString()
+    return `/feed${queryString ? `?${queryString}` : ""}`
+  }
 
   const renderTagGroup = (
     title: string,
@@ -88,6 +109,23 @@ export function LinkTagFilter() {
         >
           All
         </Link>
+
+        <div className="h-4 w-px bg-zinc-300 dark:bg-zinc-600 mx-1" />
+
+        {READ_STATUS.map((status) => (
+          <Link
+            key={status.value}
+            href={buildReadUrl(status.value)}
+            className={cn(
+              "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
+              currentRead === status.value
+                ? "bg-blue-600 text-white dark:bg-blue-500"
+                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+            )}
+          >
+            {status.label}
+          </Link>
+        ))}
       </div>
 
       {renderTagGroup("Type", LINK_TAGS)}

@@ -117,11 +117,35 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
     // Check for paywall
     const paywallCheck = detectPaywall(html)
 
+    // Extract Open Graph data (useful for paywalled sites)
+    const ogData = extractOpenGraphData(dom.window.document)
+
     // Parse with Readability
     const reader = new Readability(dom.window.document)
     const article = reader.parse()
 
     if (!article) {
+      // Readability failed, but we might have good OG metadata
+      // Consider it a partial success if we have title and description
+      if (ogData.title && ogData.description) {
+        console.log(`[Content Fetcher] Readability failed but using OG metadata for: ${url}`)
+        return {
+          success: true,
+          title: ogData.title,
+          excerpt: ogData.description,
+          textContent: ogData.description,
+          byline: ogData.author,
+          siteName: ogData.siteName,
+          imageUrl: ogData.image,
+          wordCount: ogData.description.split(/\s+/).filter(Boolean).length,
+          isPaywalled: paywallCheck.isPaywalled,
+          paywallType: paywallCheck.type,
+          finalUrl,
+          wasRedirected,
+          rawHtml: html,
+        }
+      }
+
       return {
         success: false,
         isPaywalled: paywallCheck.isPaywalled,
@@ -133,24 +157,28 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
       }
     }
 
-    // Extract Open Graph image
-    const ogImage = dom.window.document.querySelector('meta[property="og:image"]')
-    const imageUrl = ogImage?.getAttribute("content") || undefined
-
-    // Extract site name
-    const ogSiteName = dom.window.document.querySelector('meta[property="og:site_name"]')
-    const siteName = ogSiteName?.getAttribute("content") || article.siteName || undefined
+    // Use OG data to supplement Readability results
+    const imageUrl = ogData.image || undefined
+    const siteName = ogData.siteName || article.siteName || undefined
 
     const textContent = article.textContent || ""
     const wordCount = textContent.split(/\s+/).filter(Boolean).length
 
+    // For paywalled content with minimal text, prefer OG description as excerpt
+    const excerpt = (paywallCheck.isPaywalled && ogData.description && wordCount < 200)
+      ? ogData.description
+      : (article.excerpt || ogData.description || undefined)
+
+    // Prefer OG title if Readability gave us a generic one
+    const title = article.title || ogData.title || undefined
+
     return {
       success: true,
-      title: article.title || undefined,
+      title,
       content: article.content || undefined,
       textContent: textContent || undefined,
-      excerpt: article.excerpt || undefined,
-      byline: article.byline || undefined,
+      excerpt,
+      byline: article.byline || ogData.author || undefined,
       siteName,
       imageUrl,
       wordCount,
@@ -196,6 +224,32 @@ function detectPaywall(html: string): {
   }
 
   return { isPaywalled: false }
+}
+
+interface OpenGraphData {
+  title?: string
+  description?: string
+  image?: string
+  siteName?: string
+  type?: string
+  author?: string
+}
+
+function extractOpenGraphData(document: Document): OpenGraphData {
+  const getMeta = (property: string): string | undefined => {
+    const el = document.querySelector(`meta[property="${property}"]`) ||
+               document.querySelector(`meta[name="${property}"]`)
+    return el?.getAttribute("content") || undefined
+  }
+
+  return {
+    title: getMeta("og:title") || document.querySelector("title")?.textContent || undefined,
+    description: getMeta("og:description") || getMeta("description"),
+    image: getMeta("og:image"),
+    siteName: getMeta("og:site_name"),
+    type: getMeta("og:type"),
+    author: getMeta("author") || getMeta("article:author"),
+  }
 }
 
 export function estimateReadingTime(wordCount: number): number {

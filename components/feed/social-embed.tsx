@@ -32,8 +32,21 @@ declare global {
   }
 }
 
-export function isEmbeddable(domain: string | null, html: string | null): boolean {
+export function isEmbeddable(domain: string | null, html: string | null, url?: string | null): boolean {
   if (!domain || !html) return false
+
+  // X/Twitter article URLs should NOT be embedded - they're articles, not tweets
+  if (url) {
+    try {
+      const parsed = new URL(url)
+      if (parsed.pathname.toLowerCase().startsWith("/i/article/")) {
+        return false
+      }
+    } catch {
+      // ignore invalid URLs
+    }
+  }
+
   const normalizedDomain = domain.replace("www.", "")
   return EMBED_DOMAINS.some((d) => normalizedDomain.includes(d))
 }

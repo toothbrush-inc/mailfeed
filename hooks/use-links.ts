@@ -29,6 +29,8 @@ interface Link {
   paywallType: string | null
   fetchStatus: string
   rawHtml: string | null
+  isRead: boolean
+  readAt: string | null
   createdAt: string
   email: {
     gmailId: string
@@ -41,6 +43,22 @@ interface Link {
       name: string
       slug: string
     }
+  }>
+  childLinks: Array<{
+    id: string
+    url: string
+    title: string | null
+    domain: string | null
+    finalUrl: string | null
+    finalDomain: string | null
+    aiSummary: string | null
+    aiCategory: string | null
+    aiTags: string[]
+    linkTags: string[]
+    contentTags: string[]
+    fetchStatus: string
+    isHighlighted: boolean
+    isRead: boolean
   }>
 }
 
@@ -60,6 +78,8 @@ interface UseLinksOptions {
   domain?: string | null
   highlighted?: boolean
   status?: string | null
+  read?: "all" | "read" | "unread"
+  search?: string | null
   page?: number
   limit?: number
 }
@@ -74,18 +94,26 @@ export function useLinks(options: UseLinksOptions = {}) {
   if (options.domain) params.set("domain", options.domain)
   if (options.highlighted) params.set("highlighted", "true")
   if (options.status) params.set("status", options.status)
+  if (options.read && options.read !== "all") params.set("read", options.read)
+  if (options.search) params.set("search", options.search)
   if (options.page) params.set("page", options.page.toString())
   if (options.limit) params.set("limit", options.limit.toString())
 
   const queryString = params.toString()
   const url = `/api/links${queryString ? `?${queryString}` : ""}`
 
-  const { data, error, isLoading, mutate } = useSWR<LinksResponse>(url, fetcher)
+  const { data, error, isLoading, isValidating, mutate } = useSWR<LinksResponse>(
+    url,
+    fetcher,
+    {
+      keepPreviousData: false, // Clear data when URL changes (e.g., search)
+    }
+  )
 
   return {
     links: data?.links || [],
     pagination: data?.pagination,
-    isLoading,
+    isLoading: isLoading || isValidating, // Show loading during revalidation too
     error,
     mutate,
   }
