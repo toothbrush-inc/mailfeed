@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Star, Link2 } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Star, Link2, Archive } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -88,6 +88,8 @@ function formatDate(dateString: string): string {
 export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isRefetching, setIsRefetching] = useState(false)
+  const [isFetchingArchive, setIsFetchingArchive] = useState(false)
+  const [archiveError, setArchiveError] = useState<string | null>(null)
   const [rawContent, setRawContent] = useState<string | null>(null)
   const [isLoadingRaw, setIsLoadingRaw] = useState(false)
   const [isTogglingRead, setIsTogglingRead] = useState(false)
@@ -176,6 +178,30 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
       console.error("Failed to toggle read status:", error)
     } finally {
       setIsTogglingRead(false)
+    }
+  }
+
+  const handleFetchFromArchive = async () => {
+    setIsFetchingArchive(true)
+    setArchiveError(null)
+    try {
+      const response = await fetch(`/api/links/${link.id}/wayback`, {
+        method: "POST",
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch from archive")
+      }
+      if (!data.success) {
+        throw new Error(data.error || "No archived version found")
+      }
+      onAnalyzeComplete?.()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to fetch from archive"
+      console.error("Failed to fetch from archive:", message)
+      setArchiveError(message)
+    } finally {
+      setIsFetchingArchive(false)
     }
   }
 
@@ -322,6 +348,13 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
           </div>
         )}
 
+        {archiveError && (
+          <div className="flex items-center gap-2 text-sm text-red-500">
+            <AlertTriangle className="h-4 w-4" />
+            <span>Archive: {archiveError}</span>
+          </div>
+        )}
+
         {link.aiSummary && (
           <p className="text-muted-foreground">{link.aiSummary}</p>
         )}
@@ -448,6 +481,28 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
                 <>
                   <RefreshCw className="mr-1 h-4 w-4" />
                   Refetch
+                </>
+              )}
+            </Button>
+          )}
+
+          {/* Try Archive button - for paywalled or failed links */}
+          {(hasPaywall || hasFailed || link.isPaywalled) && !isProcessing && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFetchFromArchive}
+              disabled={isFetchingArchive}
+            >
+              {isFetchingArchive ? (
+                <>
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  Checking Archive...
+                </>
+              ) : (
+                <>
+                  <Archive className="mr-1 h-4 w-4" />
+                  Try Archive
                 </>
               )}
             </Button>
