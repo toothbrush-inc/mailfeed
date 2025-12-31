@@ -1,5 +1,6 @@
 import { Readability } from "@mozilla/readability"
 import { JSDOM } from "jsdom"
+import { shouldUseOEmbed, fetchOEmbed, extractTextFromOEmbed } from "./oembed-fetcher"
 
 interface FetchResult {
   success: boolean
@@ -14,6 +15,11 @@ interface FetchResult {
   isPaywalled?: boolean
   paywallType?: "hard" | "soft" | "registration"
   error?: string
+  // Redirect tracking
+  finalUrl?: string
+  wasRedirected?: boolean
+  // Raw HTML for AI fallback
+  rawHtml?: string
 }
 
 const PAYWALL_INDICATORS = {
@@ -50,6 +56,33 @@ const USER_AGENT =
 
 export async function fetchAndParseContent(url: string): Promise<FetchResult> {
   try {
+    // Try oEmbed first for known problematic sites (Twitter/X, Instagram, TikTok, YouTube)
+    if (shouldUseOEmbed(url)) {
+      console.log(`[Content Fetcher] Using oEmbed for: ${url}`)
+      const oembedResult = await fetchOEmbed(url)
+
+      if (oembedResult.success) {
+        const textContent = extractTextFromOEmbed(oembedResult.html)
+        const wordCount = textContent.split(/\s+/).filter(Boolean).length
+
+        return {
+          success: true,
+          title: oembedResult.title,
+          textContent,
+          byline: oembedResult.authorName,
+          siteName: oembedResult.providerName,
+          imageUrl: oembedResult.thumbnailUrl,
+          wordCount,
+          finalUrl: url,
+          wasRedirected: false,
+          rawHtml: oembedResult.html,
+        }
+      }
+
+      // If oEmbed fails, log and fall through to regular fetch
+      console.log(`[Content Fetcher] oEmbed failed for ${url}, trying regular fetch: ${oembedResult.error}`)
+    }
+
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 30000)
 
@@ -65,15 +98,21 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
 
     clearTimeout(timeout)
 
+    // Track final URL after redirects
+    const finalUrl = response.url
+    const wasRedirected = finalUrl !== url
+
     if (!response.ok) {
       return {
         success: false,
         error: `HTTP ${response.status}: ${response.statusText}`,
+        finalUrl,
+        wasRedirected,
       }
     }
 
     const html = await response.text()
-    const dom = new JSDOM(html, { url })
+    const dom = new JSDOM(html, { url: finalUrl })
 
     // Check for paywall
     const paywallCheck = detectPaywall(html)
@@ -88,6 +127,9 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
         isPaywalled: paywallCheck.isPaywalled,
         paywallType: paywallCheck.type,
         error: "Could not parse article content",
+        finalUrl,
+        wasRedirected,
+        rawHtml: html,
       }
     }
 
@@ -114,6 +156,9 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
       wordCount,
       isPaywalled: paywallCheck.isPaywalled,
       paywallType: paywallCheck.type,
+      finalUrl,
+      wasRedirected,
+      rawHtml: html,
     }
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
@@ -156,4 +201,17 @@ function detectPaywall(html: string): {
 export function estimateReadingTime(wordCount: number): number {
   // Average reading speed: ~225 words per minute
   return Math.max(1, Math.ceil(wordCount / 225))
+}
+
+export function isPoorContent(content: FetchResult): boolean {
+  // Readability failed entirely
+  if (!content.success) return true
+
+  // No text content extracted
+  if (!content.textContent || content.textContent.trim().length === 0) return true
+
+  // Very little content (less than 50 words)
+  if (content.wordCount && content.wordCount < 50) return true
+
+  return false
 }

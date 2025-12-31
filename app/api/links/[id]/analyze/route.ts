@@ -17,7 +17,7 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // Fetch the link with its email content
+  // Fetch the link with its email content and raw HTML
   const link = await prisma.link.findUnique({
     where: { id },
     include: {
@@ -47,11 +47,13 @@ export async function POST(
     console.log("[/api/links/[id]/analyze] Calling BAML IngestLink...")
     const bamlStart = Date.now()
 
-    // Call BAML IngestLink with url, title (as anchor text), and email raw content
+    // Call BAML IngestLink with url, title (as anchor text), and raw HTML or email content
+    // Prefer rawHtml (stored from content fetch) over email rawContent
+    const htmlContent = link.rawHtml || link.contentText || link.email?.rawContent || undefined
     const result = await b.IngestLink(
       link.url,
       link.title || link.url,
-      link.email?.rawContent || undefined
+      htmlContent
     )
 
     console.log("[/api/links/[id]/analyze] BAML completed in", Date.now() - bamlStart, "ms")
@@ -85,6 +87,7 @@ export async function POST(
       where: { id },
       data: {
         fetchStatus: "COMPLETED",
+        aiSummary: result.summary || null,
         aiCategory,
         linkTags,
         contentTags,
@@ -110,6 +113,7 @@ export async function POST(
       success: true,
       link: updatedLink,
       bamlResult: {
+        summary: result.summary,
         tags: result.tags,
         contentTags: result.contentTags,
         metadataTags: result.metadataTags,

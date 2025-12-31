@@ -2,9 +2,16 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { fetchSelfEmails, getEmailContent } from "@/lib/gmail"
-import { extractLinks, hashUrl, extractDomain } from "@/lib/link-extractor"
-import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher"
+import { extractLinks, hashUrl, extractDomain, EXCLUDED_DOMAINS } from "@/lib/link-extractor"
+import { fetchAndParseContent, estimateReadingTime, isPoorContent } from "@/lib/content-fetcher"
 import { analyzeContent } from "@/lib/gemini"
+import { parseHtmlWithAI } from "@/lib/ai-html-parser"
+
+// Helper to check if a URL should be excluded
+const isExcludedUrl = (url: string) => {
+  const lowerUrl = url.toLowerCase()
+  return EXCLUDED_DOMAINS.some((d) => lowerUrl.includes(d))
+}
 
 export async function POST() {
   const session = await auth()
@@ -20,6 +27,8 @@ export async function POST() {
     linksExtracted: 0,
     linksFetched: 0,
     linksAnalyzed: 0,
+    linksSkippedExcluded: 0,
+    linksSkippedDuplicate: 0,
     errors: [] as string[],
   }
 
@@ -92,6 +101,73 @@ export async function POST() {
             })
 
             const content = await fetchAndParseContent(url)
+            const rawHtml = content.rawHtml
+
+            // Check if we need AI fallback for poor content
+            if (isPoorContent(content) && rawHtml) {
+              console.log(`[Sync] Poor content detected, using AI fallback: ${url}`)
+
+              try {
+                const aiResult = await parseHtmlWithAI(url, rawHtml)
+
+                // Check exclusions on final URL before saving
+                if (content.finalUrl && isExcludedUrl(content.finalUrl)) {
+                  console.log(`[Sync] Skipping link - final URL excluded: ${url} -> ${content.finalUrl}`)
+                  await prisma.link.delete({ where: { id: link.id } })
+                  syncResults.linksSkippedExcluded++
+                  continue
+                }
+
+                // Check for duplicate by final URL
+                const finalUrlHash = content.finalUrl ? hashUrl(content.finalUrl) : null
+                if (finalUrlHash) {
+                  const existingByFinalUrl = await prisma.link.findFirst({
+                    where: {
+                      userId,
+                      finalUrlHash,
+                      id: { not: link.id },
+                    },
+                  })
+
+                  if (existingByFinalUrl) {
+                    console.log(`[Sync] Skipping link - duplicate final URL: ${url} -> ${content.finalUrl}`)
+                    await prisma.link.delete({ where: { id: link.id } })
+                    syncResults.linksSkippedDuplicate++
+                    continue
+                  }
+                }
+
+                // Save AI-parsed content
+                await prisma.link.update({
+                  where: { id: link.id },
+                  data: {
+                    fetchStatus: "COMPLETED",
+                    aiSummary: aiResult.summary,
+                    aiCategory: aiResult.aiCategory,
+                    linkTags: aiResult.linkTags,
+                    contentTags: aiResult.contentTags,
+                    metadataTags: aiResult.metadataTags,
+                    isPaywalled: aiResult.isPaywalled,
+                    paywallType: aiResult.paywallType,
+                    rawHtml: rawHtml,
+                    finalUrl: content.finalUrl,
+                    finalUrlHash,
+                    finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
+                    wasRedirected: content.wasRedirected || false,
+                    fetchedAt: new Date(),
+                    analyzedAt: new Date(),
+                  },
+                })
+
+                syncResults.linksFetched++
+                syncResults.linksAnalyzed++
+                console.log(`[Sync] AI fallback succeeded for: ${url}`)
+                continue
+              } catch (aiError) {
+                console.error(`[Sync] AI fallback failed for ${url}:`, aiError)
+                // Fall through to normal failure handling
+              }
+            }
 
             if (!content.success) {
               await prisma.link.update({
@@ -101,10 +177,42 @@ export async function POST() {
                   fetchError: content.error,
                   isPaywalled: content.isPaywalled || false,
                   paywallType: content.paywallType,
+                  rawHtml: rawHtml,
+                  finalUrl: content.finalUrl,
+                  finalUrlHash: content.finalUrl ? hashUrl(content.finalUrl) : null,
+                  finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
+                  wasRedirected: content.wasRedirected || false,
                   fetchedAt: new Date(),
                 },
               })
               continue
+            }
+
+            // Check if final URL is in excluded domains
+            if (content.finalUrl && isExcludedUrl(content.finalUrl)) {
+              console.log(`[Sync] Skipping link - final URL excluded: ${url} -> ${content.finalUrl}`)
+              await prisma.link.delete({ where: { id: link.id } })
+              syncResults.linksSkippedExcluded++
+              continue
+            }
+
+            // Check for duplicate by final URL
+            const finalUrlHash = content.finalUrl ? hashUrl(content.finalUrl) : null
+            if (finalUrlHash) {
+              const existingByFinalUrl = await prisma.link.findFirst({
+                where: {
+                  userId,
+                  finalUrlHash,
+                  id: { not: link.id }, // Exclude current link
+                },
+              })
+
+              if (existingByFinalUrl) {
+                console.log(`[Sync] Skipping link - duplicate final URL: ${url} -> ${content.finalUrl}`)
+                await prisma.link.delete({ where: { id: link.id } })
+                syncResults.linksSkippedDuplicate++
+                continue
+              }
             }
 
             await prisma.link.update({
@@ -121,6 +229,10 @@ export async function POST() {
                   : null,
                 isPaywalled: content.isPaywalled || false,
                 paywallType: content.paywallType,
+                finalUrl: content.finalUrl,
+                finalUrlHash,
+                finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
+                wasRedirected: content.wasRedirected || false,
                 fetchedAt: new Date(),
               },
             })

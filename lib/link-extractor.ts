@@ -1,18 +1,75 @@
 import { JSDOM } from "jsdom"
 import { createHash } from "crypto"
 
-const EXCLUDED_DOMAINS = [
+export const EXCLUDED_DOMAINS = [
+  // Schema/metadata domains
+  "schema.org",
+  "ogp.me",
+  "purl.org",
+  "xmlns.com",
+  "w3.org",
+  "rdfs.org",
+
+  // Social sharing/intent links
+  "facebook.com/sharer",
+  "facebook.com/share",
+  "twitter.com/intent",
+  "twitter.com/share",
+  "linkedin.com/share",
+  "pinterest.com/pin",
+  "reddit.com/submit",
+  "wa.me",
+  "t.me/share",
+
+  // App stores and maps
   "google.com/maps",
   "maps.google.com",
   "play.google.com",
   "apps.apple.com",
-  "facebook.com",
-  "twitter.com/intent",
-  "linkedin.com/share",
+  "itunes.apple.com",
+
+  // Email/tracking
+  "mailchimp.com",
+  "list-manage.com",
+  "click.convertkit",
+  "trk.klclick",
+  "mandrillapp.com",
+  "sendgrid.net",
   "unsubscribe",
+  "manage-preferences",
+  "email-preferences",
+
+  // Analytics/tracking domains
+  "doubleclick.net",
+  "googleadservices.com",
+  "googlesyndication.com",
+  "google-analytics.com",
+  "facebook.net",
+  "connect.facebook.com",
+  "ads.linkedin.com",
+
+  // CDN/static resources
+  "cloudflare.com",
+  "cdn.jsdelivr.net",
+  "unpkg.com",
+  "cdnjs.cloudflare.com",
+  "fonts.googleapis.com",
+  "fonts.gstatic.com",
+
+  // Other non-content
+  "gravatar.com",
+  "wp.com/latex",
+  "bit.ly",
+  "tinyurl.com",
+  "goo.gl",
+  "ow.ly",
+  "t.co",
+
+  // Protocol handlers
   "mailto:",
   "tel:",
   "javascript:",
+  "data:",
 ]
 
 const EXCLUDED_EXTENSIONS = [

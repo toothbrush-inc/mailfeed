@@ -5,14 +5,26 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2 } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { SocialEmbed, isEmbeddable } from "./social-embed"
 
 interface FeedItemProps {
   link: {
     id: string
     url: string
-    title: string | null
     domain: string | null
+    finalUrl: string | null
+    finalDomain: string | null
+    wasRedirected: boolean
+    title: string | null
     imageUrl: string | null
     aiSummary: string | null
     aiKeyPoints: string[]
@@ -29,6 +41,7 @@ interface FeedItemProps {
     isPaywalled: boolean
     paywallType: string | null
     fetchStatus: string
+    rawHtml: string | null
     createdAt: string
     email: {
       gmailId: string
@@ -41,8 +54,13 @@ interface FeedItemProps {
 
 export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isRefetching, setIsRefetching] = useState(false)
+  const [rawContent, setRawContent] = useState<string | null>(null)
+  const [isLoadingRaw, setIsLoadingRaw] = useState(false)
+
   const isProcessing = ["PENDING", "FETCHING", "ANALYZING"].includes(link.fetchStatus)
   const hasFailed = link.fetchStatus === "FAILED"
+  const hasPaywall = link.fetchStatus === "PAYWALL_DETECTED"
   const hasBeenAnalyzed = link.linkTags?.length > 0 || link.contentTags?.length > 0 || link.aiCategory
   const needsAnalysis = link.fetchStatus === "FETCHED" && !hasBeenAnalyzed
   const gmailUrl = link.email?.gmailId
@@ -67,6 +85,45 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
     }
   }
 
+  const handleRefetch = async () => {
+    setIsRefetching(true)
+    try {
+      const response = await fetch(`/api/links/${link.id}/refetch`, {
+        method: "POST",
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Refetch failed")
+      }
+      onAnalyzeComplete?.()
+    } catch (error) {
+      console.error("Failed to refetch link:", error)
+    } finally {
+      setIsRefetching(false)
+    }
+  }
+
+  const handleLoadRawContent = async () => {
+    if (rawContent !== null) return // Already loaded
+    setIsLoadingRaw(true)
+    try {
+      const response = await fetch(`/api/links/${link.id}/raw`)
+      if (!response.ok) {
+        throw new Error("Failed to load raw content")
+      }
+      const data = await response.json()
+      // Show rawHtml if available, otherwise contentText
+      const content = data.rawHtml || data.contentText || "No content stored"
+      const label = data.rawHtml ? "[rawHtml]" : "[contentText]"
+      setRawContent(`${label}\n\n${content}`)
+    } catch (error) {
+      console.error("Failed to load raw content:", error)
+      setRawContent("Error loading content")
+    } finally {
+      setIsLoadingRaw(false)
+    }
+  }
+
   return (
     <Card
       className={cn(
@@ -85,16 +142,21 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
             )}
             <h3 className="text-lg font-semibold leading-tight">
               <a
-                href={link.url}
+                href={link.finalUrl || link.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:underline"
               >
-                {link.title || link.url}
+                {link.title || link.finalUrl || link.url}
               </a>
             </h3>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{link.domain}</span>
+              <span>{link.finalDomain || link.domain}</span>
+              {link.wasRedirected && link.domain && (
+                <span className="text-xs text-muted-foreground/70">
+                  (from {link.domain})
+                </span>
+              )}
               {link.readingTimeMin && (
                 <>
                   <span>·</span>
@@ -117,6 +179,15 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Social media embed (Twitter, Instagram, etc.) */}
+        {isEmbeddable(link.finalDomain || link.domain, link.rawHtml) && link.rawHtml && (
+          <SocialEmbed
+            html={link.rawHtml}
+            url={link.finalUrl || link.url}
+            domain={link.finalDomain || link.domain}
+          />
+        )}
+
         {link.isPaywalled && (
           <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
             <AlertTriangle className="h-4 w-4" />
@@ -215,6 +286,29 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
 
         {/* Action buttons */}
         <div className="flex flex-wrap items-center justify-end gap-2 w-full">
+          {/* Refetch button - always available except during processing */}
+          {!isProcessing && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRefetch}
+              disabled={isRefetching}
+            >
+              {isRefetching ? (
+                <>
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  Refetching...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-1 h-4 w-4" />
+                  Refetch
+                </>
+              )}
+            </Button>
+          )}
+
+          {/* Analyze buttons */}
           {needsAnalysis ? (
             <Button
               variant="outline"
@@ -254,6 +348,37 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
               )}
             </Button>
           )}
+
+          {/* View Raw HTML button */}
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="sm" onClick={handleLoadRawContent}>
+                <Code className="mr-1 h-4 w-4" />
+                Raw
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[80vh]">
+              <DialogHeader>
+                <DialogTitle>Raw Content</DialogTitle>
+                <DialogDescription>
+                  {link.finalUrl || link.url}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="overflow-auto max-h-[60vh] rounded border bg-muted p-4">
+                {isLoadingRaw ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading...
+                  </div>
+                ) : (
+                  <pre className="text-xs whitespace-pre-wrap font-mono">
+                    {rawContent || "No content loaded"}
+                  </pre>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+
           {gmailUrl && (
             <Button variant="ghost" size="sm" asChild>
               <a href={gmailUrl} target="_blank" rel="noopener noreferrer">
@@ -263,7 +388,7 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
             </Button>
           )}
           <Button variant="ghost" size="sm" asChild>
-            <a href={link.url} target="_blank" rel="noopener noreferrer">
+            <a href={link.finalUrl || link.url} target="_blank" rel="noopener noreferrer">
               Read Article
               <ExternalLink className="ml-1 h-4 w-4" />
             </a>

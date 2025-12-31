@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { DomainFilter } from "./domain-filter"
 
 // Link type tags from BAML LinkTag enum
 const LINK_TAGS = [
@@ -92,6 +93,7 @@ export function LinkTagFilter() {
       {renderTagGroup("Type", LINK_TAGS)}
       {renderTagGroup("Content", CONTENT_TAGS)}
       {renderTagGroup("Access", METADATA_TAGS)}
+      <DomainFilter />
     </div>
   )
 }

@@ -14,12 +14,14 @@ export function FeedContainer() {
 
   const category = searchParams.get("category")
   const tag = searchParams.get("tag")
+  const domain = searchParams.get("domain")
   const highlighted = searchParams.get("highlighted") === "true"
   const page = parseInt(searchParams.get("page") || "1")
 
   const { links, pagination, isLoading, error, mutate } = useLinks({
     category,
     tag,
+    domain,
     highlighted,
     page,
   })
@@ -69,6 +71,8 @@ export function FeedContainer() {
               ? `No articles found in the "${category}" category.`
               : tag
               ? `No links found with the "${tag.replace(/_/g, " ")}" tag.`
+              : domain
+              ? `No links found from "${domain}".`
               : "Click the \"Sync Emails\" button to fetch links from emails you've sent to yourself."}
           </p>
         </div>

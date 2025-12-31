@@ -5,8 +5,11 @@ import useSWR from "swr"
 interface Link {
   id: string
   url: string
-  title: string | null
   domain: string | null
+  finalUrl: string | null
+  finalDomain: string | null
+  wasRedirected: boolean
+  title: string | null
   description: string | null
   imageUrl: string | null
   aiSummary: string | null
@@ -25,6 +28,7 @@ interface Link {
   isPaywalled: boolean
   paywallType: string | null
   fetchStatus: string
+  rawHtml: string | null
   createdAt: string
   email: {
     gmailId: string
@@ -53,6 +57,7 @@ interface LinksResponse {
 interface UseLinksOptions {
   category?: string | null
   tag?: string | null
+  domain?: string | null
   highlighted?: boolean
   status?: string | null
   page?: number
@@ -66,6 +71,7 @@ export function useLinks(options: UseLinksOptions = {}) {
 
   if (options.category) params.set("category", options.category)
   if (options.tag) params.set("tag", options.tag)
+  if (options.domain) params.set("domain", options.domain)
   if (options.highlighted) params.set("highlighted", "true")
   if (options.status) params.set("status", options.status)
   if (options.page) params.set("page", options.page.toString())

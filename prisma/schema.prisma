@@ -99,12 +99,20 @@ model Link {
   url      String
   urlHash  String
   domain   String?
+
+  // Final URL after redirects (for deduplication and display)
+  finalUrl      String?
+  finalUrlHash  String?
+  finalDomain   String?
+  wasRedirected Boolean  @default(false)
+
   title    String?
   description String?
   imageUrl String?
 
   // Content analysis
   contentText    String? @db.Text
+  rawHtml        String? @db.Text  // Raw HTML for AI fallback parsing
   summary        String? @db.Text
   readingTimeMin Int?
   wordCount      Int?
@@ -147,6 +155,7 @@ model Link {
   @@index([isHighlighted])
   @@index([createdAt])
   @@index([worthinessScore])
+  @@index([finalUrlHash])
 }
 
 model Category {
