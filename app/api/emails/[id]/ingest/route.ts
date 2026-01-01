@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { b } from "@/baml_client"
+import { hashUrl, extractDomain } from "@/lib/link-extractor"
 
 export async function POST(
   request: NextRequest,
@@ -56,7 +57,63 @@ export async function POST(
       },
     })
 
+    // Create Link records for extracted links
+    const linksCreated: string[] = []
+    for (const extractedLink of result.links) {
+      const urlHash = hashUrl(extractedLink.url)
+
+      // Check if link already exists for this user
+      const existingLink = await prisma.link.findUnique({
+        where: { userId_urlHash: { userId: session.user.id, urlHash } },
+      })
+
+      if (existingLink) {
+        console.log(`[/api/emails/[id]/ingest] Link already exists: ${extractedLink.url}`)
+        continue
+      }
+
+      // Create new link record
+      await prisma.link.create({
+        data: {
+          userId: session.user.id,
+          emailId: id,
+          url: extractedLink.url,
+          urlHash,
+          title: extractedLink.title || null,
+          domain: extractDomain(extractedLink.url),
+          fetchStatus: "PENDING",
+        },
+      })
+
+      linksCreated.push(extractedLink.url)
+      console.log(`[/api/emails/[id]/ingest] Created link: ${extractedLink.url}`)
+    }
+
+    // Fetch the updated email with links
+    const emailWithLinks = await prisma.email.findUnique({
+      where: { id },
+      include: {
+        links: {
+          select: {
+            id: true,
+            url: true,
+            title: true,
+            domain: true,
+            aiSummary: true,
+            aiCategory: true,
+            aiTags: true,
+            fetchStatus: true,
+            isHighlighted: true,
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+        },
+      },
+    })
+
     console.log("[/api/emails/[id]/ingest] Total time:", Date.now() - startTime, "ms")
+    console.log(`[/api/emails/[id]/ingest] Created ${linksCreated.length} new links`)
 
     return NextResponse.json({
       success: true,
@@ -64,12 +121,9 @@ export async function POST(
         id: updatedEmail.id,
         tags: updatedEmail.tags,
         ingestedAt: updatedEmail.ingestedAt,
+        links: emailWithLinks?.links || [],
       },
-      bamlResult: {
-        // subject: email.subject,
-        tags: result.tags,
-        links: result.links,
-      },
+      linksCreated,
     })
   } catch (error) {
     console.error("[/api/emails/[id]/ingest] Error:", error)
