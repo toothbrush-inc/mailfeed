@@ -8,8 +8,6 @@ const globalForPrisma = globalThis as unknown as {
 }
 
 function createPrismaClient() {
-  console.log("[Prisma] Creating new PrismaClient...")
-
   // Reuse pool if it exists
   if (!globalForPrisma.pool) {
     globalForPrisma.pool = new Pool({
@@ -22,6 +20,10 @@ function createPrismaClient() {
   return new PrismaClient({ adapter })
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient()
+// Only create a new client if one doesn't exist in the global cache
+if (!globalForPrisma.prisma) {
+  console.log("[Prisma] Creating new PrismaClient...")
+  globalForPrisma.prisma = createPrismaClient()
+}
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
+export const prisma = globalForPrisma.prisma

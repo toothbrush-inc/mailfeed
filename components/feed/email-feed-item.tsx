@@ -53,6 +53,7 @@ interface EmailFeedItemProps {
 export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
   const [isIngesting, setIsIngesting] = useState(false)
   const [localTags, setLocalTags] = useState<EmailTag[]>(email.tags || [])
+  const [localLinks, setLocalLinks] = useState<EmailLink[]>(email.links || [])
 
   const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${email.gmailId}`
   const receivedDate = new Date(email.receivedAt).toLocaleDateString("en-US", {
@@ -69,8 +70,13 @@ export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
       })
       const data = await response.json()
 
-      if (response.ok && data.email?.tags) {
-        setLocalTags(data.email.tags)
+      if (response.ok && data.email) {
+        if (data.email.tags) {
+          setLocalTags(data.email.tags)
+        }
+        if (data.email.links) {
+          setLocalLinks(data.email.links)
+        }
         onIngestComplete?.()
       } else {
         console.error("Ingest failed:", data.error)
@@ -93,7 +99,7 @@ export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
               <Mail className="h-4 w-4" />
               <span>{receivedDate}</span>
               <span>·</span>
-              <span>{email.links.length} link{email.links.length !== 1 ? "s" : ""}</span>
+              <span>{localLinks.length} link{localLinks.length !== 1 ? "s" : ""}</span>
             </div>
             <h3 className="text-lg font-semibold leading-tight">
               <a
@@ -150,7 +156,7 @@ export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
 
       <CardContent>
         <div className="space-y-3">
-          {email.links.map((link) => (
+          {localLinks.map((link) => (
             <div
               key={link.id}
               className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"

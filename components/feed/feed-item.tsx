@@ -198,7 +198,7 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
       onAnalyzeComplete?.()
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch from archive"
-      console.error("Failed to fetch from archive:", message)
+      console.warn("Failed to fetch from archive:", message)
       setArchiveError(message)
     } finally {
       setIsFetchingArchive(false)
