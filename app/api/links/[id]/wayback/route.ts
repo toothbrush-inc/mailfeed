@@ -3,7 +3,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { fetchFromWayback } from "@/lib/wayback-fetcher"
 import { estimateReadingTime } from "@/lib/content-fetcher"
-import { analyzeContent } from "@/lib/gemini"
+import { b } from "@/baml_client"
 
 export async function POST(
   request: NextRequest,
@@ -80,9 +80,9 @@ export async function POST(
 
     console.log(`[/api/links/[id]/wayback] Fetched archived content (${waybackResult.wordCount} words)`)
 
-    // If we got good content, run AI analysis
-    if (waybackResult.textContent && waybackResult.title && waybackResult.wordCount && waybackResult.wordCount > 50) {
-      console.log("[/api/links/[id]/wayback] Running AI analysis...")
+    // If we got good content, run AI analysis using BAML IngestLink
+    if (waybackResult.rawHtml && waybackResult.title) {
+      console.log("[/api/links/[id]/wayback] Running BAML IngestLink analysis...")
 
       await prisma.link.update({
         where: { id },
@@ -90,14 +90,26 @@ export async function POST(
       })
 
       try {
-        const analysis = await analyzeContent(waybackResult.title, waybackResult.textContent)
+        const analysis = await b.IngestLink(
+          urlToFetch,
+          waybackResult.title,
+          waybackResult.rawHtml
+        )
+
+        // Convert enums to strings for storage
+        const linkTags = analysis.tags.map((t) => String(t))
+        const contentTags = analysis.contentTags.map((t) => String(t))
+        const metadataTags = analysis.metadataTags.map((t) => String(t))
+
+        // Use first content tag as category if available
+        const categoryName = contentTags[0] || "OTHER"
 
         // Ensure category exists
         const category = await prisma.category.upsert({
-          where: { name: analysis.category },
+          where: { name: categoryName },
           create: {
-            name: analysis.category,
-            slug: analysis.category.toLowerCase().replace(/\s+/g, "-"),
+            name: categoryName,
+            slug: categoryName.toLowerCase().replace(/\s+/g, "-"),
           },
           update: {},
         })
@@ -107,13 +119,10 @@ export async function POST(
           data: {
             fetchStatus: "COMPLETED",
             aiSummary: analysis.summary,
-            aiKeyPoints: analysis.keyPoints,
-            aiCategory: analysis.category,
-            aiTags: analysis.tags,
-            worthinessScore: analysis.worthinessScore,
-            uniquenessScore: analysis.uniquenessScore,
-            isHighlighted: analysis.isHighlighted,
-            highlightReason: analysis.highlightReason,
+            aiCategory: categoryName,
+            linkTags,
+            contentTags,
+            metadataTags,
             analyzedAt: new Date(),
             categories: {
               deleteMany: {},
@@ -132,9 +141,9 @@ export async function POST(
           },
         })
 
-        console.log("[/api/links/[id]/wayback] AI analysis complete")
+        console.log("[/api/links/[id]/wayback] BAML analysis complete")
       } catch (analysisError) {
-        console.error("[/api/links/[id]/wayback] AI analysis failed:", analysisError)
+        console.error("[/api/links/[id]/wayback] BAML analysis failed:", analysisError)
         // Still mark as fetched even if analysis fails
         await prisma.link.update({
           where: { id },

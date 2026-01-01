@@ -1,5 +1,5 @@
-import { Readability } from "@mozilla/readability"
 import { JSDOM } from "jsdom"
+import { Readability } from "@mozilla/readability"
 
 export interface WaybackAvailability {
   available: boolean
@@ -13,6 +13,7 @@ export interface WaybackResult {
   timestamp?: string
   title?: string
   textContent?: string
+  rawHtml?: string
   excerpt?: string
   byline?: string
   siteName?: string
@@ -25,12 +26,29 @@ const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 /**
+ * Strip query parameters from a URL to improve Wayback Machine lookup
+ */
+function cleanUrlForArchive(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.origin}${parsed.pathname}`
+  } catch {
+    // If URL parsing fails, try simple string split
+    return url.split("?")[0]
+  }
+}
+
+/**
  * Check if a URL has an archived version in the Wayback Machine
  */
 export async function checkWaybackAvailability(url: string): Promise<WaybackAvailability> {
+  const cleanUrl = cleanUrlForArchive(url)
+  if (cleanUrl !== url) {
+    console.log(`[Wayback] Cleaned URL: ${url} -> ${cleanUrl}`)
+  }
   try {
-    const apiUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(url)}`
-    console.log(`[Wayback] Checking availability: ${url}`)
+    const apiUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(cleanUrl)}`
+    console.log(`[Wayback] Checking availability: ${cleanUrl}`)
 
     const response = await fetch(apiUrl, {
       headers: {
@@ -45,10 +63,12 @@ export async function checkWaybackAvailability(url: string): Promise<WaybackAvai
     }
 
     const data = await response.json()
+    console.log(`[Wayback] API response:`, JSON.stringify(data, null, 2))
+
     const snapshot = data?.archived_snapshots?.closest
 
     if (snapshot?.available && snapshot?.url) {
-      console.log(`[Wayback] Found archived version from ${snapshot.timestamp}`)
+      console.log(`[Wayback] Found archived version from ${snapshot.timestamp}: ${snapshot.url}`)
       return {
         available: true,
         archivedUrl: snapshot.url,
@@ -56,7 +76,7 @@ export async function checkWaybackAvailability(url: string): Promise<WaybackAvai
       }
     }
 
-    console.log(`[Wayback] No archived version found`)
+    console.log(`[Wayback] No archived version found. Snapshot:`, snapshot)
     return { available: false }
   } catch (error) {
     console.error(`[Wayback] Error checking availability:`, error)
@@ -126,6 +146,7 @@ export async function fetchFromWayback(url: string): Promise<WaybackResult> {
           timestamp: availability.timestamp,
           title: ogData.title,
           textContent: ogData.description,
+          rawHtml: cleanedHtml,
           excerpt: ogData.description,
           siteName: ogData.siteName,
           imageUrl: ogData.image,
@@ -151,6 +172,7 @@ export async function fetchFromWayback(url: string): Promise<WaybackResult> {
       timestamp: availability.timestamp,
       title: article.title || ogData.title,
       textContent: textContent || undefined,
+      rawHtml: cleanedHtml,
       excerpt: article.excerpt || ogData.description,
       byline: article.byline || undefined,
       siteName: article.siteName || ogData.siteName,
