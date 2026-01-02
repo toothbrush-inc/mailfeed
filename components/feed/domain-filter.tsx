@@ -34,12 +34,15 @@ export function DomainFilter() {
     )
   }
 
-  if (domains.length === 0) {
+  // Filter out hidden domains
+  const visibleDomains = domains.filter((d) => !d.isHidden)
+
+  if (visibleDomains.length === 0) {
     return null
   }
 
   // Show top 15 domains to avoid overwhelming the UI
-  const topDomains = domains.slice(0, 15)
+  const topDomains = visibleDomains.slice(0, 15)
 
   return (
     <div className="flex flex-wrap items-center gap-2">
