@@ -49,6 +49,18 @@ export function Sidebar() {
           Emails
         </Link>
 
+        <Link
+          href="/domains"
+          className={cn(
+            "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+            pathname === "/domains"
+              ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50"
+              : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"
+          )}
+        >
+          Domains
+        </Link>
+
         <div className="mt-4 mb-2 px-3">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Categories

@@ -2,6 +2,7 @@
 
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import { useLinks } from "@/hooks/use-links"
+import { useDomains } from "@/hooks/use-domains"
 import { FeedItem } from "./feed-item"
 import { FeedSkeleton } from "./feed-skeleton"
 import { Button } from "@/components/ui/button"
@@ -29,6 +30,13 @@ export function FeedContainer() {
     search,
     page,
   })
+
+  const { hideDomain } = useDomains()
+
+  const handleHideDomain = async (domainToHide: string) => {
+    await hideDomain(domainToHide)
+    mutate() // Refresh the links list after hiding a domain
+  }
 
   const navigateToPage = (newPage: number) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -93,7 +101,12 @@ export function FeedContainer() {
   return (
     <div className="space-y-4">
       {links.map((link) => (
-        <FeedItem key={link.id} link={link} onAnalyzeComplete={mutate} />
+        <FeedItem
+          key={link.id}
+          link={link}
+          onAnalyzeComplete={mutate}
+          onHideDomain={handleHideDomain}
+        />
       ))}
 
       {pagination && pagination.totalPages > 1 && (

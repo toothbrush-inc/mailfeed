@@ -68,6 +68,7 @@ interface FeedItemProps {
     }>
   }
   onAnalyzeComplete?: () => void
+  onHideDomain?: (domain: string) => Promise<void>
 }
 
 // Format date as "Jan 15" or "Jan 15, 2024" if different year
@@ -85,7 +86,7 @@ function formatDate(dateString: string): string {
   return date.toLocaleDateString("en-US", options)
 }
 
-export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
+export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isRefetching, setIsRefetching] = useState(false)
   const [isFetchingArchive, setIsFetchingArchive] = useState(false)
@@ -94,6 +95,7 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
   const [isLoadingRaw, setIsLoadingRaw] = useState(false)
   const [isTogglingRead, setIsTogglingRead] = useState(false)
   const [isRead, setIsRead] = useState(link.isRead)
+  const [isHidingDomain, setIsHidingDomain] = useState(false)
 
   const isProcessing = ["PENDING", "FETCHING", "ANALYZING"].includes(link.fetchStatus)
   const hasFailed = link.fetchStatus === "FAILED"
@@ -205,6 +207,20 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
     }
   }
 
+  const handleHideDomain = async () => {
+    const domainToHide = link.finalDomain || link.domain
+    if (!domainToHide || !onHideDomain) return
+
+    setIsHidingDomain(true)
+    try {
+      await onHideDomain(domainToHide)
+    } finally {
+      setIsHidingDomain(false)
+    }
+  }
+
+  const displayDomain = link.finalDomain || link.domain
+
   return (
     <Card
       className={cn(
@@ -233,7 +249,21 @@ export function FeedItem({ link, onAnalyzeComplete }: FeedItemProps) {
               </a>
             </h3>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{link.finalDomain || link.domain}</span>
+              <span>{displayDomain}</span>
+              {displayDomain && onHideDomain && (
+                <button
+                  onClick={handleHideDomain}
+                  disabled={isHidingDomain}
+                  className="text-xs text-muted-foreground/70 hover:text-foreground transition-colors disabled:opacity-50"
+                  title={`Hide all links from ${displayDomain}`}
+                >
+                  {isHidingDomain ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <EyeOff className="h-3 w-3" />
+                  )}
+                </button>
+              )}
               {link.wasRedirected && link.domain && (
                 <span className="text-xs text-muted-foreground/70">
                   (from {link.domain})

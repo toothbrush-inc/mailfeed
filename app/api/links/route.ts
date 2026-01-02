@@ -96,10 +96,22 @@ export async function GET(request: NextRequest) {
     where.AND = andConditions
   }
 
+  // Fetch user's hidden domains
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { hiddenDomains: true },
+  })
+  const userHiddenDomains = new Set(user?.hiddenDomains || [])
+
   // Helper to check if a URL should be excluded
   const isExcludedUrl = (url: string) => {
     const lowerUrl = url.toLowerCase()
     return EXCLUDED_DOMAINS.some((d) => lowerUrl.includes(d))
+  }
+
+  // Helper to check if a domain is hidden by the user
+  const isHiddenDomain = (domain: string | null) => {
+    return domain ? userHiddenDomains.has(domain) : false
   }
 
   const queryStart = Date.now()
@@ -151,19 +163,21 @@ export async function GET(request: NextRequest) {
     prisma.link.count({ where }),
   ])
 
-  // Filter out excluded domains (check both original URL and final URL)
+  // Filter out excluded domains and user-hidden domains
   const filteredLinks = allLinks.filter((link) => {
-    // Check original URL
+    // Check original URL against excluded domains
     if (isExcludedUrl(link.url)) return false
-    // Check final URL if it exists
+    // Check final URL against excluded domains
     if (link.finalUrl && isExcludedUrl(link.finalUrl)) return false
+    // Check user-hidden domains
+    if (isHiddenDomain(link.domain) || isHiddenDomain(link.finalDomain)) return false
     return true
   })
   const links = filteredLinks.slice(0, limit)
 
   console.log("[/api/links] DB query completed in", Date.now() - queryStart, "ms")
   console.log("[/api/links] Total request time:", Date.now() - startTime, "ms")
-  console.log("[/api/links] Filtered out", allLinks.length - filteredLinks.length, "excluded domains")
+  console.log("[/api/links] Filtered out", allLinks.length - filteredLinks.length, "excluded/hidden domains")
 
   return NextResponse.json({
     links,
