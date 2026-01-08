@@ -1,18 +1,54 @@
 "use client"
 
+import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useSync } from "@/hooks/use-sync"
 import { cn } from "@/lib/utils"
+import { AlertTriangle, LogIn } from "lucide-react"
 
 export function SyncButton() {
-  const { sync, isLoading, result, error } = useSync()
+  const { sync, isLoading, result, error, requiresReauth, clearReauthRequired } = useSync()
 
   const handleSync = () => sync()
   const handleContinueSync = () => sync({ continueSync: true })
   const handleResetSync = () => sync({ resetSync: true })
 
+  const handleReauth = async () => {
+    // Clear old tokens first
+    try {
+      await fetch("/api/auth/clear-tokens", { method: "POST" })
+    } catch (e) {
+      console.error("Failed to clear tokens:", e)
+    }
+    clearReauthRequired()
+    signIn("google", { callbackUrl: window.location.href })
+  }
+
   // Show "Sync Older" if there are more pages OR if we have a result with estimated emails
   const showSyncOlder = result?.hasMorePages
+
+  // Show re-auth prompt if required
+  if (requiresReauth) {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
+          <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+          <div className="flex-1 space-y-2">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              Google session expired
+            </p>
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Your Google authorization has expired or been revoked. Please sign in again to continue syncing emails.
+            </p>
+            <Button onClick={handleReauth} size="sm" variant="outline" className="mt-2">
+              <LogIn className="mr-2 h-4 w-4" />
+              Sign in with Google
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -69,7 +105,7 @@ export function SyncButton() {
         </div>
       )}
 
-      {error && (
+      {error && !requiresReauth && (
         <span className="text-xs text-red-500">{error}</span>
       )}
     </div>

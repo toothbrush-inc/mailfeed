@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useEmailStats } from "@/hooks/use-email-stats"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -79,9 +79,16 @@ function CustomTooltip({ active, payload, label, days = 30 }: CustomTooltipProps
 
 export function EmailActivityChart() {
   const [days, setDays] = useState(30)
+  const [mounted, setMounted] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
   const { stats, isLoading, error } = useEmailStats(days)
 
-  if (isLoading) {
+  // Wait for mount to avoid SSR/hydration issues with recharts
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted || isLoading) {
     return (
       <Card className="mb-6">
         <CardHeader className="pb-2">
@@ -141,8 +148,8 @@ export function EmailActivityChart() {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[120px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
+        <div ref={containerRef} className="h-[120px] w-full" style={{ minWidth: 200 }}>
+          <ResponsiveContainer width="100%" height={120}>
             <BarChart
               data={stats.daily}
               margin={{ top: 5, right: 10, left: 0, bottom: 0 }}

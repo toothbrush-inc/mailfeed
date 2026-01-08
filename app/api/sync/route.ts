@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { getGmailClient, fetchSelfEmails, batchGetEmailContents } from "@/lib/gmail"
+import { getGmailClient, fetchSelfEmails, batchGetEmailContents, AuthenticationError } from "@/lib/gmail"
 import { extractLinks, hashUrl, extractDomain } from "@/lib/link-extractor"
 import { isExcludedUrl } from "@/lib/constants/domains"
 import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher"
@@ -405,6 +405,19 @@ export async function POST(request: Request) {
     })
     return NextResponse.json(syncResults)
   } catch (error) {
+    // Handle authentication errors specially
+    if (error instanceof AuthenticationError) {
+      syncLogger.error("Authentication failed", error)
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: error.code,
+          requiresReauth: true,
+        },
+        { status: 401 }
+      )
+    }
+
     syncLogger.error("Sync failed", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Sync failed" },

@@ -1,6 +1,17 @@
 import { google, gmail_v1 } from "googleapis"
 import { prisma } from "@/lib/prisma"
 
+// Custom error for authentication issues that require re-login
+export class AuthenticationError extends Error {
+  code: string
+
+  constructor(message: string, code: string = "AUTH_REQUIRED") {
+    super(message)
+    this.name = "AuthenticationError"
+    this.code = code
+  }
+}
+
 interface GmailMessage {
   id: string
   threadId: string
@@ -25,7 +36,7 @@ export async function getGmailClient(userId: string): Promise<GmailClient> {
   })
 
   if (!account?.access_token) {
-    throw new Error("No Google account connected")
+    throw new AuthenticationError("No Google account connected", "NO_ACCOUNT")
   }
 
   const oauth2Client = new google.auth.OAuth2(
@@ -53,7 +64,88 @@ export async function getGmailClient(userId: string): Promise<GmailClient> {
     }
   })
 
+  // Try to refresh the token proactively to catch invalid_grant early
+  try {
+    const tokenInfo = await oauth2Client.getAccessToken()
+    if (!tokenInfo.token) {
+      throw new AuthenticationError("Failed to get access token", "TOKEN_REFRESH_FAILED")
+    }
+  } catch (error: unknown) {
+    // Log the full error for debugging
+    console.error("[Gmail] Token refresh error:", {
+      error,
+      errorType: error?.constructor?.name,
+      message: error instanceof Error ? error.message : String(error),
+      // Google API errors often have these properties
+      code: (error as { code?: string })?.code,
+      status: (error as { status?: number })?.status,
+      response: (error as { response?: { data?: unknown } })?.response?.data,
+    })
+
+    // Check for invalid_grant or other auth errors
+    if (error instanceof Error) {
+      const errorMessage = error.message.toLowerCase()
+      const errorCode = (error as { code?: string })?.code?.toLowerCase() || ""
+
+      if (
+        errorMessage.includes("invalid_grant") ||
+        errorMessage.includes("token has been expired or revoked") ||
+        errorMessage.includes("refresh token") ||
+        errorMessage.includes("invalid_client") ||
+        errorCode === "invalid_grant"
+      ) {
+        throw new AuthenticationError(
+          `Your Google session has expired. Please sign in again. (${error.message})`,
+          "INVALID_GRANT"
+        )
+      }
+    }
+    throw error
+  }
+
   return google.gmail({ version: "v1", auth: oauth2Client })
+}
+
+// Helper to check if an error is an auth error
+function isAuthError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase()
+    const code = String((error as { code?: string | number })?.code || "").toLowerCase()
+    const status = (error as { status?: number })?.status
+    const responseError = (error as { response?: { data?: { error?: string } } })?.response?.data?.error?.toLowerCase() || ""
+
+    return (
+      message.includes("invalid_grant") ||
+      message.includes("token has been expired or revoked") ||
+      message.includes("invalid_credentials") ||
+      message.includes("unauthorized") ||
+      code === "invalid_grant" ||
+      code === "401" ||
+      status === 401 ||
+      responseError === "invalid_grant"
+    )
+  }
+  return false
+}
+
+// Wrapper to handle Gmail API errors
+async function handleGmailApiError(error: unknown): Promise<never> {
+  console.error("[Gmail API] Error details:", {
+    errorType: error?.constructor?.name,
+    message: error instanceof Error ? error.message : String(error),
+    code: (error as { code?: string })?.code,
+    status: (error as { status?: number })?.status,
+    errors: (error as { errors?: unknown[] })?.errors,
+    response: (error as { response?: { data?: unknown } })?.response?.data,
+  })
+
+  if (isAuthError(error)) {
+    throw new AuthenticationError(
+      `Google authentication failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      "INVALID_GRANT"
+    )
+  }
+  throw error
 }
 
 export async function fetchSelfEmails(
@@ -64,23 +156,27 @@ export async function fetchSelfEmails(
 ) {
   const client = gmail || await getGmailClient(userId)
 
-  // Get user's email address
-  const profile = await client.users.getProfile({ userId: "me" })
-  const userEmail = profile.data.emailAddress
+  try {
+    // Get user's email address
+    const profile = await client.users.getProfile({ userId: "me" })
+    const userEmail = profile.data.emailAddress
 
-  // Query for self-sent emails
-  const response = await client.users.messages.list({
-    userId: "me",
-    q: `from:${userEmail} to:${userEmail}`,
-    maxResults,
-    pageToken,
-  })
+    // Query for self-sent emails
+    const response = await client.users.messages.list({
+      userId: "me",
+      q: `from:${userEmail} to:${userEmail}`,
+      maxResults,
+      pageToken,
+    })
 
-  return {
-    messages: response.data.messages || [],
-    nextPageToken: response.data.nextPageToken,
-    resultSizeEstimate: response.data.resultSizeEstimate || 0,
-    gmail: client, // Return the client for reuse
+    return {
+      messages: response.data.messages || [],
+      nextPageToken: response.data.nextPageToken,
+      resultSizeEstimate: response.data.resultSizeEstimate || 0,
+      gmail: client, // Return the client for reuse
+    }
+  } catch (error) {
+    return handleGmailApiError(error)
   }
 }
 
@@ -90,20 +186,24 @@ export async function fetchSelfEmails(
 export async function getSelfEmailCount(userId: string, gmail?: GmailClient) {
   const client = gmail || await getGmailClient(userId)
 
-  // Get user's email address
-  const profile = await client.users.getProfile({ userId: "me" })
-  const userEmail = profile.data.emailAddress
+  try {
+    // Get user's email address
+    const profile = await client.users.getProfile({ userId: "me" })
+    const userEmail = profile.data.emailAddress
 
-  // Query just to get the count estimate
-  const response = await client.users.messages.list({
-    userId: "me",
-    q: `from:${userEmail} to:${userEmail}`,
-    maxResults: 1,
-  })
+    // Query just to get the count estimate
+    const response = await client.users.messages.list({
+      userId: "me",
+      q: `from:${userEmail} to:${userEmail}`,
+      maxResults: 1,
+    })
 
-  return {
-    estimate: response.data.resultSizeEstimate || 0,
-    gmail: client,
+    return {
+      estimate: response.data.resultSizeEstimate || 0,
+      gmail: client,
+    }
+  } catch (error) {
+    return handleGmailApiError(error)
   }
 }
 
@@ -114,13 +214,17 @@ export async function getEmailContent(
 ) {
   const client = gmail || await getGmailClient(userId)
 
-  const message = await client.users.messages.get({
-    userId: "me",
-    id: messageId,
-    format: "full",
-  })
+  try {
+    const message = await client.users.messages.get({
+      userId: "me",
+      id: messageId,
+      format: "full",
+    })
 
-  return parseEmailContent(message.data as GmailMessage)
+    return parseEmailContent(message.data as GmailMessage)
+  } catch (error) {
+    return handleGmailApiError(error)
+  }
 }
 
 // Batch fetch multiple emails in parallel with concurrency limit
@@ -144,6 +248,13 @@ export async function batchGetEmailContents(
           })
           return parseEmailContent(message.data as GmailMessage)
         } catch (error) {
+          // Check if this is an auth error - if so, throw it to stop the sync
+          if (isAuthError(error)) {
+            throw new AuthenticationError(
+              `Google authentication failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+              "INVALID_GRANT"
+            )
+          }
           console.error(`Failed to fetch email ${id}:`, error)
           return null
         }

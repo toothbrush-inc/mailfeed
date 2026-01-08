@@ -26,15 +26,23 @@ interface SyncOptions {
   resetSync?: boolean
 }
 
+interface SyncError {
+  error: string
+  code?: string
+  requiresReauth?: boolean
+}
+
 export function useSync() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [requiresReauth, setRequiresReauth] = useState(false)
   const [result, setResult] = useState<SyncResult | null>(null)
   const { mutate } = useSWRConfig()
 
   const sync = useCallback(async (options?: SyncOptions) => {
     setIsLoading(true)
     setError(null)
+    setRequiresReauth(false)
 
     try {
       const url = new URL("/api/sync", window.location.origin)
@@ -53,7 +61,15 @@ export function useSync() {
       })
 
       if (!response.ok) {
-        const data = await response.json()
+        const data: SyncError = await response.json()
+
+        // Check if re-authentication is required
+        if (data.requiresReauth) {
+          setRequiresReauth(true)
+          setError(data.error || "Please sign in again to continue syncing.")
+          return null
+        }
+
         throw new Error(data.error || "Sync failed")
       }
 
@@ -64,6 +80,7 @@ export function useSync() {
       mutate("/api/links")
       mutate("/api/categories")
       mutate("/api/stats")
+      mutate("/api/emails/stats")
 
       return data
     } catch (err) {
@@ -75,5 +92,10 @@ export function useSync() {
     }
   }, [mutate])
 
-  return { sync, isLoading, error, result }
+  const clearReauthRequired = useCallback(() => {
+    setRequiresReauth(false)
+    setError(null)
+  }, [])
+
+  return { sync, isLoading, error, result, requiresReauth, clearReauthRequired }
 }
