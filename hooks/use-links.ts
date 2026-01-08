@@ -28,6 +28,8 @@ interface Link {
   isPaywalled: boolean
   paywallType: string | null
   fetchStatus: string
+  contentSource: string | null
+  archivedUrl: string | null
   rawHtml: string | null
   isRead: boolean
   readAt: string | null

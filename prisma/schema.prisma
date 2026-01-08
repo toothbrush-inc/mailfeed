@@ -49,6 +49,7 @@ model User {
   links         Link[]
   hiddenDomains String[]  @default([])
   lastSyncAt    DateTime?
+  syncPageToken String?   // Gmail pagination token for continue sync
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -134,10 +135,12 @@ model Link {
   highlightReason String?
 
   // Fetch status
-  fetchStatus FetchStatus @default(PENDING)
-  fetchError  String?
-  isPaywalled Boolean     @default(false)
-  paywallType String?
+  fetchStatus   FetchStatus @default(PENDING)
+  fetchError    String?
+  contentSource String?     // "direct", "wayback", etc. - indicates where content was fetched from
+  archivedUrl   String?     // Wayback Machine URL if content was fetched from archive
+  isPaywalled   Boolean     @default(false)
+  paywallType   String?
 
   // Read status
   isRead Boolean   @default(false)

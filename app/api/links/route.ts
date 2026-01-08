@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { EXCLUDED_DOMAINS } from "@/lib/link-extractor"
+import { isExcludedUrl } from "@/lib/constants/domains"
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
@@ -103,11 +103,6 @@ export async function GET(request: NextRequest) {
   })
   const userHiddenDomains = new Set(user?.hiddenDomains || [])
 
-  // Helper to check if a URL should be excluded
-  const isExcludedUrl = (url: string) => {
-    const lowerUrl = url.toLowerCase()
-    return EXCLUDED_DOMAINS.some((d) => lowerUrl.includes(d))
-  }
 
   // Helper to check if a domain is hidden by the user
   const isHiddenDomain = (domain: string | null) => {
@@ -165,12 +160,12 @@ export async function GET(request: NextRequest) {
 
   // Filter out excluded domains and user-hidden domains
   const filteredLinks = allLinks.filter((link) => {
-    // Check original URL against excluded domains
-    if (isExcludedUrl(link.url)) return false
-    // Check final URL against excluded domains
-    if (link.finalUrl && isExcludedUrl(link.finalUrl)) return false
-    // Check user-hidden domains
-    if (isHiddenDomain(link.domain) || isHiddenDomain(link.finalDomain)) return false
+    // Use finalUrl if available (resolved from redirects), otherwise original url
+    const urlToCheck = link.finalUrl || link.url
+    if (isExcludedUrl(urlToCheck)) return false
+    // Check user-hidden domains (prefer finalDomain if available)
+    const domainToCheck = link.finalDomain || link.domain
+    if (domainToCheck && isHiddenDomain(domainToCheck)) return false
     return true
   })
   const links = filteredLinks.slice(0, limit)

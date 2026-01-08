@@ -1,83 +1,14 @@
 import { JSDOM } from "jsdom"
 import { createHash } from "crypto"
+import {
+  EXCLUDED_DOMAINS,
+  EXCLUDED_EXTENSIONS,
+  isExcludedUrl,
+  hasExcludedExtension,
+} from "./constants/domains"
 
-export const EXCLUDED_DOMAINS = [
-  // Schema/metadata domains
-  "schema.org",
-  "ogp.me",
-  "purl.org",
-  "xmlns.com",
-  "w3.org",
-  "rdfs.org",
-
-  // Social sharing/intent links
-  "facebook.com/sharer",
-  "facebook.com/share",
-  "twitter.com/intent",
-  "twitter.com/share",
-  "linkedin.com/share",
-  "pinterest.com/pin",
-  "reddit.com/submit",
-  "wa.me",
-  "t.me/share",
-
-  // App stores and maps
-  "google.com/maps",
-  "maps.google.com",
-  "play.google.com",
-  "apps.apple.com",
-  "itunes.apple.com",
-
-  // Email/tracking
-  "mailchimp.com",
-  "list-manage.com",
-  "click.convertkit",
-  "trk.klclick",
-  "mandrillapp.com",
-  "sendgrid.net",
-  "unsubscribe",
-  "manage-preferences",
-  "email-preferences",
-
-  // Analytics/tracking domains
-  "doubleclick.net",
-  "googleadservices.com",
-  "googlesyndication.com",
-  "google-analytics.com",
-  "facebook.net",
-  "connect.facebook.com",
-  "ads.linkedin.com",
-
-  // CDN/static resources
-  "cloudflare.com",
-  "cdn.jsdelivr.net",
-  "unpkg.com",
-  "cdnjs.cloudflare.com",
-  "fonts.googleapis.com",
-  "fonts.gstatic.com",
-
-  // Other non-content
-  "gravatar.com",
-  "wp.com/latex",
-  "bit.ly",
-  "tinyurl.com",
-  "goo.gl",
-  "ow.ly",
-  "t.co",
-
-  // Protocol handlers
-  "mailto:",
-  "tel:",
-  "javascript:",
-  "data:",
-]
-
-const EXCLUDED_EXTENSIONS = [
-  ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".ico",
-  ".pdf", ".doc", ".docx", ".xls", ".xlsx",
-  ".zip", ".tar", ".gz", ".rar",
-  ".mp3", ".mp4", ".wav", ".avi", ".mov",
-]
+// Re-export for backwards compatibility
+export { EXCLUDED_DOMAINS } from "./constants/domains"
 
 export function extractLinks(htmlContent: string): string[] {
   const urls = new Set<string>()
@@ -119,12 +50,12 @@ function isValidUrl(url: string): boolean {
     const parsed = new URL(url)
 
     // Check excluded domains
-    if (EXCLUDED_DOMAINS.some((d) => url.toLowerCase().includes(d))) {
+    if (isExcludedUrl(url)) {
       return false
     }
 
     // Check excluded extensions
-    if (EXCLUDED_EXTENSIONS.some((ext) => parsed.pathname.toLowerCase().endsWith(ext))) {
+    if (hasExcludedExtension(parsed.pathname)) {
       return false
     }
 
@@ -134,14 +65,35 @@ function isValidUrl(url: string): boolean {
   }
 }
 
-function normalizeUrl(url: string): string | null {
-  try {
-    const parsed = new URL(url)
+// Decode HTML entities in URLs (e.g., &amp; → &)
+function decodeHtmlEntities(url: string): string {
+  return url
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#x2F;/gi, "/")
+}
 
-    // Remove tracking parameters
+export function normalizeUrl(url: string): string | null {
+  try {
+    // First, decode any HTML entities in the URL
+    const decodedUrl = decodeHtmlEntities(url)
+
+    const parsed = new URL(decodedUrl)
+
+    // Remove tracking parameters (general + social media specific)
     const trackingParams = [
+      // General tracking
       "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
       "ref", "source", "fbclid", "gclid", "mc_cid", "mc_eid",
+      // Twitter/X tracking
+      "s", "t",
+      // Other social media tracking
+      "igshid", // Instagram
+      "share_id", "share_user_id", // TikTok
     ]
     trackingParams.forEach((p) => parsed.searchParams.delete(p))
 
@@ -158,7 +110,9 @@ function normalizeUrl(url: string): string | null {
 }
 
 export function hashUrl(url: string): string {
-  return createHash("sha256").update(url).digest("hex")
+  // Normalize URL before hashing to ensure consistent deduplication
+  const normalized = normalizeUrl(url) || url
+  return createHash("sha256").update(normalized).digest("hex")
 }
 
 export function extractDomain(url: string): string | null {

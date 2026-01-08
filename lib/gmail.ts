@@ -1,4 +1,4 @@
-import { google } from "googleapis"
+import { google, gmail_v1 } from "googleapis"
 import { prisma } from "@/lib/prisma"
 
 interface GmailMessage {
@@ -17,7 +17,9 @@ interface GmailMessage {
   internalDate: string
 }
 
-export async function getGmailClient(userId: string) {
+export type GmailClient = gmail_v1.Gmail
+
+export async function getGmailClient(userId: string): Promise<GmailClient> {
   const account = await prisma.account.findFirst({
     where: { userId, provider: "google" },
   })
@@ -57,16 +59,17 @@ export async function getGmailClient(userId: string) {
 export async function fetchSelfEmails(
   userId: string,
   maxResults: number = 50,
-  pageToken?: string
+  pageToken?: string,
+  gmail?: GmailClient
 ) {
-  const gmail = await getGmailClient(userId)
+  const client = gmail || await getGmailClient(userId)
 
   // Get user's email address
-  const profile = await gmail.users.getProfile({ userId: "me" })
+  const profile = await client.users.getProfile({ userId: "me" })
   const userEmail = profile.data.emailAddress
 
   // Query for self-sent emails
-  const response = await gmail.users.messages.list({
+  const response = await client.users.messages.list({
     userId: "me",
     q: `from:${userEmail} to:${userEmail}`,
     maxResults,
@@ -76,19 +79,80 @@ export async function fetchSelfEmails(
   return {
     messages: response.data.messages || [],
     nextPageToken: response.data.nextPageToken,
+    resultSizeEstimate: response.data.resultSizeEstimate || 0,
+    gmail: client, // Return the client for reuse
   }
 }
 
-export async function getEmailContent(userId: string, messageId: string) {
-  const gmail = await getGmailClient(userId)
+/**
+ * Get the estimated count of self-sent emails
+ */
+export async function getSelfEmailCount(userId: string, gmail?: GmailClient) {
+  const client = gmail || await getGmailClient(userId)
 
-  const message = await gmail.users.messages.get({
+  // Get user's email address
+  const profile = await client.users.getProfile({ userId: "me" })
+  const userEmail = profile.data.emailAddress
+
+  // Query just to get the count estimate
+  const response = await client.users.messages.list({
+    userId: "me",
+    q: `from:${userEmail} to:${userEmail}`,
+    maxResults: 1,
+  })
+
+  return {
+    estimate: response.data.resultSizeEstimate || 0,
+    gmail: client,
+  }
+}
+
+export async function getEmailContent(
+  userId: string,
+  messageId: string,
+  gmail?: GmailClient
+) {
+  const client = gmail || await getGmailClient(userId)
+
+  const message = await client.users.messages.get({
     userId: "me",
     id: messageId,
     format: "full",
   })
 
   return parseEmailContent(message.data as GmailMessage)
+}
+
+// Batch fetch multiple emails in parallel with concurrency limit
+export async function batchGetEmailContents(
+  messageIds: string[],
+  gmail: GmailClient,
+  concurrency: number = 10
+) {
+  const results: Array<ReturnType<typeof parseEmailContent> | null> = []
+
+  // Process in batches
+  for (let i = 0; i < messageIds.length; i += concurrency) {
+    const batch = messageIds.slice(i, i + concurrency)
+    const batchResults = await Promise.all(
+      batch.map(async (id) => {
+        try {
+          const message = await gmail.users.messages.get({
+            userId: "me",
+            id,
+            format: "full",
+          })
+          return parseEmailContent(message.data as GmailMessage)
+        } catch (error) {
+          console.error(`Failed to fetch email ${id}:`, error)
+          return null
+        }
+      })
+    )
+    results.push(...batchResults)
+  }
+
+  return results
 }
 
 function parseEmailContent(message: GmailMessage) {

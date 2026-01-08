@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { hashUrl, extractDomain, EXCLUDED_DOMAINS } from "@/lib/link-extractor"
+import { hashUrl, extractDomain } from "@/lib/link-extractor"
+import { isExcludedUrl } from "@/lib/constants/domains"
 import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher"
 import { processNestedLinks } from "@/lib/process-nested-links"
-
-const isExcludedUrl = (url: string) => {
-  const lowerUrl = url.toLowerCase()
-  return EXCLUDED_DOMAINS.some((d) => lowerUrl.includes(d))
-}
 
 export async function POST(
   request: NextRequest,

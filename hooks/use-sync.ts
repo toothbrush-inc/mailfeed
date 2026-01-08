@@ -5,10 +5,25 @@ import { useSWRConfig } from "swr"
 
 interface SyncResult {
   emailsProcessed: number
+  emailsSynced: number
   linksExtracted: number
   linksFetched: number
-  linksAnalyzed: number
+  linksSkippedExcluded?: number
+  linksSkippedDuplicate?: number
+  linksSkippedHidden?: number
+  nestedLinksCreated?: number
+  nestedLinksFetched?: number
+  pagesProcessed?: number
+  pagesSkipped?: number
+  hasMorePages?: boolean
+  gmailTotalEstimate?: number
   errors: string[]
+}
+
+interface SyncOptions {
+  fullSync?: boolean
+  continueSync?: boolean
+  resetSync?: boolean
 }
 
 export function useSync() {
@@ -17,12 +32,23 @@ export function useSync() {
   const [result, setResult] = useState<SyncResult | null>(null)
   const { mutate } = useSWRConfig()
 
-  const sync = useCallback(async () => {
+  const sync = useCallback(async (options?: SyncOptions) => {
     setIsLoading(true)
     setError(null)
 
     try {
-      const response = await fetch("/api/sync", {
+      const url = new URL("/api/sync", window.location.origin)
+      if (options?.fullSync) {
+        url.searchParams.set("fullSync", "true")
+      }
+      if (options?.continueSync) {
+        url.searchParams.set("continue", "true")
+      }
+      if (options?.resetSync) {
+        url.searchParams.set("reset", "true")
+      }
+
+      const response = await fetch(url.toString(), {
         method: "POST",
       })
 
@@ -37,6 +63,7 @@ export function useSync() {
       // Invalidate links and categories cache to refresh the feed
       mutate("/api/links")
       mutate("/api/categories")
+      mutate("/api/stats")
 
       return data
     } catch (err) {

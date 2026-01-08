@@ -41,6 +41,8 @@ interface FeedItemProps {
     isPaywalled: boolean
     paywallType: string | null
     fetchStatus: string
+    contentSource: string | null
+    archivedUrl: string | null
     rawHtml: string | null
     isRead: boolean
     readAt: string | null
@@ -378,6 +380,25 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
           </div>
         )}
 
+        {link.contentSource === "wayback" && (
+          <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+            <Archive className="h-4 w-4" />
+            <span>Content fetched from </span>
+            {link.archivedUrl ? (
+              <a
+                href={link.archivedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:no-underline"
+              >
+                Wayback Machine archive
+              </a>
+            ) : (
+              <span>Wayback Machine archive</span>
+            )}
+          </div>
+        )}
+
         {archiveError && (
           <div className="flex items-center gap-2 text-sm text-red-500">
             <AlertTriangle className="h-4 w-4" />
@@ -516,10 +537,10 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
             </Button>
           )}
 
-          {/* Try Archive button - for paywalled or failed links */}
-          {(hasPaywall || hasFailed || link.isPaywalled) && !isProcessing && (
+          {/* Try Archive / Refetch Archive button - for paywalled, failed, or already-archived links */}
+          {(hasPaywall || hasFailed || link.isPaywalled || link.contentSource === "wayback") && !isProcessing && (
             <Button
-              variant="outline"
+              variant={link.contentSource === "wayback" ? "ghost" : "outline"}
               size="sm"
               onClick={handleFetchFromArchive}
               disabled={isFetchingArchive}
@@ -527,12 +548,12 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
               {isFetchingArchive ? (
                 <>
                   <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                  Checking Archive...
+                  {link.contentSource === "wayback" ? "Refetching..." : "Checking Archive..."}
                 </>
               ) : (
                 <>
                   <Archive className="mr-1 h-4 w-4" />
-                  Try Archive
+                  {link.contentSource === "wayback" ? "Refetch Archive" : "Try Archive"}
                 </>
               )}
             </Button>

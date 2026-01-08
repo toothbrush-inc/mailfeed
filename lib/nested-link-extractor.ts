@@ -156,11 +156,6 @@ export async function extractNestedUrls(html: string | undefined | null): Promis
 
 /**
  * Check if a link is from a social media platform that might contain nested links
+ * Re-exported from constants for backwards compatibility
  */
-export function isSocialMediaLink(domain: string | null): boolean {
-  if (!domain) return false
-  const normalizedDomain = domain.replace("www.", "").toLowerCase()
-  return ["twitter.com", "x.com", "instagram.com", "tiktok.com"].some((d) =>
-    normalizedDomain.includes(d)
-  )
-}
+export { isSocialMediaDomain as isSocialMediaLink } from "./constants/domains"

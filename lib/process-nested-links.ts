@@ -1,9 +1,7 @@
 import { prisma } from "./prisma"
 import { extractNestedUrls, isSocialMediaLink } from "./nested-link-extractor"
 import { hashUrl, extractDomain } from "./link-extractor"
-import { fetchAndParseContent, estimateReadingTime, isPoorContent } from "./content-fetcher"
-import { analyzeContent } from "./gemini"
-import { parseHtmlWithAI } from "./ai-html-parser"
+import { fetchAndParseContent, estimateReadingTime } from "./content-fetcher"
 
 // Domains to exclude for nested links (social media, images, etc.)
 const EXCLUDED_NESTED_FINAL_DOMAINS = [
@@ -41,7 +39,6 @@ const isExcludedUrl = (url: string) => {
 interface ProcessNestedLinksResult {
   created: number
   fetched: number
-  analyzed: number
   skipped: number
   errors: string[]
 }
@@ -63,7 +60,6 @@ export async function processNestedLinks(
   const result: ProcessNestedLinksResult = {
     created: 0,
     fetched: 0,
-    analyzed: 0,
     skipped: 0,
     errors: [],
   }
@@ -121,72 +117,6 @@ export async function processNestedLinks(
 
       const content = await fetchAndParseContent(url)
       const rawHtml = content.rawHtml
-
-      // Check if we need AI fallback for poor content
-      if (isPoorContent(content) && rawHtml) {
-        console.log(`[Nested Links] Poor content detected, using AI fallback: ${url}`)
-
-        try {
-          const aiResult = await parseHtmlWithAI(url, rawHtml)
-
-          // Check exclusions on final URL
-          if (content.finalUrl && isExcludedUrl(content.finalUrl)) {
-            console.log(`[Nested Links] Skipping - final URL excluded: ${url} -> ${content.finalUrl}`)
-            await prisma.link.delete({ where: { id: childLink.id } })
-            result.created--
-            result.skipped++
-            continue
-          }
-
-          // Check for duplicate by final URL
-          const finalUrlHash = content.finalUrl ? hashUrl(content.finalUrl) : null
-          if (finalUrlHash) {
-            const existingByFinalUrl = await prisma.link.findFirst({
-              where: {
-                userId: parentLink.userId,
-                finalUrlHash,
-                id: { not: childLink.id },
-              },
-            })
-
-            if (existingByFinalUrl) {
-              console.log(`[Nested Links] Skipping - duplicate final URL: ${url}`)
-              await prisma.link.delete({ where: { id: childLink.id } })
-              result.created--
-              result.skipped++
-              continue
-            }
-          }
-
-          // Save AI-parsed content
-          await prisma.link.update({
-            where: { id: childLink.id },
-            data: {
-              fetchStatus: "COMPLETED",
-              aiSummary: aiResult.summary,
-              aiCategory: aiResult.aiCategory,
-              linkTags: aiResult.linkTags,
-              contentTags: aiResult.contentTags,
-              metadataTags: aiResult.metadataTags,
-              isPaywalled: aiResult.isPaywalled,
-              paywallType: aiResult.paywallType,
-              rawHtml: rawHtml,
-              finalUrl: content.finalUrl,
-              finalUrlHash,
-              finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
-              wasRedirected: content.wasRedirected || false,
-              fetchedAt: new Date(),
-              analyzedAt: new Date(),
-            },
-          })
-
-          result.fetched++
-          result.analyzed++
-          continue
-        } catch (aiError) {
-          console.error(`[Nested Links] AI fallback failed for ${url}:`, aiError)
-        }
-      }
 
       if (!content.success) {
         await prisma.link.update({
@@ -258,58 +188,6 @@ export async function processNestedLinks(
       })
 
       result.fetched++
-
-      // Analyze with AI if we have content
-      if (content.textContent && content.title) {
-        try {
-          await prisma.link.update({
-            where: { id: childLink.id },
-            data: { fetchStatus: "ANALYZING" },
-          })
-
-          const analysis = await analyzeContent(content.title, content.textContent)
-
-          // Ensure category exists
-          const category = await prisma.category.upsert({
-            where: { name: analysis.category },
-            create: {
-              name: analysis.category,
-              slug: analysis.category.toLowerCase().replace(/\s+/g, "-"),
-            },
-            update: {},
-          })
-
-          await prisma.link.update({
-            where: { id: childLink.id },
-            data: {
-              fetchStatus: "COMPLETED",
-              aiSummary: analysis.summary,
-              aiKeyPoints: analysis.keyPoints,
-              aiCategory: analysis.category,
-              aiTags: analysis.tags,
-              worthinessScore: analysis.worthinessScore,
-              uniquenessScore: analysis.uniquenessScore,
-              isHighlighted: analysis.isHighlighted,
-              highlightReason: analysis.highlightReason,
-              analyzedAt: new Date(),
-              categories: {
-                create: {
-                  categoryId: category.id,
-                  confidence: 1.0,
-                },
-              },
-            },
-          })
-
-          result.analyzed++
-        } catch (analysisError) {
-          await prisma.link.update({
-            where: { id: childLink.id },
-            data: { fetchStatus: "FETCHED" },
-          })
-          result.errors.push(`AI analysis failed for ${url}: ${analysisError}`)
-        }
-      }
     } catch (fetchError) {
       result.errors.push(`Failed to process nested link ${url}: ${fetchError}`)
       await prisma.link.update({

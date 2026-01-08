@@ -1,20 +1,191 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { fetchSelfEmails, getEmailContent } from "@/lib/gmail"
-import { extractLinks, hashUrl, extractDomain, EXCLUDED_DOMAINS } from "@/lib/link-extractor"
-import { fetchAndParseContent, estimateReadingTime, isPoorContent } from "@/lib/content-fetcher"
-import { analyzeContent } from "@/lib/gemini"
-import { parseHtmlWithAI } from "@/lib/ai-html-parser"
+import { getGmailClient, fetchSelfEmails, batchGetEmailContents } from "@/lib/gmail"
+import { extractLinks, hashUrl, extractDomain } from "@/lib/link-extractor"
+import { isExcludedUrl } from "@/lib/constants/domains"
+import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher"
 import { processNestedLinks } from "@/lib/process-nested-links"
+import { syncLogger } from "@/lib/logger"
 
-// Helper to check if a URL should be excluded
-const isExcludedUrl = (url: string) => {
-  const lowerUrl = url.toLowerCase()
-  return EXCLUDED_DOMAINS.some((d) => lowerUrl.includes(d))
+// Type for link processing results
+interface LinkProcessResult {
+  fetched: boolean
+  skippedExcluded: boolean
+  skippedDuplicate: boolean
+  skippedHidden: boolean
+  nestedCreated: number
+  nestedFetched: number
+  error?: string
 }
 
-export async function POST() {
+// Process a single link - fetch content only, no AI analysis
+async function processLink(
+  linkId: string,
+  url: string,
+  userId: string,
+  emailId: string,
+  hiddenDomains: Set<string>
+): Promise<LinkProcessResult> {
+  const result: LinkProcessResult = {
+    fetched: false,
+    skippedExcluded: false,
+    skippedDuplicate: false,
+    skippedHidden: false,
+    nestedCreated: 0,
+    nestedFetched: 0,
+  }
+
+  // Check if domain is hidden by user - skip fetching entirely
+  const domain = extractDomain(url)
+  if (domain && hiddenDomains.has(domain)) {
+    syncLogger.info("Skipping link - hidden domain", { url, domain })
+    await prisma.link.update({
+      where: { id: linkId },
+      data: { fetchStatus: "PENDING" }, // Keep as pending, don't fetch
+    })
+    result.skippedHidden = true
+    return result
+  }
+
+  try {
+    await prisma.link.update({
+      where: { id: linkId },
+      data: { fetchStatus: "FETCHING" },
+    })
+
+    const content = await fetchAndParseContent(url)
+    const rawHtml = content.rawHtml
+
+    if (!content.success) {
+      await prisma.link.update({
+        where: { id: linkId },
+        data: {
+          fetchStatus: content.isPaywalled ? "PAYWALL_DETECTED" : "FAILED",
+          fetchError: content.error,
+          isPaywalled: content.isPaywalled || false,
+          paywallType: content.paywallType,
+          rawHtml: rawHtml,
+          finalUrl: content.finalUrl,
+          finalUrlHash: content.finalUrl ? hashUrl(content.finalUrl) : null,
+          finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
+          wasRedirected: content.wasRedirected || false,
+          fetchedAt: new Date(),
+        },
+      })
+      return result
+    }
+
+    // Check if final URL is in excluded domains
+    if (content.finalUrl && isExcludedUrl(content.finalUrl)) {
+      syncLogger.info("Skipping link - final URL excluded", { url, finalUrl: content.finalUrl })
+      await prisma.link.delete({ where: { id: linkId } })
+      result.skippedExcluded = true
+      return result
+    }
+
+    // Check if final domain is hidden by user
+    const finalDomain = content.finalUrl ? extractDomain(content.finalUrl) : null
+    if (finalDomain && hiddenDomains.has(finalDomain)) {
+      syncLogger.info("Skipping link - final domain hidden", { url, finalDomain })
+      await prisma.link.delete({ where: { id: linkId } })
+      result.skippedHidden = true
+      return result
+    }
+
+    // Check for duplicate by final URL
+    const finalUrlHash = content.finalUrl ? hashUrl(content.finalUrl) : null
+    if (finalUrlHash) {
+      const existingByFinalUrl = await prisma.link.findFirst({
+        where: {
+          userId,
+          finalUrlHash,
+          id: { not: linkId },
+        },
+      })
+
+      if (existingByFinalUrl) {
+        syncLogger.info("Skipping link - duplicate final URL", { url, finalUrl: content.finalUrl })
+        await prisma.link.delete({ where: { id: linkId } })
+        result.skippedDuplicate = true
+        return result
+      }
+    }
+
+    // Save fetched content - NO AI analysis during sync
+    await prisma.link.update({
+      where: { id: linkId },
+      data: {
+        fetchStatus: "FETCHED",
+        title: content.title,
+        description: content.excerpt,
+        imageUrl: content.imageUrl,
+        contentText: content.textContent,
+        rawHtml: rawHtml,
+        wordCount: content.wordCount,
+        readingTimeMin: content.wordCount
+          ? estimateReadingTime(content.wordCount)
+          : null,
+        isPaywalled: content.isPaywalled || false,
+        paywallType: content.paywallType,
+        finalUrl: content.finalUrl,
+        finalUrlHash,
+        finalDomain,
+        wasRedirected: content.wasRedirected || false,
+        fetchedAt: new Date(),
+      },
+    })
+
+    result.fetched = true
+
+    // Process nested links from social media posts
+    const nestedResult = await processNestedLinks({
+      id: linkId,
+      userId,
+      emailId,
+      rawHtml: rawHtml || null,
+      finalDomain,
+      domain,
+    })
+    result.nestedCreated = nestedResult.created
+    result.nestedFetched = nestedResult.fetched
+
+    return result
+  } catch (fetchError) {
+    await prisma.link.update({
+      where: { id: linkId },
+      data: {
+        fetchStatus: "FAILED",
+        fetchError:
+          fetchError instanceof Error ? fetchError.message : "Unknown error",
+      },
+    })
+    result.error = `Failed to process ${url}: ${fetchError}`
+    return result
+  }
+}
+
+// Process links in parallel with concurrency limit
+async function processLinksInParallel(
+  links: Array<{ id: string; url: string; emailId: string }>,
+  userId: string,
+  hiddenDomains: Set<string>,
+  concurrency: number = 5
+) {
+  const results: LinkProcessResult[] = []
+
+  for (let i = 0; i < links.length; i += concurrency) {
+    const batch = links.slice(i, i + concurrency)
+    const batchResults = await Promise.all(
+      batch.map((link) => processLink(link.id, link.url, userId, link.emailId, hiddenDomains))
+    )
+    results.push(...batchResults)
+  }
+
+  return results
+}
+
+export async function POST(request: Request) {
   const session = await auth()
 
   if (!session?.user?.id) {
@@ -23,334 +194,218 @@ export async function POST() {
 
   const userId = session.user.id
 
+  // Check for sync parameters
+  const reqUrl = new URL(request.url)
+  const fullSync = reqUrl.searchParams.get("fullSync") === "true"
+  const continueSync = reqUrl.searchParams.get("continue") === "true"
+  const resetSync = reqUrl.searchParams.get("reset") === "true"
+  const maxPages = fullSync ? 20 : continueSync ? 5 : 1 // Limit pages based on mode
+
+  // Reset sync clears the stored page token
+  if (resetSync) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { syncPageToken: null },
+    })
+    syncLogger.info("Sync page token reset")
+  }
+  const emailsPerPage = 50
+
   const syncResults = {
     emailsProcessed: 0,
+    emailsSynced: 0, // Total emails in DB after sync
     linksExtracted: 0,
     linksFetched: 0,
-    linksAnalyzed: 0,
     linksSkippedExcluded: 0,
     linksSkippedDuplicate: 0,
+    linksSkippedHidden: 0,
     nestedLinksCreated: 0,
     nestedLinksFetched: 0,
+    pagesProcessed: 0,
+    pagesSkipped: 0,
+    hasMorePages: false,
+    gmailTotalEstimate: 0,
     errors: [] as string[],
   }
 
   try {
-    // Step 1: Fetch self-emails from Gmail
-    const { messages } = await fetchSelfEmails(userId, 50)
+    // Fetch user's hidden domains and stored page token
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { hiddenDomains: true, syncPageToken: true },
+    })
+    const hiddenDomains = new Set(user?.hiddenDomains || [])
 
-    for (const msg of messages) {
-      if (!msg.id) continue
+    // Create Gmail client once and reuse throughout the sync
+    const gmail = await getGmailClient(userId)
 
-      // Check if email already processed
-      const existingEmail = await prisma.email.findUnique({
-        where: { gmailId: msg.id },
+    // For continue mode, start from stored page token
+    // For normal/full sync, start from the beginning
+    let pageToken: string | undefined = continueSync ? (user?.syncPageToken || undefined) : undefined
+    let currentPage = 0
+
+    if (continueSync && pageToken) {
+      syncLogger.info("Continuing from stored page token")
+    }
+
+    // Process pages of emails
+    do {
+      currentPage++
+      const modeLabel = fullSync ? "full" : continueSync ? "continue" : "normal"
+      syncLogger.info(`Processing page ${currentPage} (${modeLabel} mode, max ${maxPages})`)
+
+      // Step 1: Fetch self-emails from Gmail
+      const { messages, nextPageToken, resultSizeEstimate } = await fetchSelfEmails(userId, emailsPerPage, pageToken, gmail)
+      pageToken = nextPageToken || undefined
+
+      // Capture total estimate from first page
+      if (currentPage === 1) {
+        syncResults.gmailTotalEstimate = resultSizeEstimate
+      }
+
+      if (messages.length === 0) {
+        syncLogger.info(`No messages on page ${currentPage}, stopping`)
+        break
+      }
+
+      // Filter out already-processed emails first (batch check)
+      const messageIds = messages.map((m) => m.id).filter(Boolean) as string[]
+      const existingEmails = await prisma.email.findMany({
+        where: { gmailId: { in: messageIds } },
+        select: { gmailId: true },
       })
+      const existingGmailIds = new Set(existingEmails.map((e) => e.gmailId))
+      const newMessageIds = messageIds.filter((id) => !existingGmailIds.has(id))
 
-      if (existingEmail) continue
+      if (newMessageIds.length === 0) {
+        syncLogger.info(`All emails on page ${currentPage} already processed`)
+        syncResults.pagesSkipped++
+        // In continue/full sync, keep going to find unprocessed pages
+        // In normal sync, stop at first fully-processed page
+        if (!fullSync && !continueSync) break
+        continue
+      }
 
-      try {
-        // Fetch full email content
-        const emailData = await getEmailContent(userId, msg.id)
+      syncResults.pagesProcessed++
 
-        // Save email to database
-        const email = await prisma.email.create({
-          data: {
-            userId,
-            gmailId: emailData.id,
-            threadId: emailData.threadId,
-            subject: emailData.subject,
-            snippet: emailData.snippet,
-            receivedAt: emailData.receivedAt,
-            rawContent: emailData.content,
-            processedAt: new Date(),
-          },
-        })
+      // Batch fetch email contents in parallel (10 at a time)
+      const emailContents = await batchGetEmailContents(newMessageIds, gmail, 10)
 
-        syncResults.emailsProcessed++
+      // Collect all links to process
+      const allLinksToProcess: Array<{ id: string; url: string; emailId: string }> = []
 
-        // Extract links from email
-        const links = extractLinks(emailData.content)
+      // Process each email - save emails and extract links
+      for (let i = 0; i < newMessageIds.length; i++) {
+        const emailData = emailContents[i]
+        if (!emailData) continue
 
-        for (const url of links) {
-          const urlHash = hashUrl(url)
-
-          // Check for duplicate
-          const existingLink = await prisma.link.findUnique({
-            where: { userId_urlHash: { userId, urlHash } },
-          })
-
-          if (existingLink) continue
-
-          // Create link record
-          const link = await prisma.link.create({
+        try {
+          // Save email to database
+          const email = await prisma.email.create({
             data: {
               userId,
-              emailId: email.id,
-              url,
-              urlHash,
-              domain: extractDomain(url),
-              fetchStatus: "PENDING",
+              gmailId: emailData.id,
+              threadId: emailData.threadId,
+              subject: emailData.subject,
+              snippet: emailData.snippet,
+              receivedAt: emailData.receivedAt,
+              rawContent: emailData.content,
+              processedAt: new Date(),
             },
           })
 
-          syncResults.linksExtracted++
+          syncResults.emailsProcessed++
 
-          // Fetch content
-          try {
-            await prisma.link.update({
-              where: { id: link.id },
-              data: { fetchStatus: "FETCHING" },
-            })
+          // Extract links from email
+          const links = extractLinks(emailData.content)
 
-            const content = await fetchAndParseContent(url)
-            const rawHtml = content.rawHtml
-
-            // Check if we need AI fallback for poor content
-            if (isPoorContent(content) && rawHtml) {
-              console.log(`[Sync] Poor content detected, using AI fallback: ${url}`)
-
-              try {
-                const aiResult = await parseHtmlWithAI(url, rawHtml)
-
-                // Check exclusions on final URL before saving
-                if (content.finalUrl && isExcludedUrl(content.finalUrl)) {
-                  console.log(`[Sync] Skipping link - final URL excluded: ${url} -> ${content.finalUrl}`)
-                  await prisma.link.delete({ where: { id: link.id } })
-                  syncResults.linksSkippedExcluded++
-                  continue
-                }
-
-                // Check for duplicate by final URL
-                const finalUrlHash = content.finalUrl ? hashUrl(content.finalUrl) : null
-                if (finalUrlHash) {
-                  const existingByFinalUrl = await prisma.link.findFirst({
-                    where: {
-                      userId,
-                      finalUrlHash,
-                      id: { not: link.id },
-                    },
-                  })
-
-                  if (existingByFinalUrl) {
-                    console.log(`[Sync] Skipping link - duplicate final URL: ${url} -> ${content.finalUrl}`)
-                    await prisma.link.delete({ where: { id: link.id } })
-                    syncResults.linksSkippedDuplicate++
-                    continue
-                  }
-                }
-
-                // Save AI-parsed content
-                await prisma.link.update({
-                  where: { id: link.id },
-                  data: {
-                    fetchStatus: "COMPLETED",
-                    aiSummary: aiResult.summary,
-                    aiCategory: aiResult.aiCategory,
-                    linkTags: aiResult.linkTags,
-                    contentTags: aiResult.contentTags,
-                    metadataTags: aiResult.metadataTags,
-                    isPaywalled: aiResult.isPaywalled,
-                    paywallType: aiResult.paywallType,
-                    rawHtml: rawHtml,
-                    finalUrl: content.finalUrl,
-                    finalUrlHash,
-                    finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
-                    wasRedirected: content.wasRedirected || false,
-                    fetchedAt: new Date(),
-                    analyzedAt: new Date(),
-                  },
-                })
-
-                syncResults.linksFetched++
-                syncResults.linksAnalyzed++
-                console.log(`[Sync] AI fallback succeeded for: ${url}`)
-
-                // Process nested links from social media posts
-                const nestedResult = await processNestedLinks({
-                  id: link.id,
-                  userId,
-                  emailId: email.id,
-                  rawHtml: rawHtml,
-                  finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
-                  domain: extractDomain(url),
-                })
-                syncResults.nestedLinksCreated += nestedResult.created
-                syncResults.nestedLinksFetched += nestedResult.fetched
-                syncResults.errors.push(...nestedResult.errors)
-
-                continue
-              } catch (aiError) {
-                console.error(`[Sync] AI fallback failed for ${url}:`, aiError)
-                // Fall through to normal failure handling
-              }
-            }
-
-            if (!content.success) {
-              await prisma.link.update({
-                where: { id: link.id },
-                data: {
-                  fetchStatus: content.isPaywalled ? "PAYWALL_DETECTED" : "FAILED",
-                  fetchError: content.error,
-                  isPaywalled: content.isPaywalled || false,
-                  paywallType: content.paywallType,
-                  rawHtml: rawHtml,
-                  finalUrl: content.finalUrl,
-                  finalUrlHash: content.finalUrl ? hashUrl(content.finalUrl) : null,
-                  finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
-                  wasRedirected: content.wasRedirected || false,
-                  fetchedAt: new Date(),
-                },
-              })
-              continue
-            }
-
-            // Check if final URL is in excluded domains
-            if (content.finalUrl && isExcludedUrl(content.finalUrl)) {
-              console.log(`[Sync] Skipping link - final URL excluded: ${url} -> ${content.finalUrl}`)
-              await prisma.link.delete({ where: { id: link.id } })
-              syncResults.linksSkippedExcluded++
-              continue
-            }
-
-            // Check for duplicate by final URL
-            const finalUrlHash = content.finalUrl ? hashUrl(content.finalUrl) : null
-            if (finalUrlHash) {
-              const existingByFinalUrl = await prisma.link.findFirst({
-                where: {
-                  userId,
-                  finalUrlHash,
-                  id: { not: link.id }, // Exclude current link
-                },
-              })
-
-              if (existingByFinalUrl) {
-                console.log(`[Sync] Skipping link - duplicate final URL: ${url} -> ${content.finalUrl}`)
-                await prisma.link.delete({ where: { id: link.id } })
-                syncResults.linksSkippedDuplicate++
-                continue
-              }
-            }
-
-            await prisma.link.update({
-              where: { id: link.id },
-              data: {
-                fetchStatus: "FETCHED",
-                title: content.title,
-                description: content.excerpt,
-                imageUrl: content.imageUrl,
-                contentText: content.textContent,
-                wordCount: content.wordCount,
-                readingTimeMin: content.wordCount
-                  ? estimateReadingTime(content.wordCount)
-                  : null,
-                isPaywalled: content.isPaywalled || false,
-                paywallType: content.paywallType,
-                finalUrl: content.finalUrl,
-                finalUrlHash,
-                finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
-                wasRedirected: content.wasRedirected || false,
-                fetchedAt: new Date(),
-              },
-            })
-
-            syncResults.linksFetched++
-
-            // Process nested links from social media posts
-            const nestedResult = await processNestedLinks({
-              id: link.id,
+          // Batch check for existing links
+          const urlHashes = links.map((linkUrl) => hashUrl(linkUrl))
+          const existingLinks = await prisma.link.findMany({
+            where: {
               userId,
-              emailId: email.id,
-              rawHtml: content.rawHtml || null,
-              finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
-              domain: extractDomain(url),
-            })
-            syncResults.nestedLinksCreated += nestedResult.created
-            syncResults.nestedLinksFetched += nestedResult.fetched
-            syncResults.errors.push(...nestedResult.errors)
+              urlHash: { in: urlHashes },
+            },
+            select: { urlHash: true },
+          })
+          const existingUrlHashes = new Set(existingLinks.map((l) => l.urlHash))
 
-            // Analyze with AI if we have content
-            if (content.textContent && content.title) {
-              try {
-                await prisma.link.update({
-                  where: { id: link.id },
-                  data: { fetchStatus: "ANALYZING" },
-                })
+          // Create new link records
+          for (const linkUrl of links) {
+            const urlHash = hashUrl(linkUrl)
+            if (existingUrlHashes.has(urlHash)) continue
 
-                const analysis = await analyzeContent(content.title, content.textContent)
+            // Mark as existing to avoid duplicates in same batch
+            existingUrlHashes.add(urlHash)
 
-                // Ensure category exists
-                const category = await prisma.category.upsert({
-                  where: { name: analysis.category },
-                  create: {
-                    name: analysis.category,
-                    slug: analysis.category.toLowerCase().replace(/\s+/g, "-"),
-                  },
-                  update: {},
-                })
-
-                await prisma.link.update({
-                  where: { id: link.id },
-                  data: {
-                    fetchStatus: "COMPLETED",
-                    aiSummary: analysis.summary,
-                    aiKeyPoints: analysis.keyPoints,
-                    aiCategory: analysis.category,
-                    aiTags: analysis.tags,
-                    worthinessScore: analysis.worthinessScore,
-                    uniquenessScore: analysis.uniquenessScore,
-                    isHighlighted: analysis.isHighlighted,
-                    highlightReason: analysis.highlightReason,
-                    analyzedAt: new Date(),
-                    categories: {
-                      create: {
-                        categoryId: category.id,
-                        confidence: 1.0,
-                      },
-                    },
-                  },
-                })
-
-                syncResults.linksAnalyzed++
-              } catch (analysisError) {
-                // Mark as fetched but not analyzed
-                await prisma.link.update({
-                  where: { id: link.id },
-                  data: { fetchStatus: "FETCHED" },
-                })
-                syncResults.errors.push(
-                  `AI analysis failed for ${url}: ${analysisError}`
-                )
-              }
-            }
-          } catch (fetchError) {
-            syncResults.errors.push(`Failed to process ${url}: ${fetchError}`)
-            await prisma.link.update({
-              where: { id: link.id },
+            const link = await prisma.link.create({
               data: {
-                fetchStatus: "FAILED",
-                fetchError:
-                  fetchError instanceof Error ? fetchError.message : "Unknown error",
+                userId,
+                emailId: email.id,
+                url: linkUrl,
+                urlHash,
+                domain: extractDomain(linkUrl),
+                fetchStatus: "PENDING",
               },
             })
-          }
-        }
-      } catch (emailError) {
-        syncResults.errors.push(
-          `Failed to process email ${msg.id}: ${emailError}`
-        )
-      }
-    }
 
-    // Update user's last sync time
-    await prisma.user.update({
-      where: { id: userId },
-      data: { lastSyncAt: new Date() },
+            syncResults.linksExtracted++
+            allLinksToProcess.push({ id: link.id, url: linkUrl, emailId: email.id })
+          }
+        } catch (emailError) {
+          syncResults.errors.push(
+            `Failed to process email ${newMessageIds[i]}: ${emailError}`
+          )
+        }
+      }
+
+      // Process all links in parallel (5 at a time for content fetching)
+      if (allLinksToProcess.length > 0) {
+        syncLogger.info(`Processing ${allLinksToProcess.length} links in parallel`)
+        const linkResults = await processLinksInParallel(allLinksToProcess, userId, hiddenDomains, 5)
+
+        // Aggregate results
+        for (const result of linkResults) {
+          if (result.fetched) syncResults.linksFetched++
+          if (result.skippedExcluded) syncResults.linksSkippedExcluded++
+          if (result.skippedDuplicate) syncResults.linksSkippedDuplicate++
+          if (result.skippedHidden) syncResults.linksSkippedHidden++
+          syncResults.nestedLinksCreated += result.nestedCreated
+          syncResults.nestedLinksFetched += result.nestedFetched
+          if (result.error) syncResults.errors.push(result.error)
+        }
+      }
+
+    } while (pageToken && currentPage < maxPages)
+
+    // Set hasMorePages if there's still a pageToken
+    syncResults.hasMorePages = !!pageToken
+
+    // Get total synced emails count
+    syncResults.emailsSynced = await prisma.email.count({
+      where: { userId },
     })
 
+    // Update user's last sync time and save page token for continue sync
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        lastSyncAt: new Date(),
+        syncPageToken: pageToken || null, // Save for next continue sync
+      },
+    })
+
+    syncLogger.info("Completed", {
+      pagesProcessed: syncResults.pagesProcessed,
+      pagesSkipped: syncResults.pagesSkipped,
+      emails: syncResults.emailsProcessed,
+      links: syncResults.linksExtracted,
+      hasMore: syncResults.hasMorePages,
+      gmailTotal: syncResults.gmailTotalEstimate,
+    })
     return NextResponse.json(syncResults)
   } catch (error) {
-    console.error("Sync error:", error)
+    syncLogger.error("Sync failed", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Sync failed" },
       { status: 500 }

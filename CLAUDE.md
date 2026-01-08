@@ -12,11 +12,13 @@ MailFeed is a Next.js application that reads self-sent Gmail emails, extracts li
 npm run dev          # Start development server at http://localhost:3000
 npm run build        # Create production build
 npm start            # Run production server
-npm run lint         # Run ESLint
+npm run lint         # Run ESLint (see note below)
 npx prisma dev       # Start local Prisma Postgres and apply migrations
 npx prisma generate  # Generate Prisma client after schema changes
 npx prisma studio    # Open Prisma Studio to view/edit data
 ```
+
+**Note on linting**: Do NOT run `npm run lint` or `npx tsc --noEmit` unless explicitly requested. These commands are slow and consume many tokens. TypeScript errors will surface during `npm run dev` or `npm run build` if needed.
 
 ## Technology Stack
 
@@ -98,3 +100,23 @@ GEMINI_API_KEY="..."         # Google AI Studio API key
 4. Add redirect URI: `http://localhost:3000/api/auth/callback/google`
 5. Configure OAuth consent screen with `gmail.readonly` scope
 6. Get Gemini API key from Google AI Studio
+
+## Documentation
+
+### Sync Workflow Documentation
+
+**IMPORTANT**: When modifying any of the sync workflow files, update `docs/sync-workflow.md` to reflect the changes.
+
+The sync workflow decision tree documents the complete email → link → AI processing pipeline. Key files that require documentation updates when changed:
+
+| File | What to update in docs |
+|------|------------------------|
+| `app/api/sync/route.ts` | Main flow, parallel processing, pagination |
+| `lib/gmail.ts` | Gmail API integration, batch fetching |
+| `lib/link-extractor.ts` | Link extraction logic |
+| `lib/content-fetcher.ts` | Content fetching decision tree, paywall detection |
+| `lib/ai-html-parser.ts` | AI fallback path |
+| `lib/process-nested-links.ts` | Nested links processing |
+| `lib/gemini.ts` | AI analysis output fields |
+
+See `docs/sync-workflow.md` for the complete decision tree diagram.

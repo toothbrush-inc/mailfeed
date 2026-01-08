@@ -65,6 +65,8 @@ export async function POST(
       data: {
         fetchStatus: "FETCHED",
         fetchError: null,
+        contentSource: "wayback",
+        archivedUrl: waybackResult.archivedUrl,
         title: waybackResult.title || link.title,
         description: waybackResult.excerpt || link.description,
         contentText: waybackResult.textContent,
