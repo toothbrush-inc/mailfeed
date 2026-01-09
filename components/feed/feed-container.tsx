@@ -111,6 +111,7 @@ export function FeedContainer() {
         <FeedItem
           key={link.id}
           link={link}
+          searchTerm={search || undefined}
           onAnalyzeComplete={mutate}
           onHideDomain={handleHideDomain}
         />

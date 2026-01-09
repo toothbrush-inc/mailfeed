@@ -21,6 +21,7 @@ interface Email {
   gmailId: string
   subject: string | null
   snippet: string | null
+  rawContent: string | null
   receivedAt: string
   tags: EmailTag[]
   ingestedAt: string | null

@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Link2, Archive, Twitter } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -18,6 +18,7 @@ import { SocialEmbed, isEmbeddable } from "./social-embed"
 import { NestedLinkItem } from "./nested-link-item"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import Highlighter from "react-highlight-words"
 
 interface FeedItemProps {
   link: {
@@ -46,7 +47,10 @@ interface FeedItemProps {
     fetchStatus: string
     contentSource: string | null
     archivedUrl: string | null
+    contentText: string | null
+    contentHtml: string | null
     rawHtml: string | null
+    wordCount: number | null
     isRead: boolean
     readAt: string | null
     createdAt: string
@@ -82,6 +86,7 @@ interface FeedItemProps {
       wordCount: number | null
     }>
   }
+  searchTerm?: string
   onAnalyzeComplete?: () => void
   onHideDomain?: (domain: string) => Promise<void>
 }
@@ -101,7 +106,9 @@ function formatDate(dateString: string): string {
   return date.toLocaleDateString("en-US", options)
 }
 
-export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProps) {
+export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: FeedItemProps) {
+  // Search words for highlighting
+  const searchWords = searchTerm ? [searchTerm] : []
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isRefetching, setIsRefetching] = useState(false)
   const [isFetchingArchive, setIsFetchingArchive] = useState(false)
@@ -115,6 +122,10 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
   const [xArticleUsername, setXArticleUsername] = useState("")
   const [xArticleError, setXArticleError] = useState<string | null>(null)
   const [xArticleDialogOpen, setXArticleDialogOpen] = useState(false)
+  const [isContentExpanded, setIsContentExpanded] = useState(false)
+
+  // Check if we have article content to show
+  const hasArticleContent = !!(link.contentHtml || link.contentText)
 
   // Check if this is an X article URL that needs resolution
   const isXArticleUrl = /^https?:\/\/(x\.com|twitter\.com)\/i\/article\/\d+/i.test(link.url)
@@ -304,11 +315,31 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
                 rel="noopener noreferrer"
                 className="hover:underline"
               >
-                {link.title || link.finalUrl || link.url}
+                {searchTerm ? (
+                  <Highlighter
+                    searchWords={searchWords}
+                    autoEscape={true}
+                    textToHighlight={link.title || link.finalUrl || link.url}
+                    highlightClassName="bg-yellow-200 dark:bg-yellow-700 rounded px-0.5"
+                  />
+                ) : (
+                  link.title || link.finalUrl || link.url
+                )}
               </a>
             </h3>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{displayDomain}</span>
+              <span>
+                {searchTerm && displayDomain ? (
+                  <Highlighter
+                    searchWords={searchWords}
+                    autoEscape={true}
+                    textToHighlight={displayDomain}
+                    highlightClassName="bg-yellow-200 dark:bg-yellow-700 rounded px-0.5"
+                  />
+                ) : (
+                  displayDomain
+                )}
+              </span>
               {displayDomain && onHideDomain && (
                 <button
                   onClick={handleHideDomain}
@@ -506,7 +537,18 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
         )}
 
         {link.aiSummary && (
-          <p className="text-muted-foreground">{link.aiSummary}</p>
+          <p className="text-muted-foreground">
+            {searchTerm ? (
+              <Highlighter
+                searchWords={searchWords}
+                autoEscape={true}
+                textToHighlight={link.aiSummary}
+                highlightClassName="bg-yellow-200 dark:bg-yellow-700 rounded px-0.5"
+              />
+            ) : (
+              link.aiSummary
+            )}
+          </p>
         )}
 
         {link.aiKeyPoints?.length > 0 && (
@@ -524,6 +566,40 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
           <p className="text-sm italic text-amber-600 dark:text-amber-400">
             &ldquo;{link.highlightReason}&rdquo;
           </p>
+        )}
+
+        {/* Expandable Article Content */}
+        {hasArticleContent && isContentExpanded && (
+          <div className="mt-4 border-t pt-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
+              <BookOpen className="h-4 w-4" />
+              <span>Full Article Content</span>
+            </div>
+            {link.contentHtml ? (
+              <div
+                className={cn(
+                  "prose prose-zinc dark:prose-invert max-w-none",
+                  "prose-p:text-[15px] prose-p:leading-[1.7] prose-p:mb-3",
+                  "prose-headings:font-bold prose-headings:tracking-tight",
+                  "prose-h2:text-lg prose-h2:mt-6 prose-h2:mb-3",
+                  "prose-h3:text-base prose-h3:mt-4 prose-h3:mb-2",
+                  "prose-ul:my-3 prose-ol:my-3",
+                  "prose-li:text-[15px] prose-li:leading-[1.7]",
+                  "prose-blockquote:border-l-2 prose-blockquote:border-zinc-300 dark:prose-blockquote:border-zinc-600",
+                  "prose-blockquote:pl-3 prose-blockquote:italic prose-blockquote:text-muted-foreground",
+                  "prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:underline",
+                  "prose-img:rounded-lg prose-img:my-3",
+                )}
+                dangerouslySetInnerHTML={{ __html: link.contentHtml }}
+              />
+            ) : link.contentText ? (
+              <div className="space-y-3 text-[15px] leading-[1.7] text-muted-foreground">
+                {link.contentText.split(/\n\n+/).filter(p => p.trim()).map((paragraph, index) => (
+                  <p key={index}>{paragraph}</p>
+                ))}
+              </div>
+            ) : null}
+          </div>
         )}
 
         {isProcessing && (
@@ -592,6 +668,31 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
 
         {/* Action buttons */}
         <div className="flex flex-wrap items-center justify-end gap-2 w-full">
+          {/* Read content button */}
+          {hasArticleContent && (
+            <Button
+              variant={isContentExpanded ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsContentExpanded(!isContentExpanded)}
+              className="gap-1.5"
+            >
+              {isContentExpanded ? (
+                <>
+                  <ChevronUp className="h-4 w-4" />
+                  Collapse
+                </>
+              ) : (
+                <>
+                  <BookOpen className="h-4 w-4" />
+                  Read Content
+                  {link.wordCount && (
+                    <span className="text-xs opacity-70">({link.wordCount} words)</span>
+                  )}
+                </>
+              )}
+            </Button>
+          )}
+
           {/* Mark as read/unread button */}
           <Button
             variant="ghost"

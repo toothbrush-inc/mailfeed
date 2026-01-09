@@ -30,6 +30,8 @@ interface Link {
   fetchStatus: string
   contentSource: string | null
   archivedUrl: string | null
+  contentText: string | null
+  contentHtml: string | null
   rawHtml: string | null
   isRead: boolean
   readAt: string | null

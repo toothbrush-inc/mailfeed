@@ -4,7 +4,8 @@ import { useState } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Mail, ExternalLink, Star, Sparkles, Loader2 } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Mail, ExternalLink, Star, Sparkles, Loader2, ChevronDown, ChevronUp } from "lucide-react"
 
 interface EmailLink {
   id: string
@@ -42,6 +43,7 @@ interface EmailFeedItemProps {
     gmailId: string
     subject: string | null
     snippet: string | null
+    rawContent: string | null
     receivedAt: string
     tags: EmailTag[]
     ingestedAt: string | null
@@ -50,10 +52,87 @@ interface EmailFeedItemProps {
   onIngestComplete?: () => void
 }
 
+// Extract readable text from HTML email content
+function extractTextFromHtml(html: string): string {
+  // Remove script and style tags and their contents
+  let text = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+  // Convert block elements to paragraph breaks
+  text = text.replace(/<\/?(p|div|br|h[1-6]|li|blockquote|article|section|tr)[^>]*>/gi, "\n\n")
+  // Remove remaining HTML tags
+  text = text.replace(/<[^>]+>/g, " ")
+  // Decode HTML entities
+  text = text.replace(/&nbsp;/g, " ")
+  text = text.replace(/&amp;/g, "&")
+  text = text.replace(/&lt;/g, "<")
+  text = text.replace(/&gt;/g, ">")
+  text = text.replace(/&quot;/g, '"')
+  text = text.replace(/&#39;/g, "'")
+  text = text.replace(/&mdash;/g, "—")
+  text = text.replace(/&ndash;/g, "–")
+  text = text.replace(/&hellip;/g, "...")
+  text = text.replace(/&#\d+;/g, "")
+  // Clean up whitespace while preserving paragraph breaks
+  text = text.replace(/[ \t]+/g, " ")
+  text = text.replace(/\n\s*\n/g, "\n\n")
+  text = text.replace(/\n{3,}/g, "\n\n")
+  return text.trim()
+}
+
+// Format text into proper paragraphs, removing duplicates
+function formatIntoParagraphs(text: string): string[] {
+  const paragraphs = text.split(/\n\n+/)
+    .map(p => p.trim())
+    .filter(p => p.length > 0)
+
+  // Remove duplicate paragraphs (common in email HTML with preview/body sections)
+  const seen = new Set<string>()
+  const unique: string[] = []
+  for (const para of paragraphs) {
+    // Normalize for comparison (lowercase, collapse whitespace)
+    const normalized = para.toLowerCase().replace(/\s+/g, ' ')
+    if (!seen.has(normalized)) {
+      seen.add(normalized)
+      unique.push(para)
+    }
+  }
+  return unique
+}
+
+// Get the first N words for preview
+function getPreviewParagraphs(paragraphs: string[], maxWords: number = 100): { preview: string[]; hasMore: boolean } {
+  const result: string[] = []
+  let wordCount = 0
+
+  for (const para of paragraphs) {
+    const words = para.split(/\s+/).filter(Boolean)
+    if (wordCount + words.length <= maxWords) {
+      result.push(para)
+      wordCount += words.length
+    } else {
+      if (result.length === 0) {
+        const remainingWords = maxWords - wordCount
+        result.push(words.slice(0, remainingWords).join(" ") + "...")
+      }
+      return { preview: result, hasMore: true }
+    }
+  }
+
+  return { preview: result, hasMore: false }
+}
+
 export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
   const [isIngesting, setIsIngesting] = useState(false)
   const [localTags, setLocalTags] = useState<EmailTag[]>(email.tags || [])
   const [localLinks, setLocalLinks] = useState<EmailLink[]>(email.links || [])
+
+  // Parse email body content
+  const rawText = email.rawContent ? extractTextFromHtml(email.rawContent) : ""
+  const allParagraphs = formatIntoParagraphs(rawText)
+  const { preview: previewParagraphs, hasMore } = getPreviewParagraphs(allParagraphs, 100)
+  const hasEmailBody = allParagraphs.length > 0
+  const paragraphsToShow = isExpanded ? allParagraphs : previewParagraphs
 
   const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${email.gmailId}`
   const receivedDate = new Date(email.receivedAt).toLocaleDateString("en-US", {
@@ -111,11 +190,6 @@ export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
                 {email.subject || "No subject"}
               </a>
             </h3>
-            {email.snippet && (
-              <p className="text-sm text-muted-foreground line-clamp-2">
-                {email.snippet}
-              </p>
-            )}
             <div className="flex items-center gap-2 pt-1">
               {localTags.map((tag) => (
                 <span
@@ -154,52 +228,105 @@ export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
         </div>
       </CardHeader>
 
-      <CardContent>
-        <div className="space-y-3">
-          {localLinks.map((link) => (
-            <div
-              key={link.id}
-              className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
-            >
-              {link.isHighlighted && (
-                <Star className="h-4 w-4 mt-0.5 text-amber-500 fill-amber-500 shrink-0" />
+      <CardContent className="space-y-4">
+        {/* Email Body */}
+        {hasEmailBody && (
+          <div className="space-y-3">
+            <article className={cn(
+              "relative",
+              isExpanded && "pb-2"
+            )}>
+              <div className={cn(
+                "space-y-3 text-sm text-muted-foreground leading-relaxed",
+              )}>
+                {paragraphsToShow.map((paragraph, index) => (
+                  <p key={index}>{paragraph}</p>
+                ))}
+              </div>
+
+              {/* Fade effect when collapsed */}
+              {!isExpanded && hasMore && (
+                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-card to-transparent pointer-events-none" />
               )}
-              <div className="flex-1 min-w-0 space-y-1">
-                <div className="flex items-center gap-2">
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium hover:underline truncate"
-                  >
-                    {link.title || link.url}
-                  </a>
-                  <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
-                </div>
-                {link.domain && (
-                  <p className="text-xs text-muted-foreground">{link.domain}</p>
+            </article>
+
+            {/* Expand/Collapse button */}
+            {hasMore && (
+              <Button
+                variant={isExpanded ? "outline" : "secondary"}
+                size="sm"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="gap-1.5"
+              >
+                {isExpanded ? (
+                  <>
+                    <ChevronUp className="h-4 w-4" />
+                    Show less
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4" />
+                    Read more
+                  </>
                 )}
-                {link.aiSummary && (
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {link.aiSummary}
-                  </p>
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Links Section */}
+        {localLinks.length > 0 && (
+          <div className="space-y-3">
+            {hasEmailBody && (
+              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Links ({localLinks.length})
+              </div>
+            )}
+            {localLinks.map((link) => (
+              <div
+                key={link.id}
+                className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
+              >
+                {link.isHighlighted && (
+                  <Star className="h-4 w-4 mt-0.5 text-amber-500 fill-amber-500 shrink-0" />
                 )}
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {link.aiCategory && (
-                    <Badge variant="secondary" className="text-xs">
-                      {link.aiCategory}
-                    </Badge>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium hover:underline truncate"
+                    >
+                      {link.title || link.url}
+                    </a>
+                    <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
+                  </div>
+                  {link.domain && (
+                    <p className="text-xs text-muted-foreground">{link.domain}</p>
                   )}
-                  {link.aiTags?.map((tag) => (
-                    <Badge key={tag} variant="outline" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
+                  {link.aiSummary && (
+                    <p className="text-sm text-muted-foreground line-clamp-2">
+                      {link.aiSummary}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {link.aiCategory && (
+                      <Badge variant="secondary" className="text-xs">
+                        {link.aiCategory}
+                      </Badge>
+                    )}
+                    {link.aiTags?.map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
                 </div>
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
