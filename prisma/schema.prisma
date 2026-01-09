@@ -115,6 +115,7 @@ model Link {
 
   // Content analysis
   contentText    String? @db.Text
+  contentHtml    String? @db.Text  // Clean article HTML from Readability (preserves structure)
   rawHtml        String? @db.Text  // Raw HTML for AI fallback parsing
   summary        String? @db.Text
   readingTimeMin Int?

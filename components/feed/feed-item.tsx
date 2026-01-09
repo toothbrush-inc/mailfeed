@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Star, Link2, Archive } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Link2, Archive, Twitter } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -15,6 +15,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { SocialEmbed, isEmbeddable } from "./social-embed"
+import { NestedLinkItem } from "./nested-link-item"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 interface FeedItemProps {
   link: {
@@ -60,13 +63,23 @@ interface FeedItemProps {
       finalUrl: string | null
       finalDomain: string | null
       aiSummary: string | null
+      aiKeyPoints: string[]
       aiCategory: string | null
       aiTags: string[]
       linkTags: string[]
       contentTags: string[]
+      metadataTags: string[]
       fetchStatus: string
       isHighlighted: boolean
+      highlightReason: string | null
       isRead: boolean
+      readingTimeMin: number | null
+      imageUrl: string | null
+      isPaywalled: boolean
+      paywallType: string | null
+      contentSource: string | null
+      archivedUrl: string | null
+      wordCount: number | null
     }>
   }
   onAnalyzeComplete?: () => void
@@ -98,6 +111,13 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
   const [isTogglingRead, setIsTogglingRead] = useState(false)
   const [isRead, setIsRead] = useState(link.isRead)
   const [isHidingDomain, setIsHidingDomain] = useState(false)
+  const [isResolvingXArticle, setIsResolvingXArticle] = useState(false)
+  const [xArticleUsername, setXArticleUsername] = useState("")
+  const [xArticleError, setXArticleError] = useState<string | null>(null)
+  const [xArticleDialogOpen, setXArticleDialogOpen] = useState(false)
+
+  // Check if this is an X article URL that needs resolution
+  const isXArticleUrl = /^https?:\/\/(x\.com|twitter\.com)\/i\/article\/\d+/i.test(link.url)
 
   const isProcessing = ["PENDING", "FETCHING", "ANALYZING"].includes(link.fetchStatus)
   const hasFailed = link.fetchStatus === "FAILED"
@@ -221,6 +241,43 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
     }
   }
 
+  const handleResolveXArticle = async (autoResolve: boolean = false) => {
+    setIsResolvingXArticle(true)
+    setXArticleError(null)
+
+    try {
+      const body: Record<string, unknown> = { refetch: true }
+      if (!autoResolve && xArticleUsername.trim()) {
+        body.username = xArticleUsername.trim()
+      }
+
+      const response = await fetch(`/api/links/${link.id}/resolve-x-article`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        if (data.needsUsername) {
+          setXArticleError(data.error || "Please enter the X username for this article")
+          return
+        }
+        throw new Error(data.error || "Failed to resolve URL")
+      }
+
+      setXArticleDialogOpen(false)
+      setXArticleUsername("")
+      onAnalyzeComplete?.()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to resolve X article URL"
+      setXArticleError(message)
+    } finally {
+      setIsResolvingXArticle(false)
+    }
+  }
+
   const displayDomain = link.finalDomain || link.domain
 
   return (
@@ -313,57 +370,18 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
 
         {/* Nested/child links extracted from this post */}
         {link.childLinks?.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
               <Link2 className="h-4 w-4" />
-              <span>Links in this post</span>
+              <span>Links in this post ({link.childLinks.length})</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {link.childLinks.map((childLink) => (
-                <div
+                <NestedLinkItem
                   key={childLink.id}
-                  className={cn(
-                    "flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50",
-                    childLink.isRead && "opacity-60"
-                  )}
-                >
-                  {childLink.isHighlighted && (
-                    <Star className="h-4 w-4 mt-0.5 text-amber-500 fill-amber-500 shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={childLink.finalUrl || childLink.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium hover:underline truncate"
-                      >
-                        {childLink.title || childLink.finalUrl || childLink.url}
-                      </a>
-                      <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {childLink.finalDomain || childLink.domain}
-                    </p>
-                    {childLink.aiSummary && (
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {childLink.aiSummary}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {childLink.linkTags?.map((tag) => (
-                        <Badge key={tag} variant="default" className="text-xs">
-                          {tag.replace(/_/g, " ")}
-                        </Badge>
-                      ))}
-                      {childLink.contentTags?.map((tag) => (
-                        <Badge key={tag} variant="secondary" className="text-xs">
-                          {tag.replace(/_/g, " ")}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                  link={childLink}
+                  onUpdate={onAnalyzeComplete}
+                />
               ))}
             </div>
           </div>
@@ -377,6 +395,87 @@ export function FeedItem({ link, onAnalyzeComplete, onHideDomain }: FeedItemProp
               {link.paywallType === "soft" && "Limited free access"}
               {link.paywallType === "registration" && "Registration required"}
             </span>
+          </div>
+        )}
+
+        {/* X Article URL resolution prompt */}
+        {isXArticleUrl && !link.finalUrl && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
+            <div className="flex items-start gap-3">
+              <Twitter className="h-5 w-5 text-blue-500 mt-0.5 shrink-0" />
+              <div className="flex-1 space-y-2">
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                  X Article URL needs resolution
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  This URL format ({link.url.slice(0, 40)}...) requires the author&apos;s username to fetch content.
+                </p>
+                <Dialog open={xArticleDialogOpen} onOpenChange={setXArticleDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="outline" className="mt-1">
+                      <Twitter className="mr-2 h-4 w-4" />
+                      Fix URL
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Resolve X Article URL</DialogTitle>
+                      <DialogDescription>
+                        Enter the X/Twitter username of the article author to fix this URL.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="x-username">X Username</Label>
+                        <Input
+                          id="x-username"
+                          placeholder="@username or username"
+                          value={xArticleUsername}
+                          onChange={(e) => setXArticleUsername(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && xArticleUsername.trim()) {
+                              handleResolveXArticle(false)
+                            }
+                          }}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          The URL will be converted to: x.com/<span className="font-mono">{xArticleUsername || "username"}</span>/article/...
+                        </p>
+                      </div>
+
+                      {xArticleError && (
+                        <div className="flex items-center gap-2 text-sm text-red-500">
+                          <AlertTriangle className="h-4 w-4" />
+                          <span>{xArticleError}</span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => handleResolveXArticle(true)}
+                          disabled={isResolvingXArticle}
+                        >
+                          {isResolvingXArticle ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : null}
+                          Try Auto-Resolve
+                        </Button>
+                        <Button
+                          onClick={() => handleResolveXArticle(false)}
+                          disabled={isResolvingXArticle || !xArticleUsername.trim()}
+                        >
+                          {isResolvingXArticle ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : null}
+                          Fix URL
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
           </div>
         )}
 

@@ -54,13 +54,23 @@ interface Link {
     finalUrl: string | null
     finalDomain: string | null
     aiSummary: string | null
+    aiKeyPoints: string[]
     aiCategory: string | null
     aiTags: string[]
     linkTags: string[]
     contentTags: string[]
+    metadataTags: string[]
     fetchStatus: string
     isHighlighted: boolean
+    highlightReason: string | null
     isRead: boolean
+    readingTimeMin: number | null
+    imageUrl: string | null
+    isPaywalled: boolean
+    paywallType: string | null
+    contentSource: string | null
+    archivedUrl: string | null
+    wordCount: number | null
   }>
 }
 

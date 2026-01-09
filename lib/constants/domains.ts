@@ -94,7 +94,7 @@ export const SOCIAL_MEDIA_DOMAINS = [
 ] as const
 
 // Pre-built Set for O(1) lookups (used for exact domain matching)
-const socialMediaDomainSet = new Set(SOCIAL_MEDIA_DOMAINS)
+const socialMediaDomainSet: Set<string> = new Set(SOCIAL_MEDIA_DOMAINS)
 
 /**
  * Check if a URL should be excluded from processing

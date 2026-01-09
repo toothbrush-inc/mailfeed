@@ -109,6 +109,9 @@ function isContentUrl(url: string): boolean {
   }
 }
 
+// Regex to find t.co links in text content
+const TCO_REGEX = /https?:\/\/t\.co\/[a-zA-Z0-9]+/g
+
 /**
  * Extract URLs from oEmbed HTML content (e.g., tweet blockquotes)
  * Returns URLs that appear to be links to external content
@@ -122,31 +125,67 @@ export async function extractNestedUrls(html: string | undefined | null): Promis
     const links = Array.from(dom.window.document.querySelectorAll("a[href]"))
     const urls = new Set<string>()
 
+    console.log(`[Nested Link Extractor] Processing HTML (${html.length} chars)`)
+    console.log(`[Nested Link Extractor] Found ${links.length} <a> tags`)
+
+    // First, extract from <a> tags
     for (const link of links) {
       const href = link.getAttribute("href")
       if (!href) continue
 
+      console.log(`[Nested Link Extractor] Checking href: ${href}`)
+
       // Skip if it doesn't look like content
-      if (!isContentUrl(href)) continue
+      if (!isContentUrl(href)) {
+        console.log(`[Nested Link Extractor] Skipped (not content URL): ${href}`)
+        continue
+      }
 
       // Handle URL shorteners by resolving them
       if (isUrlShortener(href)) {
+        console.log(`[Nested Link Extractor] Resolving shortener: ${href}`)
         const resolvedUrl = await resolveShortUrl(href)
         if (resolvedUrl && !shouldUseOEmbed(resolvedUrl)) {
+          console.log(`[Nested Link Extractor] Added resolved URL: ${resolvedUrl}`)
           urls.add(resolvedUrl)
         }
         continue
       }
 
       // Skip if it's a social media URL
-      if (isExcludedNestedUrl(href)) continue
+      if (isExcludedNestedUrl(href)) {
+        console.log(`[Nested Link Extractor] Skipped (excluded domain): ${href}`)
+        continue
+      }
 
       // Skip if it would use oEmbed (social media post)
-      if (shouldUseOEmbed(href)) continue
+      if (shouldUseOEmbed(href)) {
+        console.log(`[Nested Link Extractor] Skipped (oEmbed URL): ${href}`)
+        continue
+      }
 
+      console.log(`[Nested Link Extractor] Added URL: ${href}`)
       urls.add(href)
     }
 
+    // Also extract t.co links from text content (they may not be in <a> tags)
+    const textContent = dom.window.document.body?.textContent || ""
+    const tcoMatches = textContent.match(TCO_REGEX) || []
+    console.log(`[Nested Link Extractor] Found ${tcoMatches.length} t.co links in text`)
+
+    for (const tcoUrl of tcoMatches) {
+      // Skip if we already processed this URL
+      if (urls.has(tcoUrl)) continue
+
+      console.log(`[Nested Link Extractor] Resolving t.co from text: ${tcoUrl}`)
+      const resolvedUrl = await resolveShortUrl(tcoUrl)
+      if (resolvedUrl && !shouldUseOEmbed(resolvedUrl)) {
+        console.log(`[Nested Link Extractor] Added resolved t.co URL: ${resolvedUrl}`)
+        urls.add(resolvedUrl)
+      }
+    }
+
+    console.log(`[Nested Link Extractor] Final URLs: ${Array.from(urls).join(", ") || "(none)"}`)
     return Array.from(urls)
   } catch (error) {
     console.error("[Nested Link Extractor] Error parsing HTML:", error)

@@ -13,6 +13,7 @@ export interface WaybackResult {
   timestamp?: string
   title?: string
   textContent?: string
+  contentHtml?: string
   rawHtml?: string
   excerpt?: string
   byline?: string
@@ -172,6 +173,7 @@ export async function fetchFromWayback(url: string): Promise<WaybackResult> {
       timestamp: availability.timestamp,
       title: article.title || ogData.title,
       textContent: textContent || undefined,
+      contentHtml: article.content || undefined,
       rawHtml: cleanedHtml,
       excerpt: article.excerpt || ogData.description,
       byline: article.byline || undefined,

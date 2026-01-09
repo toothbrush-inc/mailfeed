@@ -16,6 +16,7 @@ interface ContentCardProps {
     title: string | null
     imageUrl: string | null
     contentText: string | null
+    contentHtml: string | null
     rawHtml: string | null
     aiSummary: string | null
     readingTimeMin: number | null
@@ -101,16 +102,26 @@ function formatDate(dateString: string): string {
 export function ContentCard({ link }: ContentCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
-  // Get the readable content
+  // Check if we have structured HTML content
+  const hasHtmlContent = !!link.contentHtml
+
+  // Get the readable content for text fallback
   const rawText = link.contentText || (link.rawHtml ? extractTextFromHtml(link.rawHtml) : "")
   const allParagraphs = formatIntoParagraphs(rawText)
-  const { preview: previewParagraphs, hasMore } = getPreviewParagraphs(allParagraphs, 150)
+  const { preview: previewParagraphs, hasMore: textHasMore } = getPreviewParagraphs(allParagraphs, 150)
+
+  // For HTML content, estimate if there's more based on word count
+  const hasMore = hasHtmlContent
+    ? (link.wordCount ?? 0) > 150
+    : textHasMore
 
   const displayDomain = link.finalDomain || link.domain
   const displayUrl = link.finalUrl || link.url
   const displayDate = link.email?.receivedAt || link.createdAt
 
-  if (allParagraphs.length === 0) {
+  // Check if we have any content to show
+  const hasContent = hasHtmlContent || allParagraphs.length > 0
+  if (!hasContent) {
     return null // Don't render cards without content
   }
 
@@ -201,20 +212,51 @@ export function ContentCard({ link }: ContentCardProps) {
           "reader-content",
           isExpanded && "pb-4"
         )}>
-          <div className={cn(
-            "space-y-4",
-            // Reader-friendly typography
-            "text-[17px] leading-[1.8] tracking-[-0.003em]",
-            "text-zinc-800 dark:text-zinc-200",
-            // Serif font for better readability (falls back to system serif)
-            "font-serif",
-          )}>
-            {paragraphsToShow.map((paragraph, index) => (
-              <p key={index} className="text-justify hyphens-auto">
-                {paragraph}
-              </p>
-            ))}
-          </div>
+          {/* Render HTML content when expanded and available */}
+          {hasHtmlContent && isExpanded ? (
+            <div
+              className={cn(
+                "prose prose-zinc dark:prose-invert max-w-none",
+                // Reader-friendly typography
+                "prose-p:text-[17px] prose-p:leading-[1.8] prose-p:tracking-[-0.003em]",
+                "prose-p:text-zinc-800 dark:prose-p:text-zinc-200",
+                "prose-p:mb-4",
+                // Headings
+                "prose-headings:font-bold prose-headings:tracking-tight",
+                "prose-h2:text-xl prose-h2:mt-8 prose-h2:mb-4",
+                "prose-h3:text-lg prose-h3:mt-6 prose-h3:mb-3",
+                // Lists
+                "prose-ul:my-4 prose-ol:my-4",
+                "prose-li:text-[17px] prose-li:leading-[1.8]",
+                // Blockquotes
+                "prose-blockquote:border-l-4 prose-blockquote:border-zinc-300 dark:prose-blockquote:border-zinc-600",
+                "prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-zinc-600 dark:prose-blockquote:text-zinc-400",
+                // Links
+                "prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:underline",
+                // Images
+                "prose-img:rounded-lg prose-img:my-4",
+                // Code
+                "prose-code:bg-zinc-100 dark:prose-code:bg-zinc-800 prose-code:px-1 prose-code:rounded",
+              )}
+              dangerouslySetInnerHTML={{ __html: link.contentHtml! }}
+            />
+          ) : (
+            /* Text-based rendering for preview or fallback */
+            <div className={cn(
+              "space-y-4",
+              // Reader-friendly typography
+              "text-[17px] leading-[1.8] tracking-[-0.003em]",
+              "text-zinc-800 dark:text-zinc-200",
+              // Serif font for better readability (falls back to system serif)
+              "font-serif",
+            )}>
+              {paragraphsToShow.map((paragraph, index) => (
+                <p key={index} className="text-justify hyphens-auto">
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+          )}
 
           {/* Fade effect when collapsed */}
           {!isExpanded && hasMore && (

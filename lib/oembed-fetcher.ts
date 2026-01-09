@@ -41,7 +41,8 @@ export function shouldUseOEmbed(url: string): boolean {
     const pathname = parsed.pathname.toLowerCase()
 
     // X/Twitter article URLs should NOT use oEmbed - fetch them normally
-    if ((hostname.includes("x.com") || hostname.includes("twitter.com")) && pathname.startsWith("/i/article/")) {
+    // Handles both /i/article/123 and /username/article/123 patterns
+    if ((hostname.includes("x.com") || hostname.includes("twitter.com")) && pathname.includes("/article/")) {
       return false
     }
 

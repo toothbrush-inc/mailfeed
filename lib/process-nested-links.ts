@@ -52,6 +52,8 @@ export async function processNestedLinks(
     id: string
     userId: string
     emailId: string | null
+    url: string
+    finalUrl: string | null
     rawHtml: string | null
     finalDomain: string | null
     domain: string | null
@@ -81,7 +83,7 @@ export async function processNestedLinks(
   for (const url of nestedUrls) {
     const urlHash = hashUrl(url)
 
-    // Check for duplicate
+    // Check for duplicate by URL
     const existingLink = await prisma.link.findUnique({
       where: { userId_urlHash: { userId: parentLink.userId, urlHash } },
     })
@@ -174,6 +176,7 @@ export async function processNestedLinks(
           description: content.excerpt,
           imageUrl: content.imageUrl,
           contentText: content.textContent,
+          contentHtml: content.content,
           rawHtml: rawHtml,
           wordCount: content.wordCount,
           readingTimeMin: content.wordCount ? estimateReadingTime(content.wordCount) : null,

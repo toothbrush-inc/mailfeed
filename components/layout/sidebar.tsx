@@ -125,17 +125,31 @@ export function Sidebar() {
           ))
         )}
 
-        <Link
-          href="/settings"
-          className={cn(
-            "mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-            pathname === "/settings"
-              ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50"
-              : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"
-          )}
-        >
-          Settings
-        </Link>
+        <div className="mt-4 border-t pt-4">
+          <Link
+            href="/stats"
+            className={cn(
+              "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              pathname === "/stats"
+                ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50"
+                : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"
+            )}
+          >
+            Stats
+          </Link>
+
+          <Link
+            href="/settings"
+            className={cn(
+              "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              pathname === "/settings"
+                ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50"
+                : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"
+            )}
+          >
+            Settings
+          </Link>
+        </div>
       </nav>
     </aside>
   )

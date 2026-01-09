@@ -121,6 +121,7 @@ async function processLink(
         description: content.excerpt,
         imageUrl: content.imageUrl,
         contentText: content.textContent,
+        contentHtml: content.content,
         rawHtml: rawHtml,
         wordCount: content.wordCount,
         readingTimeMin: content.wordCount
@@ -143,6 +144,8 @@ async function processLink(
       id: linkId,
       userId,
       emailId,
+      url,
+      finalUrl: content.finalUrl || null,
       rawHtml: rawHtml || null,
       finalDomain,
       domain,

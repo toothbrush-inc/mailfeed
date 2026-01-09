@@ -6,6 +6,7 @@ import { useDomains } from "@/hooks/use-domains"
 import { FeedItem } from "./feed-item"
 import { FeedSkeleton } from "./feed-skeleton"
 import { Button } from "@/components/ui/button"
+import { AddLinkButton } from "@/components/add-link-button"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
 export function FeedContainer() {
@@ -93,6 +94,9 @@ export function FeedContainer() {
               ? `No links found from "${domain}".`
               : "Click the \"Sync Emails\" button to fetch links from emails you've sent to yourself."}
           </p>
+          <div className="mt-4">
+            <AddLinkButton onSuccess={mutate} />
+          </div>
         </div>
       </div>
     )
@@ -100,6 +104,9 @@ export function FeedContainer() {
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <AddLinkButton onSuccess={mutate} />
+      </div>
       {links.map((link) => (
         <FeedItem
           key={link.id}

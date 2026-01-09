@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
         title: true,
         imageUrl: true,
         contentText: true,
+        contentHtml: true,
         rawHtml: true,
         aiSummary: true,
         readingTimeMin: true,

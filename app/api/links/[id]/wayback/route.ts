@@ -70,6 +70,8 @@ export async function POST(
         title: waybackResult.title || link.title,
         description: waybackResult.excerpt || link.description,
         contentText: waybackResult.textContent,
+        contentHtml: waybackResult.contentHtml,
+        rawHtml: waybackResult.rawHtml,
         wordCount: waybackResult.wordCount,
         readingTimeMin: waybackResult.wordCount
           ? estimateReadingTime(waybackResult.wordCount)

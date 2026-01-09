@@ -11,6 +11,7 @@ interface ContentLink {
   title: string | null
   imageUrl: string | null
   contentText: string | null
+  contentHtml: string | null
   rawHtml: string | null
   aiSummary: string | null
   readingTimeMin: number | null

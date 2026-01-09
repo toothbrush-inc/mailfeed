@@ -39,7 +39,7 @@ export async function POST(
     console.log("[/api/emails/[id]/ingest] Calling BAML IngestEmail...")
     const bamlStart = Date.now()
 
-    const result = await b.IngestEmail(email.subject, email.rawContent)
+    const result = await b.IngestEmail(email.subject || "", email.rawContent)
 
     console.log("[/api/emails/[id]/ingest] BAML completed in", Date.now() - bamlStart, "ms")
     console.log("[/api/emails/[id]/ingest] Result:", JSON.stringify(result, null, 2))
