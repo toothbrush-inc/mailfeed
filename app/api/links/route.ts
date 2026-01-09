@@ -125,6 +125,7 @@ export async function GET(request: NextRequest) {
             gmailId: true,
             subject: true,
             receivedAt: true,
+            rawContent: true,
           },
         },
         categories: {

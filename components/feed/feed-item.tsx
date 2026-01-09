@@ -58,6 +58,7 @@ interface FeedItemProps {
       gmailId: string
       subject: string | null
       receivedAt: string
+      rawContent: string | null
     } | null
     childLinks: Array<{
       id: string
@@ -126,6 +127,10 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
 
   // Check if we have article content to show
   const hasArticleContent = !!(link.contentHtml || link.contentText)
+  // Check if we have email content as fallback
+  const hasEmailContent = !!(link.email?.rawContent)
+  // Show expand button if we have any content
+  const hasExpandableContent = hasArticleContent || hasEmailContent
 
   // Check if this is an X article URL that needs resolution
   const isXArticleUrl = /^https?:\/\/(x\.com|twitter\.com)\/i\/article\/\d+/i.test(link.url)
@@ -569,11 +574,20 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
         )}
 
         {/* Expandable Article Content */}
-        {hasArticleContent && isContentExpanded && (
+        {hasExpandableContent && isContentExpanded && (
           <div className="mt-4 border-t pt-4">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
-              <BookOpen className="h-4 w-4" />
-              <span>Full Article Content</span>
+              {hasArticleContent ? (
+                <>
+                  <BookOpen className="h-4 w-4" />
+                  <span>Full Article Content</span>
+                </>
+              ) : (
+                <>
+                  <Mail className="h-4 w-4" />
+                  <span>Email Context</span>
+                </>
+              )}
             </div>
             {link.contentHtml ? (
               <div
@@ -598,6 +612,33 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                   <p key={index}>{paragraph}</p>
                 ))}
               </div>
+            ) : link.email?.rawContent ? (
+              // Show email content as fallback with prose styling
+              <div
+                className={cn(
+                  "prose prose-zinc dark:prose-invert max-w-none",
+                  "prose-p:text-[15px] prose-p:leading-[1.7] prose-p:mb-3",
+                  "prose-headings:font-bold prose-headings:tracking-tight",
+                  "prose-h2:text-lg prose-h2:mt-6 prose-h2:mb-3",
+                  "prose-h3:text-base prose-h3:mt-4 prose-h3:mb-2",
+                  "prose-ul:my-3 prose-ol:my-3",
+                  "prose-li:text-[15px] prose-li:leading-[1.7]",
+                  "prose-blockquote:border-l-2 prose-blockquote:border-zinc-300 dark:prose-blockquote:border-zinc-600",
+                  "prose-blockquote:pl-3 prose-blockquote:italic prose-blockquote:text-muted-foreground",
+                  "prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:underline",
+                  "prose-img:rounded-lg prose-img:my-3",
+                )}
+                dangerouslySetInnerHTML={{
+                  __html: link.email.rawContent
+                    // Remove scripts and styles
+                    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+                    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+                    // Remove tracking pixels and hidden images
+                    .replace(/<img[^>]*(?:width|height)\s*=\s*["']?[01]["']?[^>]*>/gi, "")
+                    // Remove event handlers
+                    .replace(/\s*on\w+\s*=\s*["'][^"']*["']/gi, "")
+                }}
+              />
             ) : null}
           </div>
         )}
@@ -609,7 +650,18 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
         )}
 
         {hasFailed && (
-          <p className="text-sm text-red-500">Failed to fetch content</p>
+          <div className="space-y-2">
+            <p className="text-sm text-red-500">Failed to fetch content</p>
+            {hasEmailContent && !isContentExpanded && (
+              <button
+                onClick={() => setIsContentExpanded(true)}
+                className="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                View email context instead
+              </button>
+            )}
+          </div>
         )}
       </CardContent>
 
@@ -688,6 +740,28 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                   {link.wordCount && (
                     <span className="text-xs opacity-70">({link.wordCount} words)</span>
                   )}
+                </>
+              )}
+            </Button>
+          )}
+
+          {/* Email context button - shown when no article content but email exists */}
+          {!hasArticleContent && hasEmailContent && (
+            <Button
+              variant={isContentExpanded ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsContentExpanded(!isContentExpanded)}
+              className="gap-1.5"
+            >
+              {isContentExpanded ? (
+                <>
+                  <ChevronUp className="h-4 w-4" />
+                  Collapse
+                </>
+              ) : (
+                <>
+                  <Mail className="h-4 w-4" />
+                  Email Context
                 </>
               )}
             </Button>

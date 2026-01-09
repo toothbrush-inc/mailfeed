@@ -40,6 +40,7 @@ interface Link {
     gmailId: string
     subject: string | null
     receivedAt: string
+    rawContent: string | null
   } | null
   categories: Array<{
     category: {
