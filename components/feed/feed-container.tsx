@@ -5,9 +5,9 @@ import { useLinks } from "@/hooks/use-links"
 import { useDomains } from "@/hooks/use-domains"
 import { FeedItem } from "./feed-item"
 import { FeedSkeleton } from "./feed-skeleton"
+import { Pagination } from "./pagination"
 import { Button } from "@/components/ui/button"
 import { AddLinkButton } from "@/components/add-link-button"
-import { ChevronLeft, ChevronRight } from "lucide-react"
 
 export function FeedContainer() {
   const searchParams = useSearchParams()
@@ -104,9 +104,22 @@ export function FeedContainer() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      {/* Top bar with pagination info and add button */}
+      <div className="flex items-center justify-between">
+        {pagination && (
+          <Pagination
+            page={page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            limit={pagination.limit}
+            onPageChange={navigateToPage}
+            compact
+          />
+        )}
+        {!pagination && <div />}
         <AddLinkButton onSuccess={mutate} />
       </div>
+
       {links.map((link) => (
         <FeedItem
           key={link.id}
@@ -117,33 +130,15 @@ export function FeedContainer() {
         />
       ))}
 
-      {pagination && pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between border-t pt-4 mt-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigateToPage(page - 1)}
-            disabled={page <= 1}
-          >
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            Previous
-          </Button>
-
-          <p className="text-sm text-muted-foreground">
-            Page {pagination.page} of {pagination.totalPages}
-            <span className="hidden sm:inline"> ({pagination.total} links)</span>
-          </p>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigateToPage(page + 1)}
-            disabled={page >= pagination.totalPages}
-          >
-            Next
-            <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
+      {/* Bottom pagination */}
+      {pagination && (
+        <Pagination
+          page={page}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
+          limit={pagination.limit}
+          onPageChange={navigateToPage}
+        />
       )}
     </div>
   )

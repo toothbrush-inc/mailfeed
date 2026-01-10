@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -124,6 +124,30 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
   const [xArticleError, setXArticleError] = useState<string | null>(null)
   const [xArticleDialogOpen, setXArticleDialogOpen] = useState(false)
   const [isContentExpanded, setIsContentExpanded] = useState(false)
+  const [showFloatingCollapse, setShowFloatingCollapse] = useState(false)
+  const contentHeaderRef = useRef<HTMLDivElement>(null)
+
+  // Track when the content header scrolls out of view to show floating collapse button
+  useEffect(() => {
+    if (!isContentExpanded || !contentHeaderRef.current) {
+      setShowFloatingCollapse(false)
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // Show floating button when header is not visible (scrolled past it)
+        setShowFloatingCollapse(!entry.isIntersecting)
+      },
+      {
+        threshold: 0,
+        rootMargin: "-80px 0px 0px 0px", // Account for any fixed header
+      }
+    )
+
+    observer.observe(contentHeaderRef.current)
+    return () => observer.disconnect()
+  }, [isContentExpanded])
 
   // Check if we have article content to show
   const hasArticleContent = !!(link.contentHtml || link.contentText)
@@ -575,8 +599,25 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
 
         {/* Expandable Article Content */}
         {hasExpandableContent && isContentExpanded && (
-          <div className="mt-4 border-t pt-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3">
+          <div className="mt-4 border-t pt-4 relative">
+            {/* Floating collapse button - appears when scrolling */}
+            {showFloatingCollapse && (
+              <div className="sticky top-20 z-10 float-left -ml-1 mr-3 mb-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsContentExpanded(false)}
+                  className="shadow-md gap-1.5"
+                >
+                  <ChevronUp className="h-4 w-4" />
+                  Collapse
+                </Button>
+              </div>
+            )}
+            <div
+              ref={contentHeaderRef}
+              className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-3"
+            >
               {hasArticleContent ? (
                 <>
                   <BookOpen className="h-4 w-4" />
