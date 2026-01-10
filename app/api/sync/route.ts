@@ -8,6 +8,11 @@ import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher
 import { processNestedLinks } from "@/lib/process-nested-links"
 import { syncLogger } from "@/lib/logger"
 
+// TODO: Persist oldest page token in the database (User model) so "sync older"
+// can continue from where it left off after page reload. Currently, the oldest
+// page token is only stored in client state and resets on page load, causing
+// "sync older" to always start from page 0 instead of continuing pagination.
+
 // Type for link processing results
 interface LinkProcessResult {
   fetched: boolean

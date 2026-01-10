@@ -95,6 +95,7 @@ interface UseLinksOptions {
   status?: string | null
   read?: "all" | "read" | "unread"
   search?: string | null
+  sort?: string | null
   page?: number
   limit?: number
 }
@@ -111,6 +112,7 @@ export function useLinks(options: UseLinksOptions = {}) {
   if (options.status) params.set("status", options.status)
   if (options.read && options.read !== "all") params.set("read", options.read)
   if (options.search) params.set("search", options.search)
+  if (options.sort && options.sort !== "date_desc") params.set("sort", options.sort)
   if (options.page) params.set("page", options.page.toString())
   if (options.limit) params.set("limit", options.limit.toString())
 

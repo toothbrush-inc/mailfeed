@@ -20,6 +20,7 @@ export function FeedContainer() {
   const highlighted = searchParams.get("highlighted") === "true"
   const readFilter = searchParams.get("read") as "all" | "read" | "unread" | null
   const search = searchParams.get("search")
+  const sort = searchParams.get("sort")
   const page = parseInt(searchParams.get("page") || "1")
 
   const { links, pagination, isLoading, error, mutate } = useLinks({
@@ -29,6 +30,7 @@ export function FeedContainer() {
     highlighted,
     read: readFilter || "all",
     search,
+    sort,
     page,
   })
 

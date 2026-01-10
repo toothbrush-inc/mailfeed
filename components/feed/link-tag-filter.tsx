@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 import { useDomains } from "@/hooks/use-domains"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Filter, X, ChevronDown, Loader2 } from "lucide-react"
+import { Filter, X, ChevronDown, Loader2, ArrowUpDown } from "lucide-react"
 
 // Link type tags from BAML LinkTag enum
 const LINK_TAGS = [
@@ -56,6 +56,14 @@ const READ_STATUS = [
   { value: "read", label: "Read" },
 ]
 
+// Sort options
+const SORT_OPTIONS = [
+  { value: "date_desc", label: "Newest first" },
+  { value: "date_asc", label: "Oldest first" },
+  { value: "reading_time_asc", label: "Quick reads" },
+  { value: "reading_time_desc", label: "Long reads" },
+]
+
 // All tags combined for lookup
 const ALL_TAGS = [...LINK_TAGS, ...CONTENT_TAGS, ...METADATA_TAGS]
 
@@ -64,10 +72,12 @@ export function LinkTagFilter() {
   const router = useRouter()
   const pathname = usePathname()
   const [filterOpen, setFilterOpen] = useState(false)
+  const [sortOpen, setSortOpen] = useState(false)
 
   const currentTag = searchParams.get("tag")
   const currentDomain = searchParams.get("domain")
   const currentRead = searchParams.get("read") || "all"
+  const currentSort = searchParams.get("sort") || "date_desc"
 
   const { domains, isLoading: domainsLoading } = useDomains()
   const visibleDomains = domains.filter((d) => !d.isHidden).slice(0, 20)
@@ -107,6 +117,16 @@ export function LinkTagFilter() {
 
   const handleReadChange = (value: string) => {
     router.push(buildUrl({ read: value === "all" ? null : value }))
+  }
+
+  const handleSortChange = (value: string) => {
+    router.push(buildUrl({ sort: value === "date_desc" ? null : value }))
+    setSortOpen(false)
+  }
+
+  const getCurrentSortLabel = () => {
+    const sort = SORT_OPTIONS.find((s) => s.value === currentSort)
+    return sort?.label || "Newest first"
   }
 
   const renderTagGroup = (
@@ -242,6 +262,35 @@ export function LinkTagFilter() {
                 <p className="text-xs text-muted-foreground">No domains yet</p>
               )}
             </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      {/* Sort dropdown button */}
+      <Popover open={sortOpen} onOpenChange={setSortOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="h-7 gap-1.5">
+            <ArrowUpDown className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{getCurrentSortLabel()}</span>
+            <ChevronDown className="h-3 w-3" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-40 p-2" align="start">
+          <div className="space-y-1">
+            {SORT_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => handleSortChange(option.value)}
+                className={cn(
+                  "w-full text-left px-2 py-1.5 text-sm rounded transition-colors",
+                  currentSort === option.value
+                    ? "bg-zinc-100 dark:bg-zinc-800 font-medium"
+                    : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
         </PopoverContent>
       </Popover>

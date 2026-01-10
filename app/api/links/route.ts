@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { isExcludedUrl } from "@/lib/constants/domains"
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
@@ -23,8 +22,36 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status")
   const read = searchParams.get("read")
   const search = searchParams.get("search")
+  const sort = searchParams.get("sort") || "date_desc"
   const page = parseInt(searchParams.get("page") || "1")
   const limit = parseInt(searchParams.get("limit") || "20")
+
+  // Build orderBy based on sort parameter
+  // Use email.receivedAt for date sorting (when the email was received, not when link was processed)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let orderBy: any[]
+  switch (sort) {
+    case "date_asc":
+      orderBy = [{ email: { receivedAt: "asc" } }, { createdAt: "asc" }]
+      break
+    case "reading_time_asc":
+      orderBy = [{ readingTimeMin: "asc" }, { email: { receivedAt: "desc" } }]
+      break
+    case "reading_time_desc":
+      orderBy = [{ readingTimeMin: "desc" }, { email: { receivedAt: "desc" } }]
+      break
+    case "date_desc":
+    default:
+      orderBy = [{ email: { receivedAt: "desc" } }, { createdAt: "desc" }]
+      break
+  }
+
+  // Fetch user's hidden domains first (needed for query)
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { hiddenDomains: true },
+  })
+  const hiddenDomains = user?.hiddenDomains || []
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {
@@ -91,34 +118,31 @@ export async function GET(request: NextRequest) {
     })
   }
 
+  // Exclude hidden domains (in database query for correct pagination)
+  if (hiddenDomains.length > 0) {
+    andConditions.push({
+      AND: [
+        { OR: [{ domain: null }, { domain: { notIn: hiddenDomains } }] },
+        { OR: [{ finalDomain: null }, { finalDomain: { notIn: hiddenDomains } }] },
+      ],
+    })
+  }
+
+  // Note: System-excluded domains (EXCLUDED_DOMAINS) are filtered during sync,
+  // not at query time, for performance reasons.
+
   // Apply AND conditions after all have been added
   if (andConditions.length > 0) {
     where.AND = andConditions
   }
 
-  // Fetch user's hidden domains
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { hiddenDomains: true },
-  })
-  const userHiddenDomains = new Set(user?.hiddenDomains || [])
-
-
-  // Helper to check if a domain is hidden by the user
-  const isHiddenDomain = (domain: string | null) => {
-    return domain ? userHiddenDomains.has(domain) : false
-  }
-
   const queryStart = Date.now()
-  // Fetch more than needed to account for filtering
-  const [allLinks, total] = await Promise.all([
+  const [links, total] = await Promise.all([
     prisma.link.findMany({
       where,
-      orderBy: [
-        { createdAt: "desc" },
-      ],
+      orderBy,
       skip: (page - 1) * limit,
-      take: limit * 2, // Fetch extra to account for excluded domains
+      take: limit,
       include: {
         email: {
           select: {
@@ -169,28 +193,16 @@ export async function GET(request: NextRequest) {
     prisma.link.count({ where }),
   ])
 
-  // Filter out excluded domains and user-hidden domains
-  const filteredLinks = allLinks.filter((link) => {
-    // Use finalUrl if available (resolved from redirects), otherwise original url
-    const urlToCheck = link.finalUrl || link.url
-    if (isExcludedUrl(urlToCheck)) return false
-    // Check user-hidden domains (prefer finalDomain if available)
-    const domainToCheck = link.finalDomain || link.domain
-    if (domainToCheck && isHiddenDomain(domainToCheck)) return false
-    return true
-  })
-  const links = filteredLinks.slice(0, limit)
-
   console.log("[/api/links] DB query completed in", Date.now() - queryStart, "ms")
   console.log("[/api/links] Total request time:", Date.now() - startTime, "ms")
-  console.log("[/api/links] Filtered out", allLinks.length - filteredLinks.length, "excluded/hidden domains")
+  console.log("[/api/links] Found", links.length, "links, total:", total)
 
   return NextResponse.json({
     links,
     pagination: {
       page,
       limit,
-      total: total - (allLinks.length - filteredLinks.length), // Approximate
+      total,
       totalPages: Math.ceil(total / limit),
     },
   })
