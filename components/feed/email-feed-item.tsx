@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -292,15 +293,22 @@ export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
                 )}
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex items-center gap-2">
+                    <Link
+                      href={`/feed?search=${encodeURIComponent(link.url)}`}
+                      className="font-medium hover:underline truncate"
+                    >
+                      {link.title || link.url}
+                    </Link>
                     <a
                       href={link.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-medium hover:underline truncate"
+                      className="text-muted-foreground hover:text-foreground shrink-0"
+                      title="Open external link"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {link.title || link.url}
+                      <ExternalLink className="h-3 w-3" />
                     </a>
-                    <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
                   </div>
                   {link.domain && (
                     <p className="text-xs text-muted-foreground">{link.domain}</p>
