@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -125,6 +125,8 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
   const [xArticleDialogOpen, setXArticleDialogOpen] = useState(false)
   const [isContentExpanded, setIsContentExpanded] = useState(false)
   const [showFloatingCollapse, setShowFloatingCollapse] = useState(false)
+  const [isReporting, setIsReporting] = useState(false)
+  const [hasReported, setHasReported] = useState(false)
   const contentHeaderRef = useRef<HTMLDivElement>(null)
 
   // Track when the content header scrolls out of view to show floating collapse button
@@ -278,6 +280,25 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
       await onHideDomain(domainToHide)
     } finally {
       setIsHidingDomain(false)
+    }
+  }
+
+  const handleReport = async () => {
+    setIsReporting(true)
+    try {
+      const response = await fetch(`/api/links/${link.id}/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Content fetch/parse issue" }),
+      })
+      if (!response.ok) {
+        throw new Error("Failed to submit report")
+      }
+      setHasReported(true)
+    } catch (error) {
+      console.error("Failed to report link:", error)
+    } finally {
+      setIsReporting(false)
     }
   }
 
@@ -869,6 +890,34 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                 <>
                   <Archive className="mr-1 h-4 w-4" />
                   {link.contentSource === "wayback" ? "Refetch Archive" : "Try Archive"}
+                </>
+              )}
+            </Button>
+          )}
+
+          {/* Report Issue button - for failed fetches or missing content */}
+          {(hasFailed || !hasArticleContent) && !isProcessing && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleReport}
+              disabled={isReporting || hasReported}
+              className={cn(hasReported && "text-green-600 dark:text-green-400")}
+            >
+              {isReporting ? (
+                <>
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                  Reporting...
+                </>
+              ) : hasReported ? (
+                <>
+                  <CheckCircle className="mr-1 h-4 w-4" />
+                  Reported
+                </>
+              ) : (
+                <>
+                  <Flag className="mr-1 h-4 w-4" />
+                  Report Issue
                 </>
               )}
             </Button>

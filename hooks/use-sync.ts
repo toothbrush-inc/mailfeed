@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react"
 import { useSWRConfig } from "swr"
+import useSWR from "swr"
 
 interface SyncResult {
   emailsProcessed: number
@@ -32,12 +33,27 @@ interface SyncError {
   requiresReauth?: boolean
 }
 
+interface SyncStatus {
+  hasSynced: boolean
+  emailCount: number
+  lastSyncAt: string | null
+  hasMorePages: boolean
+}
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json())
+
 export function useSync() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [requiresReauth, setRequiresReauth] = useState(false)
   const [result, setResult] = useState<SyncResult | null>(null)
   const { mutate } = useSWRConfig()
+
+  // Fetch initial sync status to know if "Sync Older" should be shown
+  const { data: syncStatus, mutate: mutateSyncStatus } = useSWR<SyncStatus>(
+    "/api/sync/status",
+    fetcher
+  )
 
   const sync = useCallback(async (options?: SyncOptions) => {
     setIsLoading(true)
@@ -81,6 +97,8 @@ export function useSync() {
       mutate("/api/categories")
       mutate("/api/stats")
       mutate("/api/emails/stats")
+      // Refresh sync status to update hasMorePages
+      mutateSyncStatus()
 
       return data
     } catch (err) {
@@ -90,12 +108,24 @@ export function useSync() {
     } finally {
       setIsLoading(false)
     }
-  }, [mutate])
+  }, [mutate, mutateSyncStatus])
 
   const clearReauthRequired = useCallback(() => {
     setRequiresReauth(false)
     setError(null)
   }, [])
 
-  return { sync, isLoading, error, result, requiresReauth, clearReauthRequired }
+  // Use hasMorePages from result (after sync) or syncStatus (on page load)
+  const hasMorePages = result?.hasMorePages ?? syncStatus?.hasMorePages ?? false
+
+  return {
+    sync,
+    isLoading,
+    error,
+    result,
+    requiresReauth,
+    clearReauthRequired,
+    hasMorePages,
+    syncStatus,
+  }
 }

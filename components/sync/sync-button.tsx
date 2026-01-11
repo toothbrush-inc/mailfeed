@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 import { AlertTriangle, LogIn } from "lucide-react"
 
 export function SyncButton() {
-  const { sync, isLoading, result, error, requiresReauth, clearReauthRequired } = useSync()
+  const { sync, isLoading, result, error, requiresReauth, clearReauthRequired, hasMorePages, syncStatus } = useSync()
 
   const handleSync = () => sync()
   const handleContinueSync = () => sync({ continueSync: true })
@@ -24,8 +24,8 @@ export function SyncButton() {
     signIn("google", { callbackUrl: window.location.href })
   }
 
-  // Show "Sync Older" if there are more pages OR if we have a result with estimated emails
-  const showSyncOlder = result?.hasMorePages
+  // Show "Sync Older" if there are more pages (from recent result or persisted status)
+  const showSyncOlder = hasMorePages
 
   // Show re-auth prompt if required
   if (requiresReauth) {
@@ -78,23 +78,23 @@ export function SyncButton() {
         )}
       </div>
 
-      {result && (
+      {(result || syncStatus) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {/* Total emails synced */}
-          {result.emailsSynced > 0 && (
-            <span className="font-medium">{result.emailsSynced} emails synced</span>
+          {(result?.emailsSynced ?? syncStatus?.emailCount ?? 0) > 0 && (
+            <span className="font-medium">{result?.emailsSynced ?? syncStatus?.emailCount} emails synced</span>
           )}
           {/* Last sync details */}
-          {!isLoading && result.emailsProcessed > 0 && (
+          {!isLoading && result?.emailsProcessed && result.emailsProcessed > 0 && (
             <span>(+{result.emailsProcessed} new)</span>
           )}
-          {!isLoading && result.linksFetched > 0 && (
+          {!isLoading && result?.linksFetched && result.linksFetched > 0 && (
             <span>{result.linksFetched} links fetched</span>
           )}
-          {result.hasMorePages && (
+          {hasMorePages && (
             <span className="text-amber-600">More history available</span>
           )}
-          {!isLoading && !result.hasMorePages && result.gmailTotalEstimate && result.gmailTotalEstimate > 0 && (
+          {!isLoading && !hasMorePages && syncStatus?.emailCount && syncStatus.emailCount > 0 && (
             <button
               onClick={handleResetSync}
               className="text-blue-600 hover:underline"

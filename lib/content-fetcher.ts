@@ -118,12 +118,17 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
     // Check for paywall
     const paywallCheck = detectPaywall(html)
 
-    // For major news sites, extract rich metadata using JSON-LD and enhanced OG extraction
+    // Try to extract rich metadata using JSON-LD and enhanced extraction
+    // Always attempt this now - many modern sites (blogs, etc.) use JSON-LD
+    const newsMetadata = extractNewsMetadata(html, finalUrl)
     const isNewsSite = isMajorNewsSite(finalUrl)
-    const newsMetadata = isNewsSite ? extractNewsMetadata(html, finalUrl) : null
 
-    if (isNewsSite && newsMetadata) {
-      console.log(`[Content Fetcher] Using news metadata extraction for: ${finalUrl}`)
+    if (newsMetadata?.title) {
+      console.log(`[Content Fetcher] Extracted metadata for: ${finalUrl}`, {
+        title: newsMetadata.title?.slice(0, 50),
+        isNewsSite,
+        hasWordCount: !!newsMetadata.wordCount,
+      })
     }
 
     // Extract Open Graph data (useful for paywalled sites)

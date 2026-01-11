@@ -8,10 +8,16 @@ import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher
 import { processNestedLinks } from "@/lib/process-nested-links"
 import { syncLogger } from "@/lib/logger"
 
-// TODO: Persist oldest page token in the database (User model) so "sync older"
-// can continue from where it left off after page reload. Currently, the oldest
-// page token is only stored in client state and resets on page load, causing
-// "sync older" to always start from page 0 instead of continuing pagination.
+// NOTE: Sites like avc.xyz use Next.js with React Server Components. Readability
+// may fail to extract content from JS-rendered pages, but we now always extract
+// JSON-LD structured data which provides title, description, and word count.
+
+// TODO: Add headless browser support (Puppeteer/Playwright) for JS-rendered sites.
+// When Readability fails but we detect the page is JS-rendered (e.g., has React
+// hydration scripts, minimal body content), retry fetching with a headless browser
+// to get the fully rendered HTML. This would enable content extraction from modern
+// SPAs and Next.js sites. Consider: 1) Detection heuristics for when to use it,
+// 2) Performance/resource implications, 3) Optional serverless browser service.
 
 // Type for link processing results
 interface LinkProcessResult {

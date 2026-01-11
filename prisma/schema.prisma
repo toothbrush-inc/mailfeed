@@ -47,9 +47,11 @@ model User {
   sessions      Session[]
   emails        Email[]
   links         Link[]
+  linkReports   LinkReport[]
   hiddenDomains String[]  @default([])
   lastSyncAt    DateTime?
-  syncPageToken String?   // Gmail pagination token for continue sync
+  syncPageToken       String?   // Gmail pagination token for continue sync (newer emails)
+  oldestSyncPageToken String?   // Gmail pagination token for "sync older" (older emails)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -158,6 +160,7 @@ model Link {
   parentLink Link?         @relation("NestedLinks", fields: [parentLinkId], references: [id], onDelete: SetNull)
   childLinks Link[]        @relation("NestedLinks")
   categories LinkCategory[]
+  reports    LinkReport[]
 
   @@unique([userId, urlHash])
   @@index([userId])
@@ -204,4 +207,20 @@ enum FetchStatus {
   COMPLETED
   FAILED
   PAYWALL_DETECTED
+}
+
+// User reports for links with fetch/parse issues
+model LinkReport {
+  id        String   @id @default(cuid())
+  linkId    String
+  userId    String
+  reason    String?  @db.Text
+  createdAt DateTime @default(now())
+
+  link Link @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([linkId])
+  @@index([userId])
+  @@index([createdAt])
 }
