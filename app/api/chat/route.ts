@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { GoogleGenAI } from "@google/genai"
+import { generateEmbedding } from "@/lib/embeddings"
+import { searchLinks, SimilarLink } from "@/lib/vector-search"
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
 
@@ -40,29 +42,22 @@ export async function POST(request: NextRequest) {
     // Search for relevant content in user's data
     const searchTerm = message.trim()
 
-    // Fetch relevant links (searching across multiple fields)
-    const relevantLinks = await prisma.link.findMany({
-      where: {
-        userId: session.user.id,
-        OR: [
-          { title: { contains: searchTerm, mode: "insensitive" } },
-          { aiSummary: { contains: searchTerm, mode: "insensitive" } },
-          { contentText: { contains: searchTerm, mode: "insensitive" } },
-          { aiCategory: { contains: searchTerm, mode: "insensitive" } },
-        ],
-      },
-      select: {
-        id: true,
-        url: true,
-        title: true,
-        aiSummary: true,
-        aiKeyPoints: true,
-        contentText: true,
-        aiCategory: true,
-      },
-      take: 10,
-      orderBy: { createdAt: "desc" },
-    })
+    // Try to generate query embedding for semantic search
+    let queryEmbedding: number[] | null = null
+    try {
+      queryEmbedding = await generateEmbedding(searchTerm, "RETRIEVAL_QUERY")
+    } catch (error) {
+      console.log("[/api/chat] Embedding generation failed, using text search:", error)
+    }
+
+    // Search for relevant links using vector search with text fallback
+    const relevantLinks: SimilarLink[] = await searchLinks(
+      session.user.id,
+      queryEmbedding,
+      searchTerm,
+      10,
+      0.3
+    )
 
     // Fetch relevant emails
     const relevantEmails = await prisma.email.findMany({

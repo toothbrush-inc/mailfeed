@@ -149,6 +149,11 @@ model Link {
   isRead Boolean   @default(false)
   readAt DateTime?
 
+  // Embedding for RAG (vector column managed via raw SQL)
+  embeddingStatus String?   @default("PENDING")  // PENDING, PROCESSING, COMPLETED, FAILED, SKIPPED
+  embeddedAt      DateTime?
+  embeddingError  String?
+
   // Timestamps
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
@@ -173,6 +178,7 @@ model Link {
   @@index([createdAt])
   @@index([worthinessScore])
   @@index([finalUrlHash])
+  @@index([embeddingStatus])
 }
 
 model Category {

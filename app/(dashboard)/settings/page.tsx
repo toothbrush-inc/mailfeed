@@ -1,6 +1,7 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { EmbeddingSection } from "@/components/settings/embedding-section"
 
 export default async function SettingsPage() {
   const session = await auth()
@@ -93,6 +94,8 @@ export default async function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <EmbeddingSection />
     </div>
   )
 }
