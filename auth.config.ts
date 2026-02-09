@@ -3,6 +3,8 @@ import Google from "next-auth/providers/google"
 
 // Edge-compatible auth config (no database adapter)
 export const authConfig: NextAuthConfig = {
+  trustHost: true,
+  secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || "insecure-default-secret-replace-me",
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
