@@ -2,9 +2,9 @@ import { GoogleGenAI } from "@google/genai"
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
 
-// Gemini text-embedding-004 produces 768-dimensional embeddings
+// Gemini embedding model - requesting 768 dimensions (compatible with pgvector HNSW indexes)
 export const EMBEDDING_DIMENSIONS = 768
-export const EMBEDDING_MODEL = "text-embedding-004"
+export const EMBEDDING_MODEL = "gemini-embedding-001"
 
 // Maximum characters to embed (roughly 2048 tokens)
 const MAX_CONTENT_LENGTH = 8000
@@ -51,7 +51,7 @@ export function prepareTextForEmbedding(link: LinkData): string | null {
 }
 
 /**
- * Generates an embedding for the given text using Gemini text-embedding-004.
+ * Generates an embedding for the given text using Gemini gemini-embedding-001.
  *
  * @param text - The text to embed
  * @param taskType - RETRIEVAL_DOCUMENT for indexing, RETRIEVAL_QUERY for searching
@@ -66,6 +66,7 @@ export async function generateEmbedding(
     contents: text,
     config: {
       taskType,
+      outputDimensionality: EMBEDDING_DIMENSIONS,
     },
   })
 

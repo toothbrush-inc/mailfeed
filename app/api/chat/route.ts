@@ -3,7 +3,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { GoogleGenAI } from "@google/genai"
 import { generateEmbedding } from "@/lib/embeddings"
-import { searchLinks, SimilarLink } from "@/lib/vector-search"
+import { searchSimilarContent, SimilarContent, textSearchLinks } from "@/lib/vector-search"
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
 
@@ -50,80 +50,98 @@ export async function POST(request: NextRequest) {
       console.log("[/api/chat] Embedding generation failed, using text search:", error)
     }
 
-    // Search for relevant links using vector search with text fallback
-    const relevantLinks: SimilarLink[] = await searchLinks(
-      session.user.id,
-      queryEmbedding,
-      searchTerm,
-      10,
-      0.3
-    )
+    // Search for relevant content (both links and emails) using vector search
+    let relevantContent: SimilarContent[] = []
+    if (queryEmbedding) {
+      try {
+        relevantContent = await searchSimilarContent(
+          session.user.id,
+          queryEmbedding,
+          10,
+          0.3
+        )
+      } catch (error) {
+        console.log("[/api/chat] Vector search failed, falling back to text search:", error)
+      }
+    }
 
-    // Fetch relevant emails
-    const relevantEmails = await prisma.email.findMany({
-      where: {
-        userId: session.user.id,
-        OR: [
-          { subject: { contains: searchTerm, mode: "insensitive" } },
-          { rawContent: { contains: searchTerm, mode: "insensitive" } },
-        ],
-      },
-      select: {
-        id: true,
-        subject: true,
-        rawContent: true,
-        receivedAt: true,
-      },
-      take: 5,
-      orderBy: { receivedAt: "desc" },
-    })
+    // If vector search didn't find anything, fall back to text search for links
+    if (relevantContent.length === 0) {
+      const textLinks = await textSearchLinks(session.user.id, searchTerm, 5)
+      relevantContent = textLinks.map(link => ({ type: 'link' as const, ...link }))
+
+      // Also search emails with text
+      const textEmails = await prisma.email.findMany({
+        where: {
+          userId: session.user.id,
+          OR: [
+            { subject: { contains: searchTerm, mode: "insensitive" } },
+            { rawContent: { contains: searchTerm, mode: "insensitive" } },
+          ],
+        },
+        select: {
+          id: true,
+          subject: true,
+          snippet: true,
+          receivedAt: true,
+        },
+        take: 5,
+        orderBy: { receivedAt: "desc" },
+      })
+
+      relevantContent.push(...textEmails.map(email => ({
+        type: 'email' as const,
+        id: email.id,
+        subject: email.subject,
+        snippet: email.snippet,
+        receivedAt: email.receivedAt,
+        similarity: 0.5,
+      })))
+    }
 
     // Build context from the retrieved data
     let context = ""
     const sources: Source[] = []
 
-    if (relevantLinks.length > 0) {
-      context += "## Relevant Links from your reading feed:\n\n"
-      for (const link of relevantLinks) {
-        context += `### ${link.title || "Untitled"}\n`
-        context += `URL: ${link.url}\n`
-        if (link.aiSummary) context += `Summary: ${link.aiSummary}\n`
-        if (link.aiKeyPoints?.length) context += `Key Points: ${link.aiKeyPoints.join("; ")}\n`
-        if (link.contentText) {
-          const truncatedContent = link.contentText.slice(0, 1500)
-          context += `Content: ${truncatedContent}${link.contentText.length > 1500 ? "..." : ""}\n`
-        }
-        context += "\n"
-        sources.push({
-          id: link.id,
-          title: link.title || link.url,
-          url: link.url,
-          type: "link",
-        })
-      }
-    }
+    if (relevantContent.length > 0) {
+      context += "## Relevant Content from your data:\n\n"
 
-    if (relevantEmails.length > 0) {
-      context += "## Relevant Emails:\n\n"
-      for (const email of relevantEmails) {
-        context += `### ${email.subject || "No Subject"}\n`
-        context += `Received: ${email.receivedAt.toISOString()}\n`
-        if (email.rawContent) {
-          // Strip HTML tags for cleaner context
-          const textContent = email.rawContent
-            .replace(/<[^>]+>/g, " ")
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 1000)
-          context += `Content: ${textContent}${email.rawContent.length > 1000 ? "..." : ""}\n`
+      for (const item of relevantContent) {
+        if (item.type === 'link') {
+          context += `### ${item.title || "Untitled"} (Link)\n`
+          context += `URL: ${item.url}\n`
+          if (item.aiSummary) context += `Summary: ${item.aiSummary}\n`
+          if (item.aiKeyPoints?.length) context += `Key Points: ${item.aiKeyPoints.join("; ")}\n`
+          if (item.contentText) {
+            const truncatedContent = item.contentText.slice(0, 1500)
+            context += `Content: ${truncatedContent}${item.contentText.length > 1500 ? "..." : ""}\n`
+          }
+          context += `Relevance: ${Math.round(item.similarity * 100)}%\n\n`
+          sources.push({
+            id: item.id,
+            title: item.title || item.url,
+            url: item.url,
+            type: "link",
+          })
+        } else if (item.type === 'email') {
+          context += `### ${item.subject || "No Subject"} (Email)\n`
+          context += `Received: ${item.receivedAt.toISOString()}\n`
+          if (item.snippet) {
+            // Strip HTML tags for cleaner context
+            const textContent = item.snippet
+              .replace(/<[^>]+>/g, " ")
+              .replace(/\s+/g, " ")
+              .trim()
+            context += `Content: ${textContent}\n`
+          }
+          context += `Relevance: ${Math.round(item.similarity * 100)}%\n\n`
+          sources.push({
+            id: item.id,
+            title: item.subject || "No Subject",
+            url: `/emails?id=${item.id}`,
+            type: "email",
+          })
         }
-        context += "\n"
-        sources.push({
-          id: email.id,
-          title: email.subject || "No Subject",
-          url: `email:${email.id}`,
-          type: "email",
-        })
       }
     }
 

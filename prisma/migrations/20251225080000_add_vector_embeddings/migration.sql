@@ -12,7 +12,7 @@
 -- Enable pgvector extension (requires superuser or extension installed)
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Add embedding column (768 dimensions for Gemini text-embedding-004)
+-- Add embedding column (768 dimensions for Gemini gemini-embedding-001)
 ALTER TABLE "Link" ADD COLUMN IF NOT EXISTS "embedding" vector(768);
 
 -- Add embedding tracking fields (if not already added via Prisma)

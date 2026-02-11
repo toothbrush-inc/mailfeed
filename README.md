@@ -146,7 +146,7 @@ MailFeed supports AI-powered semantic search using pgvector embeddings:
 2. **Generate Embeddings**: Click "Generate Embeddings" to process your links
 3. **Use Chat**: The chatbot will use semantic similarity to find relevant content
 
-Embeddings are generated using Gemini's `text-embedding-004` model (768 dimensions).
+Embeddings are generated using Gemini's `gemini-embedding-001` model (768 dimensions).
 
 ## Architecture
 

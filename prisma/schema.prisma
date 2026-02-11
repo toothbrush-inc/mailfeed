@@ -80,12 +80,19 @@ model Email {
   tags        EmailTag[]
   ingestedAt  DateTime?
 
+  // Vector embeddings for semantic search (managed via raw SQL)
+  // embedding column is vector(768) type, not directly supported by Prisma
+  embeddingStatus String?   @default("PENDING")  // PENDING, PROCESSING, COMPLETED, FAILED, SKIPPED
+  embeddedAt      DateTime?
+  embeddingError  String?
+
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   links Link[]
 
   @@index([userId])
   @@index([gmailId])
   @@index([receivedAt])
+  @@index([embeddingStatus])
 }
 
 enum EmailTag {

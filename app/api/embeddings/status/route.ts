@@ -3,8 +3,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { isPgVectorAvailable } from "@/lib/vector-search"
 
-interface EmbeddingStatus {
-  pgvectorAvailable: boolean
+interface StatusCounts {
   total: number
   embedded: number
   pending: number
@@ -12,6 +11,12 @@ interface EmbeddingStatus {
   failed: number
   skipped: number
   coverage: number
+}
+
+interface EmbeddingStatus {
+  pgvectorAvailable: boolean
+  links: StatusCounts
+  emails: StatusCounts
 }
 
 export async function GET() {
@@ -24,8 +29,8 @@ export async function GET() {
   try {
     const pgvectorAvailable = await isPgVectorAvailable()
 
-    // Get counts for each status
-    const [total, statusCounts] = await Promise.all([
+    // Get counts for links
+    const [linkTotal, linkStatusCounts] = await Promise.all([
       prisma.link.count({
         where: { userId: session.user.id },
       }),
@@ -36,31 +41,70 @@ export async function GET() {
       }),
     ])
 
-    // Parse status counts
-    const counts: Record<string, number> = {}
-    for (const item of statusCounts) {
-      counts[item.embeddingStatus || "PENDING"] = item._count
+    // Parse link status counts
+    const linkCounts: Record<string, number> = {}
+    for (const item of linkStatusCounts) {
+      linkCounts[item.embeddingStatus || "PENDING"] = item._count
     }
 
-    const embedded = counts["COMPLETED"] || 0
-    const pending = counts["PENDING"] || 0
-    const processing = counts["PROCESSING"] || 0
-    const failed = counts["FAILED"] || 0
-    const skipped = counts["SKIPPED"] || 0
+    const linkEmbedded = linkCounts["COMPLETED"] || 0
+    const linkPending = linkCounts["PENDING"] || 0
+    const linkProcessing = linkCounts["PROCESSING"] || 0
+    const linkFailed = linkCounts["FAILED"] || 0
+    const linkSkipped = linkCounts["SKIPPED"] || 0
 
-    // Calculate coverage (completed / (total - skipped))
-    const eligibleTotal = total - skipped
-    const coverage = eligibleTotal > 0 ? embedded / eligibleTotal : 0
+    // Calculate link coverage
+    const linkEligibleTotal = linkTotal - linkSkipped
+    const linkCoverage = linkEligibleTotal > 0 ? linkEmbedded / linkEligibleTotal : 0
+
+    // Get counts for emails
+    const [emailTotal, emailStatusCounts] = await Promise.all([
+      prisma.email.count({
+        where: { userId: session.user.id },
+      }),
+      prisma.email.groupBy({
+        by: ["embeddingStatus"],
+        where: { userId: session.user.id },
+        _count: true,
+      }),
+    ])
+
+    // Parse email status counts
+    const emailCounts: Record<string, number> = {}
+    for (const item of emailStatusCounts) {
+      emailCounts[item.embeddingStatus || "PENDING"] = item._count
+    }
+
+    const emailEmbedded = emailCounts["COMPLETED"] || 0
+    const emailPending = emailCounts["PENDING"] || 0
+    const emailProcessing = emailCounts["PROCESSING"] || 0
+    const emailFailed = emailCounts["FAILED"] || 0
+    const emailSkipped = emailCounts["SKIPPED"] || 0
+
+    // Calculate email coverage
+    const emailEligibleTotal = emailTotal - emailSkipped
+    const emailCoverage = emailEligibleTotal > 0 ? emailEmbedded / emailEligibleTotal : 0
 
     const status: EmbeddingStatus = {
       pgvectorAvailable,
-      total,
-      embedded,
-      pending,
-      processing,
-      failed,
-      skipped,
-      coverage: Math.round(coverage * 100) / 100,
+      links: {
+        total: linkTotal,
+        embedded: linkEmbedded,
+        pending: linkPending,
+        processing: linkProcessing,
+        failed: linkFailed,
+        skipped: linkSkipped,
+        coverage: Math.round(linkCoverage * 100) / 100,
+      },
+      emails: {
+        total: emailTotal,
+        embedded: emailEmbedded,
+        pending: emailPending,
+        processing: emailProcessing,
+        failed: emailFailed,
+        skipped: emailSkipped,
+        coverage: Math.round(emailCoverage * 100) / 100,
+      },
     }
 
     return NextResponse.json(status)

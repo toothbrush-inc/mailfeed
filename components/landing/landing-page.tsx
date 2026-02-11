@@ -1,3 +1,6 @@
+"use client"
+
+import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,6 +13,8 @@ import {
   CircleCheck,
   CircleX,
   TriangleAlert,
+  Terminal,
+  Code,
 } from "lucide-react"
 import type { SetupCheck } from "@/app/page"
 
@@ -176,149 +181,7 @@ export function LandingPage({ setupChecks }: { setupChecks?: SetupCheck[] }) {
       </section>
 
       {/* Install */}
-      <section
-        id="install"
-        className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8"
-      >
-        <h2 className="mb-2 text-center text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-          Self-Host MailFeed
-        </h2>
-        <p className="mb-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-          Run it on your own machine. Your data stays with you.
-        </p>
-
-        <div className="mb-8 rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-          <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            Prerequisites
-          </h3>
-          <ul className="space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-            <li>
-              <a
-                href="https://docs.docker.com/get-docker/"
-                className="underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Docker
-              </a>{" "}
-              installed and running
-            </li>
-            <li>
-              A{" "}
-              <a
-                href="https://console.cloud.google.com/"
-                className="underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Google Cloud
-              </a>{" "}
-              project with OAuth credentials and Gmail API enabled
-            </li>
-            <li>
-              A{" "}
-              <a
-                href="https://aistudio.google.com/apikey"
-                className="underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Gemini API key
-              </a>
-            </li>
-          </ul>
-        </div>
-
-        <ol className="space-y-5">
-          {steps.map((step, i) => (
-            <li key={i}>
-              <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                  {i + 1}
-                </span>
-                {step.label}
-              </p>
-              <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm text-zinc-100">
-                <code>{step.code}</code>
-              </pre>
-            </li>
-          ))}
-        </ol>
-
-        <div className="mt-8 rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-          <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            Google Cloud Setup
-          </h3>
-          <ol className="list-inside list-decimal space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-            <li>
-              <a
-                href="https://console.cloud.google.com/projectcreate"
-                className="underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Create a project
-              </a>{" "}
-              in Google Cloud Console
-            </li>
-            <li>
-              Enable the{" "}
-              <a
-                href="https://console.cloud.google.com/apis/library/gmail.googleapis.com"
-                className="underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Gmail API
-              </a>
-            </li>
-            <li>
-              Configure the{" "}
-              <a
-                href="https://console.cloud.google.com/apis/credentials/consent"
-                className="underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                OAuth consent screen
-              </a>{" "}
-              with{" "}
-              <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
-                gmail.readonly
-              </code>{" "}
-              scope
-            </li>
-            <li>
-              <a
-                href="https://console.cloud.google.com/apis/credentials/oauthclient"
-                className="underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Create OAuth 2.0 credentials
-              </a>{" "}
-              (Web application type)
-            </li>
-            <li>
-              Add redirect URI:{" "}
-              <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
-                http://localhost:3000/api/auth/callback/google
-              </code>
-            </li>
-            <li>
-              Get a Gemini API key from{" "}
-              <a
-                href="https://aistudio.google.com/apikey"
-                className="underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Google AI Studio
-              </a>
-            </li>
-          </ol>
-        </div>
-      </section>
+      <InstallSection />
 
       {/* Footer */}
       <footer className="border-t border-zinc-200 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-500">
@@ -334,6 +197,316 @@ export function LandingPage({ setupChecks }: { setupChecks?: SetupCheck[] }) {
           </a>
         </p>
       </footer>
+    </div>
+  )
+}
+
+function InstallSection() {
+  const [activeTab, setActiveTab] = useState<"quick" | "dev">("quick")
+
+  return (
+    <section
+      id="install"
+      className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8"
+    >
+      <h2 className="mb-2 text-center text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+        Self-Host MailFeed
+      </h2>
+      <p className="mb-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+        Run it on your own machine. Your data stays with you.
+      </p>
+
+      {/* Tab Switcher */}
+      <div className="mb-6 flex justify-center">
+        <div className="inline-flex rounded-lg border border-zinc-200 bg-zinc-100 p-1 dark:border-zinc-800 dark:bg-zinc-900">
+          <button
+            onClick={() => setActiveTab("quick")}
+            className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "quick"
+                ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
+                : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+            }`}
+          >
+            <Terminal className="h-4 w-4" />
+            Quick Start
+          </button>
+          <button
+            onClick={() => setActiveTab("dev")}
+            className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "dev"
+                ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
+                : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+            }`}
+          >
+            <Code className="h-4 w-4" />
+            Developer Setup
+          </button>
+        </div>
+      </div>
+
+      {activeTab === "quick" ? <QuickStartPath /> : <DevSetupPath />}
+    </section>
+  )
+}
+
+function QuickStartPath() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+        <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400">
+          Run this single command in Terminal. It installs Docker, clones the
+          repo, and walks you through entering your API keys.
+        </p>
+        <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm text-zinc-100">
+          <code>curl -fsSL https://raw.githubusercontent.com/davidd8/mailfeed/main/scripts/setup.sh | bash</code>
+        </pre>
+        <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-500">
+          macOS only. Requires an internet connection. The script will prompt you
+          for Google API credentials.
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          What the script does
+        </h3>
+        <ol className="list-inside list-decimal space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+          <li>Checks for (or installs) Homebrew, Docker Desktop, and Git</li>
+          <li>
+            Clones MailFeed into{" "}
+            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+              ~/mailfeed
+            </code>
+          </li>
+          <li>
+            Creates{" "}
+            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+              .env
+            </code>{" "}
+            and generates a secure secret
+          </li>
+          <li>Prompts you for Google OAuth and Gemini API credentials</li>
+          <li>
+            Starts the app with Docker Compose at{" "}
+            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+              http://localhost:3000
+            </code>
+          </li>
+        </ol>
+      </div>
+
+      <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          Google Cloud Setup
+        </h3>
+        <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">
+          The script will ask for three keys. Follow our{" "}
+          <Link
+            href="/setup/google"
+            className="font-medium text-zinc-900 underline dark:text-zinc-200"
+          >
+            step-by-step guide
+          </Link>{" "}
+          for detailed instructions with screenshots, or use the quick links below:
+        </p>
+        <ol className="list-inside list-decimal space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+          <li>
+            <a
+              href="https://console.cloud.google.com/projectcreate"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Create a project
+            </a>{" "}
+            in Google Cloud Console
+          </li>
+          <li>
+            Enable the{" "}
+            <a
+              href="https://console.cloud.google.com/apis/library/gmail.googleapis.com"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Gmail API
+            </a>
+          </li>
+          <li>
+            <a
+              href="https://console.cloud.google.com/apis/credentials/oauthclient"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Create OAuth 2.0 credentials
+            </a>{" "}
+            (Web application) with redirect URI:{" "}
+            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+              http://localhost:3000/api/auth/callback/google
+            </code>
+          </li>
+          <li>
+            Get a Gemini API key from{" "}
+            <a
+              href="https://aistudio.google.com/apikey"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Google AI Studio
+            </a>
+          </li>
+        </ol>
+      </div>
+    </div>
+  )
+}
+
+function DevSetupPath() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          Prerequisites
+        </h3>
+        <ul className="space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+          <li>
+            <a
+              href="https://docs.docker.com/get-docker/"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Docker
+            </a>{" "}
+            installed and running
+          </li>
+          <li>
+            A{" "}
+            <a
+              href="https://console.cloud.google.com/"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Google Cloud
+            </a>{" "}
+            project with OAuth credentials and Gmail API enabled
+          </li>
+          <li>
+            A{" "}
+            <a
+              href="https://aistudio.google.com/apikey"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Gemini API key
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <ol className="space-y-5">
+        {steps.map((step, i) => (
+          <li key={i}>
+            <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                {i + 1}
+              </span>
+              {step.label}
+            </p>
+            <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm text-zinc-100">
+              <code>{step.code}</code>
+            </pre>
+          </li>
+        ))}
+      </ol>
+
+      <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          Google Cloud Setup
+        </h3>
+        <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">
+          Follow our{" "}
+          <Link
+            href="/setup/google"
+            className="font-medium text-zinc-900 underline dark:text-zinc-200"
+          >
+            step-by-step guide
+          </Link>{" "}
+          for detailed instructions with screenshots.
+        </p>
+        <ol className="list-inside list-decimal space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+          <li>
+            <a
+              href="https://console.cloud.google.com/projectcreate"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Create a project
+            </a>{" "}
+            in Google Cloud Console
+          </li>
+          <li>
+            Enable the{" "}
+            <a
+              href="https://console.cloud.google.com/apis/library/gmail.googleapis.com"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Gmail API
+            </a>
+          </li>
+          <li>
+            Configure the{" "}
+            <a
+              href="https://console.cloud.google.com/apis/credentials/consent"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              OAuth consent screen
+            </a>{" "}
+            with{" "}
+            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+              gmail.readonly
+            </code>{" "}
+            scope
+          </li>
+          <li>
+            <a
+              href="https://console.cloud.google.com/apis/credentials/oauthclient"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Create OAuth 2.0 credentials
+            </a>{" "}
+            (Web application type)
+          </li>
+          <li>
+            Add redirect URI:{" "}
+            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+              http://localhost:3000/api/auth/callback/google
+            </code>
+          </li>
+          <li>
+            Get a Gemini API key from{" "}
+            <a
+              href="https://aistudio.google.com/apikey"
+              className="underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Google AI Studio
+            </a>
+          </li>
+        </ol>
+      </div>
     </div>
   )
 }
