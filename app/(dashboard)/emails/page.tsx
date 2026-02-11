@@ -3,6 +3,7 @@ import { EmailFeedContainer } from "@/components/feed/email-feed-container"
 import { EmailFeedSkeleton } from "@/components/feed/email-feed-skeleton"
 import { EmailTagFilter } from "@/components/feed/email-tag-filter"
 import { EmailActivityChart } from "@/components/feed/email-activity-chart"
+import { EmailSearch } from "@/components/feed/email-search"
 
 export default function EmailsPage() {
   return (
@@ -17,6 +18,12 @@ export default function EmailsPage() {
       <Suspense fallback={null}>
         <EmailActivityChart />
       </Suspense>
+
+      <div className="mb-4">
+        <Suspense fallback={null}>
+          <EmailSearch />
+        </Suspense>
+      </div>
 
       <Suspense fallback={null}>
         <EmailTagFilter />

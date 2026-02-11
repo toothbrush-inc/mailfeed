@@ -14,31 +14,15 @@ export async function GET() {
   // Get all counts in parallel
   const [
     totalLinks,
-    highlightedLinks,
     totalEmails,
-    linksWithContent,
     domainsData,
     user,
   ] = await Promise.all([
     prisma.link.count({
       where: { userId, parentLinkId: null },
     }),
-    prisma.link.count({
-      where: { userId, parentLinkId: null, isHighlighted: true },
-    }),
     prisma.email.count({
       where: { userId },
-    }),
-    // Count links with readable content
-    prisma.link.count({
-      where: {
-        userId,
-        parentLinkId: null,
-        OR: [
-          { contentText: { not: null } },
-          { rawHtml: { not: null } },
-        ],
-      },
     }),
     // Get unique domains count
     prisma.link.findMany({
@@ -64,9 +48,7 @@ export async function GET() {
 
   return NextResponse.json({
     links: totalLinks,
-    highlighted: highlightedLinks,
     emails: totalEmails,
     domains: uniqueDomains.size,
-    withContent: linksWithContent,
   })
 }

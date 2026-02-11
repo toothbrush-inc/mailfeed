@@ -4,10 +4,8 @@ import useSWR from "swr"
 
 interface Stats {
   links: number
-  highlighted: number
   emails: number
   domains: number
-  withContent: number
 }
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())

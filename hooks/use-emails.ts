@@ -40,6 +40,7 @@ interface EmailsResponse {
 
 interface UseEmailsOptions {
   tag?: string | null
+  search?: string | null
   page?: number
   limit?: number
 }
@@ -50,6 +51,7 @@ export function useEmails(options: UseEmailsOptions = {}) {
   const params = new URLSearchParams()
 
   if (options.tag) params.set("tag", options.tag)
+  if (options.search) params.set("search", options.search)
   if (options.page) params.set("page", options.page.toString())
   if (options.limit) params.set("limit", options.limit.toString())
 

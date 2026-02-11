@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get("page") || "1")
   const limit = parseInt(searchParams.get("limit") || "20")
   const tag = searchParams.get("tag")
+  const search = searchParams.get("search")
 
   // Build where clause
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,6 +28,25 @@ export async function GET(request: NextRequest) {
 
   if (tag) {
     where.tags = { has: tag }
+  }
+
+  if (search) {
+    where.OR = [
+      { subject: { contains: search, mode: "insensitive" } },
+      { rawContent: { contains: search, mode: "insensitive" } },
+      { snippet: { contains: search, mode: "insensitive" } },
+      {
+        links: {
+          some: {
+            OR: [
+              { title: { contains: search, mode: "insensitive" } },
+              { aiSummary: { contains: search, mode: "insensitive" } },
+              { aiCategory: { contains: search, mode: "insensitive" } },
+            ],
+          },
+        },
+      },
+    ]
   }
 
   const queryStart = Date.now()
