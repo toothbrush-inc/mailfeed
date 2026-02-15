@@ -33,9 +33,16 @@ interface Link {
   contentText: string | null
   contentHtml: string | null
   rawHtml: string | null
+  fetchError: string | null
+  fetchedAt: string | null
+  analyzedAt: string | null
   isRead: boolean
   readAt: string | null
+  embeddingStatus: string | null
+  embeddedAt: string | null
+  embeddingError: string | null
   createdAt: string
+  updatedAt: string
   email: {
     gmailId: string
     subject: string | null

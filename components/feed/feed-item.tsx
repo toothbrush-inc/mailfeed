@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle, KeyRound } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle, KeyRound } from "lucide-react"
 import {
   Dialog,
   DialogClose,
@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { SocialEmbed, isEmbeddable } from "./social-embed"
-import { FetchHistoryDialog } from "./fetch-history-dialog"
+import { LinkDebugDialog } from "./link-debug-dialog"
 import { NestedLinkItem } from "./nested-link-item"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -54,9 +54,16 @@ interface FeedItemProps {
     contentHtml: string | null
     rawHtml: string | null
     wordCount: number | null
+    fetchError: string | null
+    fetchedAt: string | null
+    analyzedAt: string | null
     isRead: boolean
     readAt: string | null
+    embeddingStatus: string | null
+    embeddedAt: string | null
+    embeddingError: string | null
     createdAt: string
+    updatedAt: string
     email: {
       gmailId: string
       subject: string | null
@@ -117,8 +124,6 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
   const [isRefetching, setIsRefetching] = useState(false)
   const [isFetchingArchive, setIsFetchingArchive] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
-  const [rawContent, setRawContent] = useState<string | null>(null)
-  const [isLoadingRaw, setIsLoadingRaw] = useState(false)
   const [isTogglingRead, setIsTogglingRead] = useState(false)
   const [isRead, setIsRead] = useState(link.isRead)
   const [isHidingDomain, setIsHidingDomain] = useState(false)
@@ -213,27 +218,6 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
       console.error("Failed to refetch link:", error)
     } finally {
       setIsRefetching(false)
-    }
-  }
-
-  const handleLoadRawContent = async () => {
-    if (rawContent !== null) return // Already loaded
-    setIsLoadingRaw(true)
-    try {
-      const response = await fetch(`/api/links/${link.id}/raw`)
-      if (!response.ok) {
-        throw new Error("Failed to load raw content")
-      }
-      const data = await response.json()
-      // Show rawHtml if available, otherwise contentText
-      const content = data.rawHtml || data.contentText || "No content stored"
-      const label = data.rawHtml ? "[rawHtml]" : "[contentText]"
-      setRawContent(`${label}\n\n${content}`)
-    } catch (error) {
-      console.error("Failed to load raw content:", error)
-      setRawContent("Error loading content")
-    } finally {
-      setIsLoadingRaw(false)
     }
   }
 
@@ -373,7 +357,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                 href={link.finalUrl || link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:underline"
+                className="hover:underline inline-flex items-center gap-1.5"
               >
                 {searchTerm ? (
                   <Highlighter
@@ -385,6 +369,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                 ) : (
                   link.title || link.finalUrl || link.url
                 )}
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               </a>
             </h3>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -927,7 +912,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
             </Button>
           )}
 
-          {/* Report Broken Link button */}
+          {/* Report Link button */}
           {!isProcessing && (
             <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
               <DialogTrigger asChild>
@@ -945,14 +930,14 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                   ) : (
                     <>
                       <Flag className="mr-1 h-4 w-4" />
-                      Report Broken Link
+                      Report Link
                     </>
                   )}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Report Broken Link</DialogTitle>
+                  <DialogTitle>Report Link</DialogTitle>
                   <DialogDescription>
                     This flags the link as having content fetch or parse issues. The link will be queued for re-processing with alternative fetching strategies.
                   </DialogDescription>
@@ -1020,53 +1005,17 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
             </Button>
           )}
 
-          {/* Fetch History button */}
-          <FetchHistoryDialog linkId={link.id} linkUrl={link.finalUrl || link.url} />
-
-          {/* View Raw HTML button */}
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={handleLoadRawContent}>
-                <Code className="mr-1 h-4 w-4" />
-                Raw
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[80vh]">
-              <DialogHeader>
-                <DialogTitle>Raw Content</DialogTitle>
-                <DialogDescription>
-                  {link.finalUrl || link.url}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="overflow-auto max-h-[60vh] rounded border bg-muted p-4">
-                {isLoadingRaw ? (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading...
-                  </div>
-                ) : (
-                  <pre className="text-xs whitespace-pre-wrap font-mono">
-                    {rawContent || "No content loaded"}
-                  </pre>
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
+          {/* Debug dialog */}
+          <LinkDebugDialog linkId={link.id} linkUrl={link.finalUrl || link.url} link={link} />
 
           {gmailUrl && (
             <Button variant="ghost" size="sm" asChild>
               <a href={gmailUrl} target="_blank" rel="noopener noreferrer">
                 <Mail className="mr-1 h-4 w-4" />
-                View Email
+                Open Email
               </a>
             </Button>
           )}
-          <Button variant="ghost" size="sm" asChild>
-            <a href={link.finalUrl || link.url} target="_blank" rel="noopener noreferrer">
-              Read Article
-              <ExternalLink className="ml-1 h-4 w-4" />
-            </a>
-          </Button>
         </div>
       </CardFooter>
     </Card>
