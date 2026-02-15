@@ -1,6 +1,11 @@
 import { GoogleGenAI } from "@google/genai"
 
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
+function getGenAI(): GoogleGenAI {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not configured")
+  }
+  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+}
 
 export interface AnalysisResult {
   summary: string
@@ -63,7 +68,7 @@ export async function analyzeContent(
 
   const startTime = Date.now()
 
-  const response = await genAI.models.generateContent({
+  const response = await getGenAI().models.generateContent({
     model: "gemini-1.5-flash",
     contents: prompt,
   })

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { X, Send, Loader2, MessageCircle, ExternalLink, Mail } from "lucide-react"
+import { X, Send, Loader2, MessageCircle, ExternalLink, Mail, KeyRound } from "lucide-react"
 
 interface ChatMessage {
   role: "user" | "assistant"
@@ -26,6 +26,7 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [geminiNotConfigured, setGeminiNotConfigured] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -65,6 +66,12 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
       const data = await response.json()
 
       if (!response.ok) {
+        if (data.code === "GEMINI_NOT_CONFIGURED") {
+          setGeminiNotConfigured(true)
+          // Remove the user message we just added
+          setMessages((prev) => prev.slice(0, -1))
+          return
+        }
         throw new Error(data.error || "Failed to get response")
       }
 
@@ -100,15 +107,9 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-end p-4 sm:p-6">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/20 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div className="relative flex flex-col w-full max-w-md h-[600px] max-h-[80vh] bg-background border rounded-xl shadow-2xl overflow-hidden">
+    <div className="fixed bottom-6 right-6 z-50">
+      {/* Chat panel */}
+      <div className="flex flex-col w-[400px] max-w-[calc(100vw-3rem)] h-[600px] max-h-[calc(100vh-6rem)] bg-background border rounded-xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
           <div className="flex items-center gap-2">
@@ -122,7 +123,26 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 && (
+          {geminiNotConfigured && (
+            <div className="text-center py-8 px-4">
+              <KeyRound className="h-12 w-12 mx-auto mb-4 text-amber-500 opacity-80" />
+              <p className="text-sm font-medium">Gemini API Key Required</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                To use AI chat, add a <code className="bg-muted px-1 py-0.5 rounded text-xs">GEMINI_API_KEY</code> to your <code className="bg-muted px-1 py-0.5 rounded text-xs">.env</code> file and restart the server.
+              </p>
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-3"
+              >
+                Get a key from Google AI Studio
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          )}
+
+          {!geminiNotConfigured && messages.length === 0 && (
             <div className="text-center text-muted-foreground py-8">
               <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p className="text-sm">
@@ -208,12 +228,12 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask about your saved content..."
-              disabled={isLoading}
+              disabled={isLoading || geminiNotConfigured}
               className="flex-1"
             />
             <Button
               onClick={sendMessage}
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || geminiNotConfigured}
               size="icon"
             >
               {isLoading ? (

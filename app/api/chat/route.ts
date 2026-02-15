@@ -5,8 +5,6 @@ import { GoogleGenAI } from "@google/genai"
 import { generateEmbedding } from "@/lib/embeddings"
 import { searchSimilarContent, SimilarContent, textSearchLinks } from "@/lib/vector-search"
 
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
-
 interface ChatMessage {
   role: "user" | "assistant"
   content: string
@@ -30,6 +28,15 @@ export async function POST(request: NextRequest) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  if (!process.env.GEMINI_API_KEY) {
+    return NextResponse.json(
+      { error: "GEMINI_API_KEY is not configured. Add it to your .env file to enable AI chat.", code: "GEMINI_NOT_CONFIGURED" },
+      { status: 503 }
+    )
+  }
+
+  const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 
   try {
     const body: ChatRequest = await request.json()

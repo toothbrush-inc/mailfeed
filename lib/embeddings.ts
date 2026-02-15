@@ -1,6 +1,11 @@
 import { GoogleGenAI } from "@google/genai"
 
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
+function getGenAI(): GoogleGenAI {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY is not configured")
+  }
+  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+}
 
 // Gemini embedding model - requesting 768 dimensions (compatible with pgvector HNSW indexes)
 export const EMBEDDING_DIMENSIONS = 768
@@ -61,7 +66,7 @@ export async function generateEmbedding(
   text: string,
   taskType: EmbeddingTaskType = "RETRIEVAL_DOCUMENT"
 ): Promise<number[]> {
-  const result = await genAI.models.embedContent({
+  const result = await getGenAI().models.embedContent({
     model: EMBEDDING_MODEL,
     contents: text,
     config: {

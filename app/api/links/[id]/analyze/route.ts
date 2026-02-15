@@ -17,6 +17,13 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  if (!process.env.GEMINI_API_KEY) {
+    return NextResponse.json(
+      { error: "GEMINI_API_KEY is not configured. Add it to your .env file to enable AI analysis.", code: "GEMINI_NOT_CONFIGURED" },
+      { status: 503 }
+    )
+  }
+
   // Fetch the link with its email content and raw HTML
   const link = await prisma.link.findUnique({
     where: { id },

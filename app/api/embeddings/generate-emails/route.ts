@@ -52,6 +52,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  if (!process.env.GEMINI_API_KEY) {
+    return NextResponse.json(
+      { error: "GEMINI_API_KEY is not configured. Add it to your .env file to enable embeddings.", code: "GEMINI_NOT_CONFIGURED" },
+      { status: 503 }
+    )
+  }
+
   // Check if pgvector is available
   const pgvectorAvailable = await isPgVectorAvailable()
   if (!pgvectorAvailable) {

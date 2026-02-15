@@ -5,11 +5,13 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Code, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle, KeyRound } from "lucide-react"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -127,6 +129,8 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
   const [showFloatingCollapse, setShowFloatingCollapse] = useState(false)
   const [isReporting, setIsReporting] = useState(false)
   const [hasReported, setHasReported] = useState(false)
+  const [reportDialogOpen, setReportDialogOpen] = useState(false)
+  const [geminiNotConfigured, setGeminiNotConfigured] = useState(false)
   const contentHeaderRef = useRef<HTMLDivElement>(null)
 
   // Track when the content header scrolls out of view to show floating collapse button
@@ -178,8 +182,12 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
         method: "POST",
       })
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Analysis failed")
+        const data = await response.json()
+        if (data.code === "GEMINI_NOT_CONFIGURED") {
+          setGeminiNotConfigured(true)
+          return
+        }
+        throw new Error(data.error || "Analysis failed")
       }
       onAnalyzeComplete?.()
     } catch (error) {
@@ -295,6 +303,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
         throw new Error("Failed to submit report")
       }
       setHasReported(true)
+      setReportDialogOpen(false)
     } catch (error) {
       console.error("Failed to report link:", error)
     } finally {
@@ -705,6 +714,28 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
           </div>
         )}
 
+        {geminiNotConfigured && (
+          <div className="flex items-start gap-2 rounded-md bg-amber-50 p-3 text-sm dark:bg-amber-950">
+            <KeyRound className="h-4 w-4 mt-0.5 text-amber-500 shrink-0" />
+            <div>
+              <p className="font-medium text-amber-700 dark:text-amber-300">
+                Gemini API Key Required
+              </p>
+              <p className="text-amber-600 dark:text-amber-400">
+                Add a <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">GEMINI_API_KEY</code> to your <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">.env</code> file to enable AI analysis.{" "}
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  Get a key from Google AI Studio
+                </a>
+              </p>
+            </div>
+          </div>
+        )}
+
         {isProcessing && (
           <p className="animate-pulse text-sm text-muted-foreground">
             Processing content...
@@ -895,32 +926,56 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
             </Button>
           )}
 
-          {/* Report Issue button - for failed fetches or missing content */}
-          {(hasFailed || !hasArticleContent) && !isProcessing && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleReport}
-              disabled={isReporting || hasReported}
-              className={cn(hasReported && "text-green-600 dark:text-green-400")}
-            >
-              {isReporting ? (
-                <>
-                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                  Reporting...
-                </>
-              ) : hasReported ? (
-                <>
-                  <CheckCircle className="mr-1 h-4 w-4" />
-                  Reported
-                </>
-              ) : (
-                <>
-                  <Flag className="mr-1 h-4 w-4" />
-                  Report Issue
-                </>
-              )}
-            </Button>
+          {/* Report Broken Link button */}
+          {!isProcessing && (
+            <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={hasReported}
+                  className={cn(hasReported && "text-green-600 dark:text-green-400")}
+                >
+                  {hasReported ? (
+                    <>
+                      <CheckCircle className="mr-1 h-4 w-4" />
+                      Reported
+                    </>
+                  ) : (
+                    <>
+                      <Flag className="mr-1 h-4 w-4" />
+                      Report Broken Link
+                    </>
+                  )}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Report Broken Link</DialogTitle>
+                  <DialogDescription>
+                    This flags the link as having content fetch or parse issues. The link will be queued for re-processing with alternative fetching strategies.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="outline">Cancel</Button>
+                  </DialogClose>
+                  <Button
+                    onClick={handleReport}
+                    disabled={isReporting}
+                  >
+                    {isReporting ? (
+                      <>
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                        Reporting...
+                      </>
+                    ) : (
+                      "Report"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           )}
 
           {/* Analyze buttons */}

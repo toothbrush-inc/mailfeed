@@ -17,11 +17,16 @@ import {
   Star,
   Archive,
   Twitter,
+  Flag,
+  CheckCircle,
+  KeyRound,
 } from "lucide-react"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -72,6 +77,10 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
   const [xArticleUsername, setXArticleUsername] = useState("")
   const [xArticleError, setXArticleError] = useState<string | null>(null)
   const [xArticleDialogOpen, setXArticleDialogOpen] = useState(false)
+  const [isReporting, setIsReporting] = useState(false)
+  const [hasReported, setHasReported] = useState(false)
+  const [reportDialogOpen, setReportDialogOpen] = useState(false)
+  const [geminiNotConfigured, setGeminiNotConfigured] = useState(false)
 
   // Check if this is an X article URL that needs resolution
   const isXArticleUrl = /^https?:\/\/(x\.com|twitter\.com)\/i\/article\/\d+/i.test(link.url)
@@ -90,8 +99,12 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
         method: "POST",
       })
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Analysis failed")
+        const data = await response.json()
+        if (data.code === "GEMINI_NOT_CONFIGURED") {
+          setGeminiNotConfigured(true)
+          return
+        }
+        throw new Error(data.error || "Analysis failed")
       }
       onUpdate?.()
     } catch (error) {
@@ -185,6 +198,26 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
       console.error("Failed to toggle read status:", error)
     } finally {
       setIsTogglingRead(false)
+    }
+  }
+
+  const handleReport = async () => {
+    setIsReporting(true)
+    try {
+      const response = await fetch(`/api/links/${link.id}/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Content fetch/parse issue" }),
+      })
+      if (!response.ok) {
+        throw new Error("Failed to submit report")
+      }
+      setHasReported(true)
+      setReportDialogOpen(false)
+    } catch (error) {
+      console.error("Failed to report link:", error)
+    } finally {
+      setIsReporting(false)
     }
   }
 
@@ -305,6 +338,16 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
             <div className="flex items-center gap-2 text-xs text-red-500">
               <AlertTriangle className="h-3 w-3" />
               <span>{archiveError}</span>
+            </div>
+          )}
+
+          {geminiNotConfigured && (
+            <div className="flex items-start gap-2 rounded bg-amber-50 p-2 text-xs dark:bg-amber-950">
+              <KeyRound className="h-3 w-3 mt-0.5 text-amber-500 shrink-0" />
+              <p className="text-amber-600 dark:text-amber-400">
+                Add a <code className="rounded bg-amber-100 px-1 py-0.5 dark:bg-amber-900">GEMINI_API_KEY</code> to your .env to enable AI analysis.{" "}
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="underline">Get a key</a>
+              </p>
             </div>
           )}
 
@@ -514,6 +557,58 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
                 )}
                 Archive
               </Button>
+            )}
+
+            {/* Report Broken Link button */}
+            {!isProcessing && (
+              <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn("h-7 text-xs", hasReported && "text-green-600 dark:text-green-400")}
+                    disabled={hasReported}
+                  >
+                    {hasReported ? (
+                      <>
+                        <CheckCircle className="mr-1 h-3 w-3" />
+                        Reported
+                      </>
+                    ) : (
+                      <>
+                        <Flag className="mr-1 h-3 w-3" />
+                        Report
+                      </>
+                    )}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Report Broken Link</DialogTitle>
+                    <DialogDescription>
+                      This flags the link as having content fetch or parse issues. The link will be queued for re-processing with alternative fetching strategies.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="outline">Cancel</Button>
+                    </DialogClose>
+                    <Button
+                      onClick={handleReport}
+                      disabled={isReporting}
+                    >
+                      {isReporting ? (
+                        <>
+                          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                          Reporting...
+                        </>
+                      ) : (
+                        "Report"
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             )}
 
             {needsAnalysis ? (

@@ -4,7 +4,7 @@ import { useState } from "react"
 import useSWR from "swr"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, AlertCircle, CheckCircle, Sparkles } from "lucide-react"
+import { Loader2, AlertCircle, CheckCircle, Sparkles, KeyRound, ExternalLink } from "lucide-react"
 
 interface StatusCounts {
   total: number
@@ -18,6 +18,7 @@ interface StatusCounts {
 
 interface EmbeddingStatus {
   pgvectorAvailable: boolean
+  geminiConfigured: boolean
   links: StatusCounts
   emails: StatusCounts
 }
@@ -38,6 +39,7 @@ export function EmbeddingSection() {
   const [isGeneratingEmails, setIsGeneratingEmails] = useState(false)
   const [lastLinkResult, setLastLinkResult] = useState<GenerateResult | null>(null)
   const [lastEmailResult, setLastEmailResult] = useState<GenerateResult | null>(null)
+  const [geminiNotConfigured, setGeminiNotConfigured] = useState(false)
 
   const { data: status, mutate } = useSWR<EmbeddingStatus>(
     "/api/embeddings/status",
@@ -53,7 +55,15 @@ export function EmbeddingSection() {
       const response = await fetch("/api/embeddings/generate?limit=50", {
         method: "POST",
       })
-      const result: GenerateResult = await response.json()
+      const data = await response.json()
+
+      if (data.code === "GEMINI_NOT_CONFIGURED") {
+        setGeminiNotConfigured(true)
+        setIsGeneratingLinks(false)
+        return
+      }
+
+      const result: GenerateResult = data
       setLastLinkResult(result)
       mutate()
 
@@ -78,7 +88,15 @@ export function EmbeddingSection() {
       const response = await fetch("/api/embeddings/generate-emails?limit=50", {
         method: "POST",
       })
-      const result: GenerateResult = await response.json()
+      const data = await response.json()
+
+      if (data.code === "GEMINI_NOT_CONFIGURED") {
+        setGeminiNotConfigured(true)
+        setIsGeneratingEmails(false)
+        return
+      }
+
+      const result: GenerateResult = data
       setLastEmailResult(result)
       mutate()
 
@@ -114,6 +132,7 @@ export function EmbeddingSection() {
     )
   }
 
+  const isGeminiMissing = geminiNotConfigured || !status.geminiConfigured
   const linkCoveragePercent = Math.round(status.links.coverage * 100)
   const emailCoveragePercent = Math.round(status.emails.coverage * 100)
   const needsLinkEmbeddings = status.links.pending > 0 || status.links.failed > 0
@@ -131,6 +150,29 @@ export function EmbeddingSection() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {isGeminiMissing && (
+          <div className="flex items-start gap-3 rounded-md bg-amber-50 p-4 dark:bg-amber-950">
+            <KeyRound className="h-5 w-5 mt-0.5 text-amber-500 shrink-0" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                Gemini API Key Required
+              </p>
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                To generate embeddings, add a <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">GEMINI_API_KEY</code> to your <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">.env</code> file and restart the server.
+              </p>
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-amber-700 hover:underline dark:text-amber-300"
+              >
+                Get a key from Google AI Studio
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
+        )}
+
         {!status.pgvectorAvailable ? (
           <div className="flex items-start gap-2 rounded-md bg-amber-50 p-3 text-sm dark:bg-amber-950">
             <AlertCircle className="h-4 w-4 mt-0.5 text-amber-500" />
@@ -188,7 +230,7 @@ export function EmbeddingSection() {
               <div className="flex items-center gap-3">
                 <Button
                   onClick={handleGenerateLinks}
-                  disabled={isGeneratingLinks || !needsLinkEmbeddings}
+                  disabled={isGeneratingLinks || !needsLinkEmbeddings || isGeminiMissing}
                   size="sm"
                 >
                   {isGeneratingLinks ? (
@@ -277,7 +319,7 @@ export function EmbeddingSection() {
               <div className="flex items-center gap-3">
                 <Button
                   onClick={handleGenerateEmails}
-                  disabled={isGeneratingEmails || !needsEmailEmbeddings}
+                  disabled={isGeneratingEmails || !needsEmailEmbeddings || isGeminiMissing}
                   size="sm"
                 >
                   {isGeneratingEmails ? (

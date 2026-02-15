@@ -8,6 +8,7 @@ export type SetupCheck = {
   hint: string
   url?: string
   ok: boolean
+  optional?: boolean
 }
 
 function isSet(value: string | undefined): boolean {
@@ -39,9 +40,10 @@ function getSetupChecks(): SetupCheck[] {
     {
       key: "gemini",
       label: "GEMINI_API_KEY",
-      hint: "Get one from Google AI Studio",
+      hint: "Optional — enables AI summaries and chat. Get one from Google AI Studio",
       url: "https://aistudio.google.com/apikey",
       ok: isSet(process.env.GEMINI_API_KEY),
+      optional: true,
     },
   ]
 }
@@ -54,7 +56,7 @@ export default async function HomePage() {
   }
 
   const setupChecks = getSetupChecks()
-  const hasSetupIssues = setupChecks.some((c) => !c.ok)
+  const hasSetupIssues = setupChecks.some((c) => !c.ok && !c.optional)
 
   return <LandingPage setupChecks={hasSetupIssues ? setupChecks : undefined} />
 }

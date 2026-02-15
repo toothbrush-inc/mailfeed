@@ -38,7 +38,7 @@ export function Header({ user }: HeaderProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={() => signOut({ callbackUrl: "/" })}
             >
               Sign out
             </Button>

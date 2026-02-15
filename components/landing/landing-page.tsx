@@ -101,6 +101,8 @@ export function LandingPage({ setupChecks }: { setupChecks?: SetupCheck[] }) {
                 <li key={check.key} className="flex items-start gap-2 text-sm">
                   {check.ok ? (
                     <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                  ) : check.optional ? (
+                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400" />
                   ) : (
                     <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-red-500 dark:text-red-400" />
                   )}

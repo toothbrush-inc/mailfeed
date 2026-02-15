@@ -15,6 +15,7 @@ interface StatusCounts {
 
 interface EmbeddingStatus {
   pgvectorAvailable: boolean
+  geminiConfigured: boolean
   links: StatusCounts
   emails: StatusCounts
 }
@@ -87,6 +88,7 @@ export async function GET() {
 
     const status: EmbeddingStatus = {
       pgvectorAvailable,
+      geminiConfigured: !!process.env.GEMINI_API_KEY,
       links: {
         total: linkTotal,
         embedded: linkEmbedded,
