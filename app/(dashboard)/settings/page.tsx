@@ -2,6 +2,11 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmbeddingSection } from "@/components/settings/embedding-section"
+import { AiSettings } from "@/components/settings/ai-settings"
+import { EmailSettings } from "@/components/settings/email-settings"
+import { FetchingSettings } from "@/components/settings/fetching-settings"
+import { SyncSettings } from "@/components/settings/sync-settings"
+import { FeedSettings } from "@/components/settings/feed-settings"
 
 export default async function SettingsPage() {
   const session = await auth()
@@ -95,6 +100,11 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
+      <AiSettings />
+      <EmailSettings />
+      <FetchingSettings />
+      <SyncSettings />
+      <FeedSettings />
       <EmbeddingSection />
     </div>
   )

@@ -4,7 +4,8 @@ import { useState } from "react"
 import useSWR from "swr"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, AlertCircle, CheckCircle, Sparkles, KeyRound, ExternalLink } from "lucide-react"
+import { Loader2, AlertCircle, CheckCircle, Sparkles, KeyRound, ExternalLink, RotateCcw } from "lucide-react"
+import { useSettings } from "@/hooks/use-settings"
 
 interface StatusCounts {
   total: number
@@ -39,7 +40,8 @@ export function EmbeddingSection() {
   const [isGeneratingEmails, setIsGeneratingEmails] = useState(false)
   const [lastLinkResult, setLastLinkResult] = useState<GenerateResult | null>(null)
   const [lastEmailResult, setLastEmailResult] = useState<GenerateResult | null>(null)
-  const [geminiNotConfigured, setGeminiNotConfigured] = useState(false)
+  const [aiNotConfigured, setAiNotConfigured] = useState(false)
+  const { requiredEnvVar } = useSettings()
 
   const { data: status, mutate } = useSWR<EmbeddingStatus>(
     "/api/embeddings/status",
@@ -47,18 +49,19 @@ export function EmbeddingSection() {
     { refreshInterval: isGeneratingLinks || isGeneratingEmails ? 2000 : 0 }
   )
 
-  const handleGenerateLinks = async () => {
+  const handleGenerateLinks = async (retry = false) => {
     setIsGeneratingLinks(true)
     setLastLinkResult(null)
 
     try {
-      const response = await fetch("/api/embeddings/generate?limit=50", {
+      const params = retry ? "limit=50&retry=true" : "limit=50"
+      const response = await fetch(`/api/embeddings/generate?${params}`, {
         method: "POST",
       })
       const data = await response.json()
 
-      if (data.code === "GEMINI_NOT_CONFIGURED") {
-        setGeminiNotConfigured(true)
+      if (data.code === "AI_NOT_CONFIGURED") {
+        setAiNotConfigured(true)
         setIsGeneratingLinks(false)
         return
       }
@@ -70,7 +73,7 @@ export function EmbeddingSection() {
       // If there are more to process, continue automatically
       if (result.hasMore && result.succeeded > 0) {
         // Small delay before continuing
-        setTimeout(() => handleGenerateLinks(), 500)
+        setTimeout(() => handleGenerateLinks(retry), 500)
         return
       }
     } catch (error) {
@@ -80,18 +83,19 @@ export function EmbeddingSection() {
     }
   }
 
-  const handleGenerateEmails = async () => {
+  const handleGenerateEmails = async (retry = false) => {
     setIsGeneratingEmails(true)
     setLastEmailResult(null)
 
     try {
-      const response = await fetch("/api/embeddings/generate-emails?limit=50", {
+      const params = retry ? "limit=50&retry=true" : "limit=50"
+      const response = await fetch(`/api/embeddings/generate-emails?${params}`, {
         method: "POST",
       })
       const data = await response.json()
 
-      if (data.code === "GEMINI_NOT_CONFIGURED") {
-        setGeminiNotConfigured(true)
+      if (data.code === "AI_NOT_CONFIGURED") {
+        setAiNotConfigured(true)
         setIsGeneratingEmails(false)
         return
       }
@@ -103,7 +107,7 @@ export function EmbeddingSection() {
       // If there are more to process, continue automatically
       if (result.hasMore && result.succeeded > 0) {
         // Small delay before continuing
-        setTimeout(() => handleGenerateEmails(), 500)
+        setTimeout(() => handleGenerateEmails(retry), 500)
         return
       }
     } catch (error) {
@@ -132,7 +136,7 @@ export function EmbeddingSection() {
     )
   }
 
-  const isGeminiMissing = geminiNotConfigured || !status.geminiConfigured
+  const isAiMissing = aiNotConfigured || !status.geminiConfigured
   const linkCoveragePercent = Math.round(status.links.coverage * 100)
   const emailCoveragePercent = Math.round(status.emails.coverage * 100)
   const needsLinkEmbeddings = status.links.pending > 0 || status.links.failed > 0
@@ -150,25 +154,16 @@ export function EmbeddingSection() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {isGeminiMissing && (
+        {isAiMissing && (
           <div className="flex items-start gap-3 rounded-md bg-amber-50 p-4 dark:bg-amber-950">
             <KeyRound className="h-5 w-5 mt-0.5 text-amber-500 shrink-0" />
             <div className="space-y-1">
               <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                Gemini API Key Required
+                AI API Key Required
               </p>
               <p className="text-sm text-amber-600 dark:text-amber-400">
-                To generate embeddings, add a <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">GEMINI_API_KEY</code> to your <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">.env</code> file and restart the server.
+                To generate embeddings, add <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">{requiredEnvVar || "GEMINI_API_KEY"}</code> to your <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">.env</code> file and restart the server.
               </p>
-              <a
-                href="https://aistudio.google.com/apikey"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-amber-700 hover:underline dark:text-amber-300"
-              >
-                Get a key from Google AI Studio
-                <ExternalLink className="h-3 w-3" />
-              </a>
             </div>
           </div>
         )}
@@ -229,8 +224,8 @@ export function EmbeddingSection() {
               {/* Link generate button */}
               <div className="flex items-center gap-3">
                 <Button
-                  onClick={handleGenerateLinks}
-                  disabled={isGeneratingLinks || !needsLinkEmbeddings || isGeminiMissing}
+                  onClick={() => handleGenerateLinks()}
+                  disabled={isGeneratingLinks || !needsLinkEmbeddings || isAiMissing}
                   size="sm"
                 >
                   {isGeneratingLinks ? (
@@ -250,6 +245,18 @@ export function EmbeddingSection() {
                     </>
                   )}
                 </Button>
+
+                {status.links.failed > 0 && !isGeneratingLinks && (
+                  <Button
+                    onClick={() => handleGenerateLinks(true)}
+                    disabled={isGeneratingLinks || isAiMissing}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Retry {status.links.failed} Failed
+                  </Button>
+                )}
 
                 {lastLinkResult && !isGeneratingLinks && (
                   <p className="text-sm text-muted-foreground">
@@ -318,8 +325,8 @@ export function EmbeddingSection() {
               {/* Email generate button */}
               <div className="flex items-center gap-3">
                 <Button
-                  onClick={handleGenerateEmails}
-                  disabled={isGeneratingEmails || !needsEmailEmbeddings || isGeminiMissing}
+                  onClick={() => handleGenerateEmails()}
+                  disabled={isGeneratingEmails || !needsEmailEmbeddings || isAiMissing}
                   size="sm"
                 >
                   {isGeneratingEmails ? (
@@ -339,6 +346,18 @@ export function EmbeddingSection() {
                     </>
                   )}
                 </Button>
+
+                {status.emails.failed > 0 && !isGeneratingEmails && (
+                  <Button
+                    onClick={() => handleGenerateEmails(true)}
+                    disabled={isGeneratingEmails || isAiMissing}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Retry {status.emails.failed} Failed
+                  </Button>
+                )}
 
                 {lastEmailResult && !isGeneratingEmails && (
                   <p className="text-sm text-muted-foreground">

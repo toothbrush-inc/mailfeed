@@ -55,7 +55,7 @@ const PAYWALL_INDICATORS = {
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-export async function fetchAndParseContent(url: string): Promise<FetchResult> {
+export async function fetchAndParseContent(url: string, options?: { timeoutMs?: number }): Promise<FetchResult> {
   try {
     // Try oEmbed first for known problematic sites (Twitter/X, Instagram, TikTok, YouTube)
     if (shouldUseOEmbed(url)) {
@@ -85,7 +85,7 @@ export async function fetchAndParseContent(url: string): Promise<FetchResult> {
     }
 
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 30000)
+    const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? 30000)
 
     const response = await fetch(url, {
       headers: {

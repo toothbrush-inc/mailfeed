@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai"
+import { DEFAULT_SETTINGS, type ResolvedSettings } from "@/lib/settings"
 
 function getGenAI(): GoogleGenAI {
   if (!process.env.GEMINI_API_KEY) {
@@ -7,9 +8,13 @@ function getGenAI(): GoogleGenAI {
   return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
 }
 
-// Gemini embedding model - requesting 768 dimensions (compatible with pgvector HNSW indexes)
-export const EMBEDDING_DIMENSIONS = 768
-export const EMBEDDING_MODEL = "gemini-embedding-001"
+// Default values (still exported for backwards compatibility with vector-search, etc.)
+export const EMBEDDING_DIMENSIONS = DEFAULT_SETTINGS.ai.embeddingDimensions
+export const EMBEDDING_MODEL = DEFAULT_SETTINGS.ai.embeddingModel
+
+export function getEmbeddingDimensions(settings?: ResolvedSettings): number {
+  return settings?.ai.embeddingDimensions ?? EMBEDDING_DIMENSIONS
+}
 
 // Maximum characters to embed (roughly 2048 tokens)
 const MAX_CONTENT_LENGTH = 8000
@@ -64,14 +69,18 @@ export function prepareTextForEmbedding(link: LinkData): string | null {
  */
 export async function generateEmbedding(
   text: string,
-  taskType: EmbeddingTaskType = "RETRIEVAL_DOCUMENT"
+  taskType: EmbeddingTaskType = "RETRIEVAL_DOCUMENT",
+  settings?: ResolvedSettings
 ): Promise<number[]> {
+  const model = settings?.ai.embeddingModel ?? EMBEDDING_MODEL
+  const dimensions = settings?.ai.embeddingDimensions ?? EMBEDDING_DIMENSIONS
+
   const result = await getGenAI().models.embedContent({
-    model: EMBEDDING_MODEL,
+    model,
     contents: text,
     config: {
       taskType,
-      outputDimensionality: EMBEDDING_DIMENSIONS,
+      outputDimensionality: dimensions,
     },
   })
 
@@ -80,8 +89,8 @@ export async function generateEmbedding(
   }
 
   const embedding = result.embeddings[0]
-  if (!embedding.values || embedding.values.length !== EMBEDDING_DIMENSIONS) {
-    throw new Error(`Invalid embedding dimensions: expected ${EMBEDDING_DIMENSIONS}, got ${embedding.values?.length}`)
+  if (!embedding.values || embedding.values.length !== dimensions) {
+    throw new Error(`Invalid embedding dimensions: expected ${dimensions}, got ${embedding.values?.length}`)
   }
 
   return embedding.values

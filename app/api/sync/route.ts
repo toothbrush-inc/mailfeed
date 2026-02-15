@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { getGmailClient, fetchSelfEmails, batchGetEmailContents, AuthenticationError } from "@/lib/gmail"
+import { getGmailClient, fetchEmails, batchGetEmailContents, AuthenticationError } from "@/lib/gmail"
 import { extractLinks, hashUrl, extractDomain } from "@/lib/link-extractor"
 import { isExcludedUrl } from "@/lib/constants/domains"
-import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher"
+import { estimateReadingTime } from "@/lib/content-fetcher"
 import { processNestedLinks } from "@/lib/process-nested-links"
 import { syncLogger } from "@/lib/logger"
+import { getUserSettings } from "@/lib/user-settings"
+import { fetchWithFallbackChain } from "@/lib/fetchers"
+import { generateOperationId, recordFetchAttempts } from "@/lib/fetch-attempts"
+import "@/lib/fetchers/direct"
+import "@/lib/fetchers/wayback"
+import type { ResolvedSettings } from "@/lib/settings"
 
 // NOTE: Sites like avc.xyz use Next.js with React Server Components. Readability
 // may fail to extract content from JS-rendered pages, but we now always extract
@@ -36,7 +42,8 @@ async function processLink(
   url: string,
   userId: string,
   emailId: string,
-  hiddenDomains: Set<string>
+  hiddenDomains: Set<string>,
+  settings: ResolvedSettings
 ): Promise<LinkProcessResult> {
   const result: LinkProcessResult = {
     fetched: false,
@@ -65,8 +72,16 @@ async function processLink(
       data: { fetchStatus: "FETCHING" },
     })
 
-    const content = await fetchAndParseContent(url)
+    const operationId = generateOperationId()
+    const content = await fetchWithFallbackChain(url, settings.fetching.fallbackChain, {
+      timeoutMs: settings.fetching.fetchTimeoutMs,
+    })
     const rawHtml = content.rawHtml
+
+    // Fire-and-forget: record fetch attempts without blocking sync
+    recordFetchAttempts(linkId, operationId, "sync", content.attempts).catch((err) =>
+      console.error("[Sync] Failed to record fetch attempts:", err)
+    )
 
     if (!content.success) {
       await prisma.link.update({
@@ -140,6 +155,7 @@ async function processLink(
           : null,
         isPaywalled: content.isPaywalled || false,
         paywallType: content.paywallType,
+        contentSource: content.contentSource,
         finalUrl: content.finalUrl,
         finalUrlHash,
         finalDomain,
@@ -184,6 +200,7 @@ async function processLinksInParallel(
   links: Array<{ id: string; url: string; emailId: string }>,
   userId: string,
   hiddenDomains: Set<string>,
+  settings: ResolvedSettings,
   concurrency: number = 5
 ) {
   const results: LinkProcessResult[] = []
@@ -191,7 +208,7 @@ async function processLinksInParallel(
   for (let i = 0; i < links.length; i += concurrency) {
     const batch = links.slice(i, i + concurrency)
     const batchResults = await Promise.all(
-      batch.map((link) => processLink(link.id, link.url, userId, link.emailId, hiddenDomains))
+      batch.map((link) => processLink(link.id, link.url, userId, link.emailId, hiddenDomains, settings))
     )
     results.push(...batchResults)
   }
@@ -207,13 +224,18 @@ export async function POST(request: Request) {
   }
 
   const userId = session.user.id
+  const settings = await getUserSettings(userId)
 
   // Check for sync parameters
   const reqUrl = new URL(request.url)
   const fullSync = reqUrl.searchParams.get("fullSync") === "true"
   const continueSync = reqUrl.searchParams.get("continue") === "true"
   const resetSync = reqUrl.searchParams.get("reset") === "true"
-  const maxPages = fullSync ? 20 : continueSync ? 5 : 1 // Limit pages based on mode
+  const maxPages = fullSync
+    ? settings.sync.maxPagesFull
+    : continueSync
+      ? settings.sync.maxPagesContinue
+      : settings.sync.maxPagesNormal
 
   // Reset sync clears the stored page token
   if (resetSync) {
@@ -269,7 +291,7 @@ export async function POST(request: Request) {
       syncLogger.info(`Processing page ${currentPage} (${modeLabel} mode, max ${maxPages})`)
 
       // Step 1: Fetch self-emails from Gmail
-      const { messages, nextPageToken, resultSizeEstimate } = await fetchSelfEmails(userId, emailsPerPage, pageToken, gmail)
+      const { messages, nextPageToken, resultSizeEstimate } = await fetchEmails(userId, settings.email.query, emailsPerPage, pageToken, gmail)
       pageToken = nextPageToken || undefined
 
       // Capture total estimate from first page
@@ -303,7 +325,7 @@ export async function POST(request: Request) {
       syncResults.pagesProcessed++
 
       // Batch fetch email contents in parallel (10 at a time)
-      const emailContents = await batchGetEmailContents(newMessageIds, gmail, 10)
+      const emailContents = await batchGetEmailContents(newMessageIds, gmail, settings.sync.emailConcurrency)
 
       // Collect all links to process
       const allLinksToProcess: Array<{ id: string; url: string; emailId: string }> = []
@@ -376,7 +398,7 @@ export async function POST(request: Request) {
       // Process all links in parallel (5 at a time for content fetching)
       if (allLinksToProcess.length > 0) {
         syncLogger.info(`Processing ${allLinksToProcess.length} links in parallel`)
-        const linkResults = await processLinksInParallel(allLinksToProcess, userId, hiddenDomains, 5)
+        const linkResults = await processLinksInParallel(allLinksToProcess, userId, hiddenDomains, settings, settings.sync.linkConcurrency)
 
         // Aggregate results
         for (const result of linkResults) {

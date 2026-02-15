@@ -48,6 +48,7 @@ model User {
   emails        Email[]
   links         Link[]
   linkReports   LinkReport[]
+  settings      Json      @default("{}")
   hiddenDomains String[]  @default([])
   lastSyncAt    DateTime?
   syncPageToken       String?   // Gmail pagination token for continue sync (newer emails)
@@ -167,12 +168,13 @@ model Link {
   fetchedAt  DateTime?
   analyzedAt DateTime?
 
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  email      Email?        @relation(fields: [emailId], references: [id], onDelete: SetNull)
-  parentLink Link?         @relation("NestedLinks", fields: [parentLinkId], references: [id], onDelete: SetNull)
-  childLinks Link[]        @relation("NestedLinks")
-  categories LinkCategory[]
-  reports    LinkReport[]
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email         Email?        @relation(fields: [emailId], references: [id], onDelete: SetNull)
+  parentLink    Link?         @relation("NestedLinks", fields: [parentLinkId], references: [id], onDelete: SetNull)
+  childLinks    Link[]        @relation("NestedLinks")
+  categories    LinkCategory[]
+  reports       LinkReport[]
+  fetchAttempts FetchAttempt[]
 
   @@unique([userId, urlHash])
   @@index([userId])
@@ -220,6 +222,29 @@ enum FetchStatus {
   COMPLETED
   FAILED
   PAYWALL_DETECTED
+}
+
+// Tracks each individual fetch attempt for debugging and visibility
+model FetchAttempt {
+  id          String   @id @default(cuid())
+  linkId      String
+  operationId String   // Groups attempts within one fallback chain run
+  fetcherId   String   // "direct", "wayback"
+  fetcherName String?  // "Direct Fetch", "Wayback Machine"
+  trigger     String   // "sync", "refetch", "wayback_manual"
+  sequence    Int      // 1-indexed position in fallback chain
+  success     Boolean
+  error       String?  @db.Text
+  rawHtml     String?  @db.Text
+  httpStatus  Int?
+  durationMs  Int
+  createdAt   DateTime @default(now())
+
+  link Link @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@index([linkId])
+  @@index([linkId, createdAt])
+  @@index([operationId])
 }
 
 // User reports for links with fetch/parse issues

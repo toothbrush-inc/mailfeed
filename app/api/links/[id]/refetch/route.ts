@@ -3,8 +3,13 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { hashUrl, extractDomain } from "@/lib/link-extractor"
 import { isExcludedUrl } from "@/lib/constants/domains"
-import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher"
+import { estimateReadingTime } from "@/lib/content-fetcher"
 import { processNestedLinks } from "@/lib/process-nested-links"
+import { getUserSettings } from "@/lib/user-settings"
+import { fetchWithFallbackChain } from "@/lib/fetchers"
+import { generateOperationId, recordFetchAttempts } from "@/lib/fetch-attempts"
+import "@/lib/fetchers/direct"
+import "@/lib/fetchers/wayback"
 
 export async function POST(
   request: NextRequest,
@@ -32,6 +37,8 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
 
+  const settings = await getUserSettings(session.user.id)
+
   try {
     // Update status to FETCHING
     await prisma.link.update({
@@ -40,7 +47,13 @@ export async function POST(
     })
 
     console.log("[/api/links/[id]/refetch] Fetching content for:", link.url)
-    const content = await fetchAndParseContent(link.url)
+    const operationId = generateOperationId()
+    const content = await fetchWithFallbackChain(link.url, settings.fetching.fallbackChain, {
+      timeoutMs: settings.fetching.fetchTimeoutMs,
+    })
+
+    // Record fetch attempts for this refetch operation
+    await recordFetchAttempts(id, operationId, "refetch", content.attempts)
 
     if (!content.success) {
       const updatedLink = await prisma.link.update({
@@ -104,6 +117,7 @@ export async function POST(
           : null,
         isPaywalled: content.isPaywalled || false,
         paywallType: content.paywallType,
+        contentSource: content.contentSource,
         finalUrl: content.finalUrl,
         finalUrlHash,
         finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,

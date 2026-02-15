@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { getUserSettings } from "@/lib/user-settings"
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
@@ -14,6 +15,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const settings = await getUserSettings(session.user.id)
+
   const searchParams = request.nextUrl.searchParams
   const category = searchParams.get("category")
   const tag = searchParams.get("tag")
@@ -22,9 +25,9 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status")
   const read = searchParams.get("read")
   const search = searchParams.get("search")
-  const sort = searchParams.get("sort") || "date_desc"
+  const sort = searchParams.get("sort") || settings.feed.defaultSort
   const page = parseInt(searchParams.get("page") || "1")
-  const limit = parseInt(searchParams.get("limit") || "20")
+  const limit = parseInt(searchParams.get("limit") || String(settings.feed.pageSize))
 
   // Build orderBy based on sort parameter
   // Use email.receivedAt for date sorting (when the email was received, not when link was processed)

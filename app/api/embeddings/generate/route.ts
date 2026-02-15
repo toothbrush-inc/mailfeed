@@ -7,6 +7,8 @@ import {
   formatEmbeddingForPgVector,
 } from "@/lib/embeddings"
 import { isPgVectorAvailable } from "@/lib/vector-search"
+import { getUserSettings } from "@/lib/user-settings"
+import { isAiConfigured, getMissingEnvVarMessage } from "@/lib/ai-provider"
 
 interface GenerateResult {
   processed: number
@@ -24,9 +26,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  if (!process.env.GEMINI_API_KEY) {
+  const settings = await getUserSettings(session.user.id)
+
+  if (!isAiConfigured(settings)) {
     return NextResponse.json(
-      { error: "GEMINI_API_KEY is not configured. Add it to your .env file to enable embeddings.", code: "GEMINI_NOT_CONFIGURED" },
+      { error: getMissingEnvVarMessage(settings), code: "AI_NOT_CONFIGURED" },
       { status: 503 }
     )
   }
@@ -47,6 +51,7 @@ export async function POST(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 100)
   const delayMs = parseInt(searchParams.get("delay") || "100")
+  const retry = searchParams.get("retry") === "true"
 
   const result: GenerateResult = {
     processed: 0,
@@ -62,7 +67,7 @@ export async function POST(request: NextRequest) {
     const links = await prisma.link.findMany({
       where: {
         userId: session.user.id,
-        embeddingStatus: "PENDING",
+        embeddingStatus: { in: retry ? ["PENDING", "FAILED"] : ["PENDING"] },
       },
       select: {
         id: true,
@@ -106,7 +111,7 @@ export async function POST(request: NextRequest) {
 
       try {
         // Generate embedding
-        const embedding = await generateEmbedding(text, "RETRIEVAL_DOCUMENT")
+        const embedding = await generateEmbedding(text, "RETRIEVAL_DOCUMENT", settings)
         const embeddingStr = formatEmbeddingForPgVector(embedding)
 
         // Store embedding using raw SQL (Prisma doesn't support vector type)

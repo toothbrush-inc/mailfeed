@@ -148,8 +148,9 @@ async function handleGmailApiError(error: unknown): Promise<never> {
   throw error
 }
 
-export async function fetchSelfEmails(
+export async function fetchEmails(
   userId: string,
+  query: string,
   maxResults: number = 50,
   pageToken?: string,
   gmail?: GmailClient
@@ -157,14 +158,17 @@ export async function fetchSelfEmails(
   const client = gmail || await getGmailClient(userId)
 
   try {
-    // Get user's email address
-    const profile = await client.users.getProfile({ userId: "me" })
-    const userEmail = profile.data.emailAddress
+    // Resolve "me" placeholders in the query to the user's actual email
+    let resolvedQuery = query
+    if (query.includes("me")) {
+      const profile = await client.users.getProfile({ userId: "me" })
+      const userEmail = profile.data.emailAddress
+      resolvedQuery = query.replace(/\bfrom:me\b/g, `from:${userEmail}`).replace(/\bto:me\b/g, `to:${userEmail}`)
+    }
 
-    // Query for self-sent emails
     const response = await client.users.messages.list({
       userId: "me",
-      q: `from:${userEmail} to:${userEmail}`,
+      q: resolvedQuery,
       maxResults,
       pageToken,
     })
@@ -173,28 +177,38 @@ export async function fetchSelfEmails(
       messages: response.data.messages || [],
       nextPageToken: response.data.nextPageToken,
       resultSizeEstimate: response.data.resultSizeEstimate || 0,
-      gmail: client, // Return the client for reuse
+      gmail: client,
     }
   } catch (error) {
     return handleGmailApiError(error)
   }
 }
 
+/** @deprecated Use fetchEmails instead */
+export const fetchSelfEmails = (
+  userId: string,
+  maxResults?: number,
+  pageToken?: string,
+  gmail?: GmailClient
+) => fetchEmails(userId, "from:me to:me", maxResults, pageToken, gmail)
+
 /**
- * Get the estimated count of self-sent emails
+ * Get the estimated count of emails matching a query
  */
-export async function getSelfEmailCount(userId: string, gmail?: GmailClient) {
+export async function getEmailCount(userId: string, query: string, gmail?: GmailClient) {
   const client = gmail || await getGmailClient(userId)
 
   try {
-    // Get user's email address
-    const profile = await client.users.getProfile({ userId: "me" })
-    const userEmail = profile.data.emailAddress
+    let resolvedQuery = query
+    if (query.includes("me")) {
+      const profile = await client.users.getProfile({ userId: "me" })
+      const userEmail = profile.data.emailAddress
+      resolvedQuery = query.replace(/\bfrom:me\b/g, `from:${userEmail}`).replace(/\bto:me\b/g, `to:${userEmail}`)
+    }
 
-    // Query just to get the count estimate
     const response = await client.users.messages.list({
       userId: "me",
-      q: `from:${userEmail} to:${userEmail}`,
+      q: resolvedQuery,
       maxResults: 1,
     })
 
@@ -206,6 +220,10 @@ export async function getSelfEmailCount(userId: string, gmail?: GmailClient) {
     return handleGmailApiError(error)
   }
 }
+
+/** @deprecated Use getEmailCount instead */
+export const getSelfEmailCount = (userId: string, gmail?: GmailClient) =>
+  getEmailCount(userId, "from:me to:me", gmail)
 
 export async function getEmailContent(
   userId: string,

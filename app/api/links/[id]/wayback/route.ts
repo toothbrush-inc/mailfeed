@@ -3,7 +3,10 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { fetchFromWayback } from "@/lib/wayback-fetcher"
 import { estimateReadingTime } from "@/lib/content-fetcher"
+import { recordSingleFetchAttempt } from "@/lib/fetch-attempts"
 import { b } from "@/baml_client"
+import { getUserSettings } from "@/lib/user-settings"
+import { buildClientRegistry } from "@/lib/baml-registry"
 
 export async function POST(
   request: NextRequest,
@@ -31,6 +34,8 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
 
+  const settings = await getUserSettings(session.user.id)
+
   try {
     // Update status to indicate we're fetching from archive
     await prisma.link.update({
@@ -42,7 +47,19 @@ export async function POST(
     const urlToFetch = link.finalUrl || link.url
     console.log("[/api/links/[id]/wayback] Fetching from Wayback Machine:", urlToFetch)
 
+    const waybackStart = Date.now()
     const waybackResult = await fetchFromWayback(urlToFetch)
+    const waybackDurationMs = Date.now() - waybackStart
+
+    // Record the wayback fetch attempt
+    await recordSingleFetchAttempt(id, "wayback_manual", {
+      fetcherId: "wayback",
+      fetcherName: "Wayback Machine",
+      success: waybackResult.success,
+      error: waybackResult.error,
+      rawHtml: waybackResult.rawHtml,
+      durationMs: waybackDurationMs,
+    })
 
     if (!waybackResult.success) {
       // Restore previous status
@@ -94,10 +111,12 @@ export async function POST(
       })
 
       try {
+        const clientRegistry = buildClientRegistry(settings)
         const analysis = await b.IngestLink(
           urlToFetch,
           waybackResult.title,
-          waybackResult.rawHtml
+          waybackResult.rawHtml,
+          { clientRegistry }
         )
 
         // Convert enums to strings for storage

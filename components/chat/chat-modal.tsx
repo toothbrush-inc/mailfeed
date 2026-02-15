@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { X, Send, Loader2, MessageCircle, ExternalLink, Mail, KeyRound } from "lucide-react"
+import { useSettings } from "@/hooks/use-settings"
 
 interface ChatMessage {
   role: "user" | "assistant"
@@ -26,7 +27,8 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [geminiNotConfigured, setGeminiNotConfigured] = useState(false)
+  const [aiNotConfigured, setAiNotConfigured] = useState(false)
+  const { requiredEnvVar } = useSettings()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -66,8 +68,8 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
       const data = await response.json()
 
       if (!response.ok) {
-        if (data.code === "GEMINI_NOT_CONFIGURED") {
-          setGeminiNotConfigured(true)
+        if (data.code === "AI_NOT_CONFIGURED" || data.code === "GEMINI_NOT_CONFIGURED") {
+          setAiNotConfigured(true)
           // Remove the user message we just added
           setMessages((prev) => prev.slice(0, -1))
           return
@@ -123,26 +125,17 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {geminiNotConfigured && (
+          {aiNotConfigured && (
             <div className="text-center py-8 px-4">
               <KeyRound className="h-12 w-12 mx-auto mb-4 text-amber-500 opacity-80" />
-              <p className="text-sm font-medium">Gemini API Key Required</p>
+              <p className="text-sm font-medium">AI API Key Required</p>
               <p className="text-xs text-muted-foreground mt-2">
-                To use AI chat, add a <code className="bg-muted px-1 py-0.5 rounded text-xs">GEMINI_API_KEY</code> to your <code className="bg-muted px-1 py-0.5 rounded text-xs">.env</code> file and restart the server.
+                To use AI chat, add <code className="bg-muted px-1 py-0.5 rounded text-xs">{requiredEnvVar || "GEMINI_API_KEY"}</code> to your <code className="bg-muted px-1 py-0.5 rounded text-xs">.env</code> file and restart the server.
               </p>
-              <a
-                href="https://aistudio.google.com/apikey"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-3"
-              >
-                Get a key from Google AI Studio
-                <ExternalLink className="h-3 w-3" />
-              </a>
             </div>
           )}
 
-          {!geminiNotConfigured && messages.length === 0 && (
+          {!aiNotConfigured && messages.length === 0 && (
             <div className="text-center text-muted-foreground py-8">
               <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p className="text-sm">
@@ -228,12 +221,12 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask about your saved content..."
-              disabled={isLoading || geminiNotConfigured}
+              disabled={isLoading || aiNotConfigured}
               className="flex-1"
             />
             <Button
               onClick={sendMessage}
-              disabled={!input.trim() || isLoading || geminiNotConfigured}
+              disabled={!input.trim() || isLoading || aiNotConfigured}
               size="icon"
             >
               {isLoading ? (

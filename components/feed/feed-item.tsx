@@ -17,6 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { SocialEmbed, isEmbeddable } from "./social-embed"
+import { FetchHistoryDialog } from "./fetch-history-dialog"
 import { NestedLinkItem } from "./nested-link-item"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -1018,6 +1019,9 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
               )}
             </Button>
           )}
+
+          {/* Fetch History button */}
+          <FetchHistoryDialog linkId={link.id} linkUrl={link.finalUrl || link.url} />
 
           {/* View Raw HTML button */}
           <Dialog>

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma"
 import { GoogleGenAI } from "@google/genai"
 import { generateEmbedding } from "@/lib/embeddings"
 import { searchSimilarContent, SimilarContent, textSearchLinks } from "@/lib/vector-search"
+import { getUserSettings } from "@/lib/user-settings"
+import { isAiConfigured, getMissingEnvVarMessage } from "@/lib/ai-provider"
 
 interface ChatMessage {
   role: "user" | "assistant"
@@ -29,14 +31,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  if (!process.env.GEMINI_API_KEY) {
+  const settings = await getUserSettings(session.user.id)
+
+  if (!isAiConfigured(settings)) {
     return NextResponse.json(
-      { error: "GEMINI_API_KEY is not configured. Add it to your .env file to enable AI chat.", code: "GEMINI_NOT_CONFIGURED" },
+      { error: getMissingEnvVarMessage(settings), code: "AI_NOT_CONFIGURED" },
       { status: 503 }
     )
   }
 
-  const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+  const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
 
   try {
     const body: ChatRequest = await request.json()
@@ -52,7 +56,7 @@ export async function POST(request: NextRequest) {
     // Try to generate query embedding for semantic search
     let queryEmbedding: number[] | null = null
     try {
-      queryEmbedding = await generateEmbedding(searchTerm, "RETRIEVAL_QUERY")
+      queryEmbedding = await generateEmbedding(searchTerm, "RETRIEVAL_QUERY", settings)
     } catch (error) {
       console.log("[/api/chat] Embedding generation failed, using text search:", error)
     }
@@ -182,7 +186,7 @@ ${context ? `Here is the relevant content from the user's data:\n\n${context}` :
 
     // Call Gemini
     const response = await genAI.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: settings.ai.chatModel,
       contents: conversationContent,
     })
 
