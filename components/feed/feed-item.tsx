@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle, Sparkles, Loader2, RefreshCw, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle, KeyRound } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Loader2, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle } from "lucide-react"
 import {
   Dialog,
   DialogClose,
@@ -120,8 +120,6 @@ function formatDate(dateString: string): string {
 export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: FeedItemProps) {
   // Search words for highlighting
   const searchWords = searchTerm ? [searchTerm] : []
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [isRefetching, setIsRefetching] = useState(false)
   const [isFetchingArchive, setIsFetchingArchive] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const [isTogglingRead, setIsTogglingRead] = useState(false)
@@ -136,7 +134,6 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
   const [isReporting, setIsReporting] = useState(false)
   const [hasReported, setHasReported] = useState(false)
   const [reportDialogOpen, setReportDialogOpen] = useState(false)
-  const [geminiNotConfigured, setGeminiNotConfigured] = useState(false)
   const contentHeaderRef = useRef<HTMLDivElement>(null)
 
   // Track when the content header scrolls out of view to show floating collapse button
@@ -174,52 +171,10 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
   const isProcessing = ["PENDING", "FETCHING", "ANALYZING"].includes(link.fetchStatus)
   const hasFailed = link.fetchStatus === "FAILED"
   const hasPaywall = link.fetchStatus === "PAYWALL_DETECTED"
-  const hasBeenAnalyzed = link.linkTags?.length > 0 || link.contentTags?.length > 0 || link.aiCategory
-  const needsAnalysis = link.fetchStatus === "FETCHED" && !hasBeenAnalyzed
   const gmailUrl = link.email?.gmailId
     ? `https://mail.google.com/mail/u/0/#inbox/${link.email.gmailId}`
     : null
   const emailDate = link.email?.receivedAt ? formatDate(link.email.receivedAt) : null
-
-  const handleAnalyze = async () => {
-    setIsAnalyzing(true)
-    try {
-      const response = await fetch(`/api/links/${link.id}/analyze`, {
-        method: "POST",
-      })
-      if (!response.ok) {
-        const data = await response.json()
-        if (data.code === "GEMINI_NOT_CONFIGURED") {
-          setGeminiNotConfigured(true)
-          return
-        }
-        throw new Error(data.error || "Analysis failed")
-      }
-      onAnalyzeComplete?.()
-    } catch (error) {
-      console.error("Failed to analyze link:", error)
-    } finally {
-      setIsAnalyzing(false)
-    }
-  }
-
-  const handleRefetch = async () => {
-    setIsRefetching(true)
-    try {
-      const response = await fetch(`/api/links/${link.id}/refetch`, {
-        method: "POST",
-      })
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Refetch failed")
-      }
-      onAnalyzeComplete?.()
-    } catch (error) {
-      console.error("Failed to refetch link:", error)
-    } finally {
-      setIsRefetching(false)
-    }
-  }
 
   const handleToggleRead = async () => {
     setIsTogglingRead(true)
@@ -265,7 +220,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
   }
 
   const handleHideDomain = async () => {
-    const domainToHide = link.finalDomain || link.domain
+    const domainToHide = link.domain
     if (!domainToHide || !onHideDomain) return
 
     setIsHidingDomain(true)
@@ -333,7 +288,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
     }
   }
 
-  const displayDomain = link.finalDomain || link.domain
+  const displayDomain = link.domain
 
   return (
     <Card
@@ -354,7 +309,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
             )}
             <h3 className="text-lg font-semibold leading-tight">
               <a
-                href={link.finalUrl || link.url}
+                href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:underline inline-flex items-center gap-1.5"
@@ -363,11 +318,11 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                   <Highlighter
                     searchWords={searchWords}
                     autoEscape={true}
-                    textToHighlight={link.title || link.finalUrl || link.url}
+                    textToHighlight={link.title || link.url}
                     highlightClassName="bg-yellow-200 dark:bg-yellow-700 rounded px-0.5"
                   />
                 ) : (
-                  link.title || link.finalUrl || link.url
+                  link.title || link.url
                 )}
                 <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               </a>
@@ -398,11 +353,6 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                     <EyeOff className="h-3 w-3" />
                   )}
                 </button>
-              )}
-              {link.wasRedirected && link.domain && (
-                <span className="text-xs text-muted-foreground/70">
-                  (from {link.domain})
-                </span>
               )}
               {link.readingTimeMin && (
                 <>
@@ -700,28 +650,6 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
           </div>
         )}
 
-        {geminiNotConfigured && (
-          <div className="flex items-start gap-2 rounded-md bg-amber-50 p-3 text-sm dark:bg-amber-950">
-            <KeyRound className="h-4 w-4 mt-0.5 text-amber-500 shrink-0" />
-            <div>
-              <p className="font-medium text-amber-700 dark:text-amber-300">
-                Gemini API Key Required
-              </p>
-              <p className="text-amber-600 dark:text-amber-400">
-                Add a <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">GEMINI_API_KEY</code> to your <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">.env</code> file to enable AI analysis.{" "}
-                <a
-                  href="https://aistudio.google.com/apikey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  Get a key from Google AI Studio
-                </a>
-              </p>
-            </div>
-          </div>
-        )}
-
         {isProcessing && (
           <p className="animate-pulse text-sm text-muted-foreground">
             Processing content...
@@ -798,7 +726,32 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
         </div>
 
         {/* Action buttons */}
-        <div className="flex flex-wrap items-center justify-end gap-2 w-full">
+        <div className="flex items-center gap-2 w-full">
+          {/* Mark as read/unread button - prominent, left-aligned */}
+          <Button
+            variant={isRead ? "outline" : "default"}
+            size="lg"
+            onClick={handleToggleRead}
+            disabled={isTogglingRead}
+            className="gap-2"
+          >
+            {isTogglingRead ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : isRead ? (
+              <>
+                <EyeOff className="h-5 w-5" />
+                Mark Unread
+              </>
+            ) : (
+              <>
+                <Eye className="h-5 w-5" />
+                Mark Read
+              </>
+            )}
+          </Button>
+
+          {/* Right-aligned action buttons */}
+          <div className="flex flex-wrap items-center justify-end gap-2 flex-1">
           {/* Read content button */}
           {hasArticleContent && (
             <Button
@@ -841,50 +794,6 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                 <>
                   <Mail className="h-4 w-4" />
                   Email Context
-                </>
-              )}
-            </Button>
-          )}
-
-          {/* Mark as read/unread button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleToggleRead}
-            disabled={isTogglingRead}
-          >
-            {isTogglingRead ? (
-              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-            ) : isRead ? (
-              <>
-                <EyeOff className="mr-1 h-4 w-4" />
-                Mark Unread
-              </>
-            ) : (
-              <>
-                <Eye className="mr-1 h-4 w-4" />
-                Mark Read
-              </>
-            )}
-          </Button>
-
-          {/* Refetch button - always available except during processing */}
-          {!isProcessing && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRefetch}
-              disabled={isRefetching}
-            >
-              {isRefetching ? (
-                <>
-                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                  Refetching...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-1 h-4 w-4" />
-                  Refetch
                 </>
               )}
             </Button>
@@ -964,49 +873,8 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
             </Dialog>
           )}
 
-          {/* Analyze buttons */}
-          {needsAnalysis ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleAnalyze}
-              disabled={isAnalyzing}
-            >
-              {isAnalyzing ? (
-                <>
-                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-1 h-4 w-4" />
-                  Analyze
-                </>
-              )}
-            </Button>
-          ) : hasBeenAnalyzed && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleAnalyze}
-              disabled={isAnalyzing}
-            >
-              {isAnalyzing ? (
-                <>
-                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                  Re-analyzing...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-1 h-4 w-4" />
-                  Re-analyze
-                </>
-              )}
-            </Button>
-          )}
-
           {/* Debug dialog */}
-          <LinkDebugDialog linkId={link.id} linkUrl={link.finalUrl || link.url} link={link} />
+          <LinkDebugDialog linkId={link.id} linkUrl={link.url} link={link} onPromoteAttempt={onAnalyzeComplete} onAction={onAnalyzeComplete} />
 
           {gmailUrl && (
             <Button variant="ghost" size="sm" asChild>
@@ -1016,6 +884,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
               </a>
             </Button>
           )}
+          </div>
         </div>
       </CardFooter>
     </Card>

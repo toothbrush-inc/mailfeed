@@ -5,13 +5,14 @@ import { useDomains } from "@/hooks/use-domains"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Eye, EyeOff, Loader2, Search } from "lucide-react"
+import { ArrowDownAZ, ArrowDownWideNarrow, Eye, EyeOff, Loader2, Search } from "lucide-react"
 
 export default function DomainsPage() {
   const { domains, isLoading, hideDomain, unhideDomain } = useDomains()
   const [loadingDomain, setLoadingDomain] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [showHiddenOnly, setShowHiddenOnly] = useState(false)
+  const [sortBy, setSortBy] = useState<"count" | "alpha">("count")
 
   const handleToggleHidden = async (domain: string, isHidden: boolean) => {
     setLoadingDomain(domain)
@@ -23,11 +24,17 @@ export default function DomainsPage() {
     setLoadingDomain(null)
   }
 
-  const filteredDomains = domains.filter((d) => {
-    const matchesSearch = d.domain.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesFilter = showHiddenOnly ? d.isHidden : true
-    return matchesSearch && matchesFilter
-  })
+  const filteredDomains = domains
+    .filter((d) => {
+      const matchesSearch = d.domain.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesFilter = showHiddenOnly ? d.isHidden : true
+      return matchesSearch && matchesFilter
+    })
+    .sort((a, b) =>
+      sortBy === "count"
+        ? b.count - a.count
+        : a.domain.localeCompare(b.domain)
+    )
 
   const hiddenCount = domains.filter((d) => d.isHidden).length
 
@@ -58,6 +65,23 @@ export default function DomainsPage() {
                 className="pl-9"
               />
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSortBy(sortBy === "count" ? "alpha" : "count")}
+            >
+              {sortBy === "count" ? (
+                <>
+                  <ArrowDownWideNarrow className="mr-1 h-4 w-4" />
+                  By count
+                </>
+              ) : (
+                <>
+                  <ArrowDownAZ className="mr-1 h-4 w-4" />
+                  A–Z
+                </>
+              )}
+            </Button>
             <Button
               variant={showHiddenOnly ? "default" : "outline"}
               size="sm"

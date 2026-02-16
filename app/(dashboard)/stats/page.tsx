@@ -1,6 +1,8 @@
+import { Suspense } from "react"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { EmailActivityChart } from "@/components/feed/email-activity-chart"
 import {
   Globe,
   Archive,
@@ -191,6 +193,11 @@ export default async function StatsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Email Activity Chart */}
+      <Suspense fallback={null}>
+        <EmailActivityChart />
+      </Suspense>
 
       {/* Content Source Stats */}
       <Card>

@@ -14,6 +14,7 @@ interface EmailStatsResponse {
   periodStart: string
   periodEnd: string
   days: number
+  query: string
 }
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())

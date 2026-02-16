@@ -90,7 +90,7 @@ export function EmailActivityChart() {
 
   if (!mounted || isLoading) {
     return (
-      <Card className="mb-6">
+      <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-medium">Email Activity</CardTitle>
         </CardHeader>
@@ -119,14 +119,16 @@ export function EmailActivityChart() {
   // Calculate appropriate tick interval based on data length
   const tickInterval = stats.daily.length > 60 ? Math.floor(stats.daily.length / 10) : "preserveStartEnd"
 
+  const queryLabel = stats.query || "from:me to:me"
+
   return (
-    <Card className="mb-6">
+    <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <CardTitle className="text-base font-medium">Email Activity</CardTitle>
             <span className="text-sm text-muted-foreground">
-              {periodTotal} emails ({periodLabel})
+              {periodTotal} emails ({periodLabel}) &middot; <code className="text-xs">{queryLabel}</code>
             </span>
           </div>
           <div className="flex items-center gap-1">

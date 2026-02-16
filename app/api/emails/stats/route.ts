@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { getUserSettings } from "@/lib/user-settings"
 
 export async function GET(request: NextRequest) {
   const session = await auth()
@@ -72,6 +73,8 @@ export async function GET(request: NextRequest) {
     select: { receivedAt: true },
   })
 
+  const settings = await getUserSettings(session.user.id)
+
   return NextResponse.json({
     daily: data,
     total: totalEmails,
@@ -79,5 +82,6 @@ export async function GET(request: NextRequest) {
     periodStart: startDate?.toISOString() || firstEmail?.receivedAt.toISOString() || new Date().toISOString(),
     periodEnd: new Date().toISOString(),
     days,
+    query: settings.email.query,
   })
 }

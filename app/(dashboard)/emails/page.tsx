@@ -11,13 +11,9 @@ export default function EmailsPage() {
       <div className="mb-6">
         <h2 className="text-2xl font-bold">Emails</h2>
         <p className="text-muted-foreground">
-          Emails you&apos;ve sent to yourself, grouped with their extracted links.
+          Synced emails grouped with their extracted links.
         </p>
       </div>
-
-      <Suspense fallback={null}>
-        <EmailActivityChart />
-      </Suspense>
 
       <div className="mb-4">
         <Suspense fallback={null}>
