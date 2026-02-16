@@ -38,7 +38,7 @@ export default async function SettingsPage() {
       <div>
         <h2 className="text-2xl font-bold">Settings</h2>
         <p className="text-muted-foreground">
-          Manage your account and view statistics.
+          Manage your account settings.
         </p>
       </div>
 
@@ -70,41 +70,12 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Statistics</CardTitle>
-          <CardDescription>Overview of your feed data</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-lg bg-zinc-50 p-4 dark:bg-zinc-900">
-              <p className="text-2xl font-bold">{user?._count.emails || 0}</p>
-              <p className="text-sm text-muted-foreground">Emails processed</p>
-            </div>
-            <div className="rounded-lg bg-zinc-50 p-4 dark:bg-zinc-900">
-              <p className="text-2xl font-bold">{user?._count.links || 0}</p>
-              <p className="text-sm text-muted-foreground">Links extracted</p>
-            </div>
-            {stats.map((stat: { fetchStatus: string; _count: number }) => (
-              <div
-                key={stat.fetchStatus}
-                className="rounded-lg bg-zinc-50 p-4 dark:bg-zinc-900"
-              >
-                <p className="text-2xl font-bold">{stat._count}</p>
-                <p className="text-sm text-muted-foreground">
-                  {stat.fetchStatus.toLowerCase().replace("_", " ")}
-                </p>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <AiSettings />
+      
       <EmailSettings />
       <FetchingSettings />
       <SyncSettings />
       <FeedSettings />
+      <AiSettings />
       <EmbeddingSection />
     </div>
   )

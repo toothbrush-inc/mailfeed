@@ -59,9 +59,7 @@ const READ_STATUS = [
 // Sort options
 const SORT_OPTIONS = [
   { value: "date_desc", label: "Newest first" },
-  { value: "date_asc", label: "Oldest first" },
-  { value: "reading_time_asc", label: "Quick reads" },
-  { value: "reading_time_desc", label: "Long reads" },
+  { value: "date_asc", label: "Oldest first" }
 ]
 
 // All tags combined for lookup
@@ -226,9 +224,9 @@ export function LinkTagFilter() {
         </PopoverTrigger>
         <PopoverContent className="w-80 p-4" align="start">
           <div className="space-y-4">
-            {renderTagGroup("Type", LINK_TAGS)}
+            {/* {renderTagGroup("Type", LINK_TAGS)}
             {renderTagGroup("Topic", CONTENT_TAGS)}
-            {renderTagGroup("Access", METADATA_TAGS)}
+            {renderTagGroup("Access", METADATA_TAGS)} */}
 
             {/* Domain filter */}
             <div className="space-y-1.5">

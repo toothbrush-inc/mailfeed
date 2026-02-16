@@ -5,7 +5,8 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle, Loader2, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Loader2, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle, ArchiveRestore } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Dialog,
   DialogClose,
@@ -293,7 +294,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
   return (
     <Card
       className={cn(
-        "transition-all hover:shadow-md",
+        "relative transition-all hover:shadow-md",
         link.isHighlighted && "ring-2 ring-amber-400 dark:ring-amber-500",
         isRead && "opacity-60"
       )}
@@ -726,32 +727,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-2 w-full">
-          {/* Mark as read/unread button - prominent, left-aligned */}
-          <Button
-            variant={isRead ? "outline" : "default"}
-            size="lg"
-            onClick={handleToggleRead}
-            disabled={isTogglingRead}
-            className="gap-2"
-          >
-            {isTogglingRead ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : isRead ? (
-              <>
-                <EyeOff className="h-5 w-5" />
-                Mark Unread
-              </>
-            ) : (
-              <>
-                <Eye className="h-5 w-5" />
-                Mark Read
-              </>
-            )}
-          </Button>
-
-          {/* Right-aligned action buttons */}
-          <div className="flex flex-wrap items-center justify-end gap-2 flex-1">
+        <div className="flex flex-wrap items-center justify-end gap-2 w-full">
           {/* Read content button */}
           {hasArticleContent && (
             <Button
@@ -884,9 +860,39 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
               </a>
             </Button>
           )}
-          </div>
         </div>
       </CardFooter>
+
+      {/* Mark read/unread corner tab */}
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={handleToggleRead}
+              disabled={isTogglingRead}
+              className={cn(
+                "absolute bottom-0 left-0 flex items-center justify-center rounded-bl-xl rounded-tr-xl transition-colors cursor-pointer",
+                "h-12 w-12",
+                isRead
+                  ? "bg-muted text-muted-foreground hover:bg-muted/80"
+                  : "bg-primary text-primary-foreground hover:bg-primary/90",
+                isTogglingRead && "opacity-50 pointer-events-none"
+              )}
+            >
+              {isTogglingRead ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : isRead ? (
+                <ArchiveRestore className="h-4 w-4" />
+              ) : (
+                <Archive className="h-4 w-4" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {isRead ? "Mark as unread" : "Mark as read"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </Card>
   )
 }
