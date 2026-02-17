@@ -5,6 +5,7 @@ import { EmbeddingSection } from "@/components/settings/embedding-section"
 import { AiSettings } from "@/components/settings/ai-settings"
 import { EmailSettings } from "@/components/settings/email-settings"
 import { FetchingSettings } from "@/components/settings/fetching-settings"
+import { AnalyzeSection } from "@/components/settings/analyze-section"
 import { SyncSettings } from "@/components/settings/sync-settings"
 import { FeedSettings } from "@/components/settings/feed-settings"
 
@@ -73,6 +74,7 @@ export default async function SettingsPage() {
       
       <EmailSettings />
       <FetchingSettings />
+      <AnalyzeSection />
       <SyncSettings />
       <FeedSettings />
       <AiSettings />

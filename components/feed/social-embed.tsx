@@ -53,11 +53,27 @@ export function isEmbeddable(domain: string | null, html: string | null, url?: s
 
 // Extract tweet ID from Twitter/X URL
 function extractTweetId(url: string): string | null {
-  // Matches patterns like:
-  // https://twitter.com/user/status/1234567890
-  // https://x.com/user/status/1234567890
   const match = url.match(/(?:twitter\.com|x\.com)\/\w+\/status\/(\d+)/)
   return match ? match[1] : null
+}
+
+// Extract YouTube video ID from various URL formats
+function extractYouTubeId(url: string): string | null {
+  const match = url.match(
+    /(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+  )
+  return match ? match[1] : null
+}
+
+// Strip elements from HTML that cause issues when rendered inline
+// (relative resource URLs, iframes blocked by X-Frame-Options, etc.)
+function sanitizeEmbedHtml(html: string): string {
+  return html
+    .replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, "")
+    .replace(/<iframe[^>]*\/>/gi, "")
+    .replace(/<link[^>]*>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
 }
 
 export function SocialEmbed({ html, url, domain }: SocialEmbedProps) {
@@ -92,9 +108,14 @@ export function SocialEmbed({ html, url, domain }: SocialEmbedProps) {
       return
     }
 
-    // YouTube embeds are iframes and work automatically
+    // YouTube — construct a proper embed iframe from the video ID
     if (normalizedDomain.includes("youtube.com") || normalizedDomain.includes("youtu.be")) {
-      renderHtml()
+      const videoId = extractYouTubeId(url)
+      if (videoId && containerRef.current) {
+        containerRef.current.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" style="width:100%;aspect-ratio:16/9;border-radius:8px"></iframe>`
+      } else {
+        renderHtml()
+      }
       setIsLoaded(true)
       return
     }
@@ -112,7 +133,7 @@ export function SocialEmbed({ html, url, domain }: SocialEmbedProps) {
 
   const renderHtml = () => {
     if (containerRef.current && html) {
-      containerRef.current.innerHTML = html
+      containerRef.current.innerHTML = sanitizeEmbedHtml(html)
     }
   }
 

@@ -94,6 +94,63 @@ function IngestLink(url: string, anchorText: string, rawHtml: string?) -> LinkAn
   "#
 }
 
+class LinkInput {
+  id string @description("Unique identifier for this link, used to match results back.")
+  url string
+  anchorText string
+  rawHtml string? @description("Raw HTML content of the page, if available.")
+}
+
+class BulkLinkResult {
+  id string @description("The id from the corresponding LinkInput.")
+  analysis LinkAnalysis
+}
+
+function BulkIngestLinks(links: LinkInput[]) -> BulkLinkResult[] {
+  client "CustomGemini"
+  prompt #"
+    You are a content extraction and analysis agent. You will be given multiple links to analyze in a single batch.
+
+    For each link, analyze the provided HTML and extract meaningful content following these rules:
+
+    For social media posts (Twitter/X, Reddit, LinkedIn, etc.), focus on:
+    - The main post text/content
+    - The author/username if visible
+    - Any quoted or embedded content
+    - Thread context if available
+
+    For articles and blog posts, extract:
+    - The main article text
+    - Key points and summary
+
+    For videos (YouTube, Vimeo, etc.), extract:
+    - Video title and description
+    - Channel/creator name
+
+    Ignore navigation, ads, scripts, and boilerplate HTML. Focus on the actual content.
+
+    For each link, provide:
+    - A clear, concise summary of what the content is about
+    - The type of link (article, video, image, audio, etc.)
+    - The content category (technology, business, news, etc.)
+    - Any access restrictions (paywall, login required, etc.)
+    - Any other interesting links extracted from the HTML
+
+    IMPORTANT: Return one result per input link, using the same id from the input.
+
+    Links to analyze:
+    {% for link in links %}
+    --- LINK {{ link.id }} ---
+    URL: {{ link.url }}
+    Anchor Text: {{ link.anchorText }}
+    Raw HTML: {{ link.rawHtml }}
+
+    {% endfor %}
+
+    {{ ctx.output_format }}
+  "#
+}
+
 test vaibhav_other_link {
   functions [IngestLink]
   args {

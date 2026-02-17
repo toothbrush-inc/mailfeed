@@ -63,6 +63,7 @@ interface Link {
     domain: string | null
     finalUrl: string | null
     finalDomain: string | null
+    wasRedirected: boolean
     aiSummary: string | null
     aiKeyPoints: string[]
     aiCategory: string | null
@@ -71,6 +72,9 @@ interface Link {
     contentTags: string[]
     metadataTags: string[]
     fetchStatus: string
+    fetchError: string | null
+    fetchedAt: string | null
+    analyzedAt: string | null
     isHighlighted: boolean
     highlightReason: string | null
     isRead: boolean
@@ -81,6 +85,11 @@ interface Link {
     contentSource: string | null
     archivedUrl: string | null
     wordCount: number | null
+    embeddingStatus: string | null
+    embeddedAt: string | null
+    embeddingError: string | null
+    createdAt: string
+    updatedAt: string
   }>
 }
 

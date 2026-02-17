@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import { useLinks } from "@/hooks/use-links"
 import { useDomains } from "@/hooks/use-domains"
@@ -8,6 +9,7 @@ import { FeedSkeleton } from "./feed-skeleton"
 import { Pagination } from "./pagination"
 import { Button } from "@/components/ui/button"
 import { AddLinkButton } from "@/components/add-link-button"
+import { ChevronsDownUp, ChevronsUpDown } from "lucide-react"
 
 export function FeedContainer() {
   const searchParams = useSearchParams()
@@ -34,6 +36,7 @@ export function FeedContainer() {
     page,
   })
 
+  const [allExpanded, setAllExpanded] = useState(false)
   const { hideDomain } = useDomains()
 
   const handleHideDomain = async (domainToHide: string) => {
@@ -119,7 +122,26 @@ export function FeedContainer() {
           />
         )}
         {!pagination && <div />}
-        <AddLinkButton onSuccess={mutate} />
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAllExpanded((prev) => !prev)}
+          >
+            {allExpanded ? (
+              <>
+                <ChevronsDownUp className="mr-1.5 h-4 w-4" />
+                Collapse All
+              </>
+            ) : (
+              <>
+                <ChevronsUpDown className="mr-1.5 h-4 w-4" />
+                Expand All
+              </>
+            )}
+          </Button>
+          <AddLinkButton onSuccess={mutate} />
+        </div>
       </div>
 
       {links.map((link) => (
@@ -127,6 +149,7 @@ export function FeedContainer() {
           key={link.id}
           link={link}
           searchTerm={search || undefined}
+          expanded={allExpanded}
           onAnalyzeComplete={mutate}
           onHideDomain={handleHideDomain}
         />

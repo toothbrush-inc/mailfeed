@@ -8,18 +8,13 @@ import {
   ExternalLink,
   Clock,
   AlertTriangle,
-  Sparkles,
   Loader2,
-  RefreshCw,
-  Code,
-  Eye,
-  EyeOff,
   Star,
   Archive,
+  ArchiveRestore,
   Twitter,
   Flag,
   CheckCircle,
-  KeyRound,
 } from "lucide-react"
 import {
   Dialog,
@@ -33,6 +28,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { LinkDebugDialog } from "./link-debug-dialog"
 
 interface NestedLinkItemProps {
   link: {
@@ -42,35 +38,38 @@ interface NestedLinkItemProps {
     domain: string | null
     finalUrl: string | null
     finalDomain: string | null
+    wasRedirected: boolean
     aiSummary: string | null
     aiKeyPoints?: string[]
     aiCategory: string | null
     aiTags: string[]
     linkTags: string[]
     contentTags: string[]
-    metadataTags?: string[]
+    metadataTags: string[]
     fetchStatus: string
+    fetchError: string | null
+    fetchedAt: string | null
+    analyzedAt: string | null
     isHighlighted: boolean
-    highlightReason?: string | null
+    highlightReason: string | null
     isRead: boolean
-    readingTimeMin?: number | null
-    imageUrl?: string | null
-    isPaywalled?: boolean
-    paywallType?: string | null
-    contentSource?: string | null
-    archivedUrl?: string | null
-    wordCount?: number | null
+    readingTimeMin: number | null
+    imageUrl: string | null
+    isPaywalled: boolean
+    paywallType: string | null
+    contentSource: string | null
+    archivedUrl: string | null
+    wordCount: number | null
+    embeddingStatus: string | null
+    embeddedAt: string | null
+    embeddingError: string | null
+    createdAt: string
+    updatedAt: string
   }
   onUpdate?: () => void
 }
 
 export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [isRefetching, setIsRefetching] = useState(false)
-  const [isFetchingArchive, setIsFetchingArchive] = useState(false)
-  const [archiveError, setArchiveError] = useState<string | null>(null)
-  const [rawContent, setRawContent] = useState<string | null>(null)
-  const [isLoadingRaw, setIsLoadingRaw] = useState(false)
   const [isTogglingRead, setIsTogglingRead] = useState(false)
   const [isRead, setIsRead] = useState(link.isRead)
   const [isResolvingXArticle, setIsResolvingXArticle] = useState(false)
@@ -80,7 +79,6 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
   const [isReporting, setIsReporting] = useState(false)
   const [hasReported, setHasReported] = useState(false)
   const [reportDialogOpen, setReportDialogOpen] = useState(false)
-  const [geminiNotConfigured, setGeminiNotConfigured] = useState(false)
 
   // Check if this is an X article URL that needs resolution
   const isXArticleUrl = /^https?:\/\/(x\.com|twitter\.com)\/i\/article\/\d+/i.test(link.url)
@@ -88,99 +86,6 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
 
   const isProcessing = ["PENDING", "FETCHING", "ANALYZING"].includes(link.fetchStatus)
   const hasFailed = link.fetchStatus === "FAILED"
-  const hasPaywall = link.fetchStatus === "PAYWALL_DETECTED"
-  const hasBeenAnalyzed = link.linkTags?.length > 0 || link.contentTags?.length > 0 || link.aiCategory
-  const needsAnalysis = link.fetchStatus === "FETCHED" && !hasBeenAnalyzed
-
-  const handleAnalyze = async () => {
-    setIsAnalyzing(true)
-    try {
-      const response = await fetch(`/api/links/${link.id}/analyze`, {
-        method: "POST",
-      })
-      if (!response.ok) {
-        const data = await response.json()
-        if (data.code === "GEMINI_NOT_CONFIGURED") {
-          setGeminiNotConfigured(true)
-          return
-        }
-        throw new Error(data.error || "Analysis failed")
-      }
-      onUpdate?.()
-    } catch (error) {
-      console.error("Failed to analyze link:", error)
-    } finally {
-      setIsAnalyzing(false)
-    }
-  }
-
-  const handleRefetch = async () => {
-    setIsRefetching(true)
-    try {
-      const response = await fetch(`/api/links/${link.id}/refetch`, {
-        method: "POST",
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        // If X article needs resolution, open the dialog
-        if (data.needsXArticleResolution) {
-          setXArticleError(data.error || "Please provide the X username")
-          setXArticleDialogOpen(true)
-          return
-        }
-        throw new Error(data.error || "Refetch failed")
-      }
-      onUpdate?.()
-    } catch (error) {
-      console.error("Failed to refetch link:", error)
-    } finally {
-      setIsRefetching(false)
-    }
-  }
-
-  const handleFetchFromArchive = async () => {
-    setIsFetchingArchive(true)
-    setArchiveError(null)
-    try {
-      const response = await fetch(`/api/links/${link.id}/wayback`, {
-        method: "POST",
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch from archive")
-      }
-      if (!data.success) {
-        throw new Error(data.error || "No archived version found")
-      }
-      onUpdate?.()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to fetch from archive"
-      console.warn("Failed to fetch from archive:", message)
-      setArchiveError(message)
-    } finally {
-      setIsFetchingArchive(false)
-    }
-  }
-
-  const handleLoadRawContent = async () => {
-    if (rawContent !== null) return
-    setIsLoadingRaw(true)
-    try {
-      const response = await fetch(`/api/links/${link.id}/raw`)
-      if (!response.ok) {
-        throw new Error("Failed to load raw content")
-      }
-      const data = await response.json()
-      const content = data.rawHtml || data.contentText || "No content stored"
-      const label = data.rawHtml ? "[rawHtml]" : "[contentText]"
-      setRawContent(`${label}\n\n${content}`)
-    } catch (error) {
-      console.error("Failed to load raw content:", error)
-      setRawContent("Error loading content")
-    } finally {
-      setIsLoadingRaw(false)
-    }
-  }
 
   const handleToggleRead = async () => {
     setIsTogglingRead(true)
@@ -331,23 +236,6 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
             <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
               <Archive className="h-3 w-3" />
               <span>From archive</span>
-            </div>
-          )}
-
-          {archiveError && (
-            <div className="flex items-center gap-2 text-xs text-red-500">
-              <AlertTriangle className="h-3 w-3" />
-              <span>{archiveError}</span>
-            </div>
-          )}
-
-          {geminiNotConfigured && (
-            <div className="flex items-start gap-2 rounded bg-amber-50 p-2 text-xs dark:bg-amber-950">
-              <KeyRound className="h-3 w-3 mt-0.5 text-amber-500 shrink-0" />
-              <p className="text-amber-600 dark:text-amber-400">
-                Add a <code className="rounded bg-amber-100 px-1 py-0.5 dark:bg-amber-900">GEMINI_API_KEY</code> to your .env to enable AI analysis.{" "}
-                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="underline">Get a key</a>
-              </p>
             </div>
           )}
 
@@ -518,46 +406,12 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
               {isTogglingRead ? (
                 <Loader2 className="mr-1 h-3 w-3 animate-spin" />
               ) : isRead ? (
-                <EyeOff className="mr-1 h-3 w-3" />
+                <ArchiveRestore className="mr-1 h-3 w-3" />
               ) : (
-                <Eye className="mr-1 h-3 w-3" />
+                <Archive className="mr-1 h-3 w-3" />
               )}
-              {isRead ? "Unread" : "Read"}
+              {isRead ? "Mark as unread" : "Mark as read"}
             </Button>
-
-            {!isProcessing && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={handleRefetch}
-                disabled={isRefetching}
-              >
-                {isRefetching ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-1 h-3 w-3" />
-                )}
-                Refetch
-              </Button>
-            )}
-
-            {(hasPaywall || hasFailed || link.isPaywalled || link.contentSource === "wayback") && !isProcessing && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={handleFetchFromArchive}
-                disabled={isFetchingArchive}
-              >
-                {isFetchingArchive ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                ) : (
-                  <Archive className="mr-1 h-3 w-3" />
-                )}
-                Archive
-              </Button>
-            )}
 
             {/* Report Broken Link button */}
             {!isProcessing && (
@@ -611,78 +465,7 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
               </Dialog>
             )}
 
-            {needsAnalysis ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={handleAnalyze}
-                disabled={isAnalyzing}
-              >
-                {isAnalyzing ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-1 h-3 w-3" />
-                )}
-                Analyze
-              </Button>
-            ) : hasBeenAnalyzed && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={handleAnalyze}
-                disabled={isAnalyzing}
-              >
-                {isAnalyzing ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-1 h-3 w-3" />
-                )}
-                Re-analyze
-              </Button>
-            )}
-
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={handleLoadRawContent}
-                >
-                  <Code className="mr-1 h-3 w-3" />
-                  Raw
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl max-h-[80vh]">
-                <DialogHeader>
-                  <DialogTitle>Raw Content</DialogTitle>
-                  <DialogDescription>
-                    {link.finalUrl || link.url}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="overflow-auto max-h-[60vh] rounded border bg-muted p-4">
-                  {isLoadingRaw ? (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading...
-                    </div>
-                  ) : (
-                    <pre className="text-xs whitespace-pre-wrap font-mono">
-                      {rawContent || "No content loaded"}
-                    </pre>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-
-            <Button variant="ghost" size="sm" className="h-7 text-xs" asChild>
-              <a href={link.finalUrl || link.url} target="_blank" rel="noopener noreferrer">
-                Open
-                <ExternalLink className="ml-1 h-3 w-3" />
-              </a>
-            </Button>
+            <LinkDebugDialog linkId={link.id} linkUrl={link.url} link={link} onPromoteAttempt={onUpdate} onAction={onUpdate} />
           </div>
         </div>
       </div>

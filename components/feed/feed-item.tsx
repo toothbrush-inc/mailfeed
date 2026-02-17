@@ -78,6 +78,7 @@ interface FeedItemProps {
       domain: string | null
       finalUrl: string | null
       finalDomain: string | null
+      wasRedirected: boolean
       aiSummary: string | null
       aiKeyPoints: string[]
       aiCategory: string | null
@@ -86,6 +87,9 @@ interface FeedItemProps {
       contentTags: string[]
       metadataTags: string[]
       fetchStatus: string
+      fetchError: string | null
+      fetchedAt: string | null
+      analyzedAt: string | null
       isHighlighted: boolean
       highlightReason: string | null
       isRead: boolean
@@ -96,9 +100,15 @@ interface FeedItemProps {
       contentSource: string | null
       archivedUrl: string | null
       wordCount: number | null
+      embeddingStatus: string | null
+      embeddedAt: string | null
+      embeddingError: string | null
+      createdAt: string
+      updatedAt: string
     }>
   }
   searchTerm?: string
+  expanded?: boolean
   onAnalyzeComplete?: () => void
   onHideDomain?: (domain: string) => Promise<void>
 }
@@ -118,7 +128,17 @@ function formatDate(dateString: string): string {
   return date.toLocaleDateString("en-US", options)
 }
 
-export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: FeedItemProps) {
+// Sanitize HTML for inline display — strip elements that cause console errors or security issues
+function sanitizeContentHtml(html: string): string {
+  return html
+    .replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, "")
+    .replace(/<iframe[^>]*\/>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/\s*on\w+=\s*["'][^"']*["']/gi, "")
+}
+
+export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHideDomain }: FeedItemProps) {
   // Search words for highlighting
   const searchWords = searchTerm ? [searchTerm] : []
   const [isFetchingArchive, setIsFetchingArchive] = useState(false)
@@ -130,8 +150,15 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
   const [xArticleUsername, setXArticleUsername] = useState("")
   const [xArticleError, setXArticleError] = useState<string | null>(null)
   const [xArticleDialogOpen, setXArticleDialogOpen] = useState(false)
-  const [isContentExpanded, setIsContentExpanded] = useState(false)
+  const [isContentExpanded, setIsContentExpanded] = useState(expanded ?? false)
   const [showFloatingCollapse, setShowFloatingCollapse] = useState(false)
+
+  // Sync with external expanded prop
+  useEffect(() => {
+    if (expanded !== undefined) {
+      setIsContentExpanded(expanded)
+    }
+  }, [expanded])
   const [isReporting, setIsReporting] = useState(false)
   const [hasReported, setHasReported] = useState(false)
   const [reportDialogOpen, setReportDialogOpen] = useState(false)
@@ -308,12 +335,12 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                 <span>Highlighted</span>
               </div>
             )}
-            <h3 className="text-lg font-semibold leading-tight">
+            <h3 className="text-lg font-semibold leading-tight break-words">
               <a
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:underline inline-flex items-center gap-1.5"
+                className="hover:underline"
               >
                 {searchTerm ? (
                   <Highlighter
@@ -325,7 +352,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                 ) : (
                   link.title || link.url
                 )}
-                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <ExternalLink className="ml-1.5 mb-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground inline-block align-middle" />
               </a>
             </h3>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -612,7 +639,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                   "prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:underline",
                   "prose-img:rounded-lg prose-img:my-3",
                 )}
-                dangerouslySetInnerHTML={{ __html: link.contentHtml }}
+                dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(link.contentHtml) }}
               />
             ) : link.contentText ? (
               <div className="space-y-3 text-[15px] leading-[1.7] text-muted-foreground">
@@ -637,14 +664,9 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                   "prose-img:rounded-lg prose-img:my-3",
                 )}
                 dangerouslySetInnerHTML={{
-                  __html: link.email.rawContent
-                    // Remove scripts and styles
-                    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-                    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+                  __html: sanitizeContentHtml(link.email.rawContent)
                     // Remove tracking pixels and hidden images
                     .replace(/<img[^>]*(?:width|height)\s*=\s*["']?[01]["']?[^>]*>/gi, "")
-                    // Remove event handlers
-                    .replace(/\s*on\w+\s*=\s*["'][^"']*["']/gi, "")
                 }}
               />
             ) : null}
@@ -776,7 +798,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
           )}
 
           {/* Try Archive / Refetch Archive button - for paywalled, failed, or already-archived links */}
-          {(hasPaywall || hasFailed || link.isPaywalled || link.contentSource === "wayback") && !isProcessing && (
+          {/* {(hasPaywall || hasFailed || link.isPaywalled || link.contentSource === "wayback") && !isProcessing && (
             <Button
               variant={link.contentSource === "wayback" ? "ghost" : "outline"}
               size="sm"
@@ -795,7 +817,7 @@ export function FeedItem({ link, searchTerm, onAnalyzeComplete, onHideDomain }: 
                 </>
               )}
             </Button>
-          )}
+          )} */}
 
           {/* Report Link button */}
           {!isProcessing && (
