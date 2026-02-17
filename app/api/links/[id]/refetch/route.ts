@@ -39,6 +39,28 @@ export async function POST(
 
   const settings = await getUserSettings(session.user.id)
 
+  // Parse optional chain override from request body
+  let chain = settings.fetching.fallbackChain
+  let trigger = "refetch"
+  try {
+    const body = await request.json()
+    if (body.chain && Array.isArray(body.chain) && body.chain.length > 0) {
+      chain = body.chain as string[]
+      // Use a more specific trigger when a single fetcher is explicitly chosen
+      if (chain.length === 1) {
+        trigger = `${chain[0]}_manual`
+      }
+    }
+  } catch {
+    // No body or invalid JSON — use default chain
+  }
+
+  // When a single fetcher is manually chosen and the link already has good content,
+  // a failure should restore the previous status rather than overwrite it with FAILED.
+  const previousStatus = link.fetchStatus
+  const hadGoodContent = ["COMPLETED", "FETCHED", "ANALYZING"].includes(previousStatus)
+  const isManualSingleFetcher = chain.length === 1 && trigger !== "refetch"
+
   try {
     // Update status to FETCHING
     await prisma.link.update({
@@ -46,16 +68,30 @@ export async function POST(
       data: { fetchStatus: "FETCHING" },
     })
 
-    console.log("[/api/links/[id]/refetch] Fetching content for:", link.url)
+    console.log("[/api/links/[id]/refetch] Fetching content for:", link.url, "chain:", chain)
     const operationId = generateOperationId()
-    const content = await fetchWithFallbackChain(link.url, settings.fetching.fallbackChain, {
+    const content = await fetchWithFallbackChain(link.url, chain, {
       timeoutMs: settings.fetching.fetchTimeoutMs,
     })
 
     // Record fetch attempts for this refetch operation
-    await recordFetchAttempts(id, operationId, "refetch", content.attempts)
+    await recordFetchAttempts(id, operationId, trigger, content.attempts)
 
     if (!content.success) {
+      if (isManualSingleFetcher && hadGoodContent) {
+        // Restore previous status — the existing content is still valid
+        await prisma.link.update({
+          where: { id },
+          data: { fetchStatus: previousStatus },
+        })
+
+        return NextResponse.json({
+          success: false,
+          link: { ...link, fetchStatus: previousStatus },
+          error: content.error,
+        })
+      }
+
       const updatedLink = await prisma.link.update({
         where: { id },
         data: {
@@ -149,13 +185,21 @@ export async function POST(
   } catch (error) {
     console.error("[/api/links/[id]/refetch] Error:", error)
 
-    await prisma.link.update({
-      where: { id },
-      data: {
-        fetchStatus: "FAILED",
-        fetchError: error instanceof Error ? error.message : "Unknown error",
-      },
-    })
+    if (isManualSingleFetcher && hadGoodContent) {
+      // Restore previous status — the existing content is still valid
+      await prisma.link.update({
+        where: { id },
+        data: { fetchStatus: previousStatus },
+      })
+    } else {
+      await prisma.link.update({
+        where: { id },
+        data: {
+          fetchStatus: "FAILED",
+          fetchError: error instanceof Error ? error.message : "Unknown error",
+        },
+      })
+    }
 
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Refetch failed" },

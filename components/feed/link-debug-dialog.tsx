@@ -24,6 +24,8 @@ import {
   Sparkles,
   Database,
   RefreshCw,
+  Globe,
+  Archive,
 } from "lucide-react"
 import { useFetchAttempts } from "@/hooks/use-fetch-attempts"
 
@@ -161,8 +163,10 @@ function formatTrigger(trigger: string): string {
       return "Sync"
     case "refetch":
       return "Refetch"
+    case "direct_manual":
+      return "Direct"
     case "wayback_manual":
-      return "Manual Archive"
+      return "Archive"
     default:
       return trigger
   }
@@ -174,6 +178,7 @@ function triggerVariant(trigger: string): "default" | "secondary" | "outline" {
       return "secondary"
     case "refetch":
       return "default"
+    case "direct_manual":
     case "wayback_manual":
       return "outline"
     default:
@@ -192,7 +197,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
   const [rawHtmlState, setRawHtmlState] = useState<AttemptRawHtmlState>({})
   const [visibleAttemptHtml, setVisibleAttemptHtml] = useState<Set<string>>(new Set())
   const [promotingAttemptId, setPromotingAttemptId] = useState<string | null>(null)
-  const [isRefetching, setIsRefetching] = useState(false)
+  const [refetchingFetcher, setRefetchingFetcher] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isEmbedding, setIsEmbedding] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -333,12 +338,15 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
     }
   }
 
-  const handleRefetch = async () => {
-    setIsRefetching(true)
+  const handleRefetch = async (chain?: string[]) => {
+    const label = chain?.length === 1 ? chain[0] : "all"
+    setRefetchingFetcher(label)
     setActionError(null)
     try {
       const response = await fetch(`/api/links/${linkId}/refetch`, {
         method: "POST",
+        headers: chain ? { "Content-Type": "application/json" } : undefined,
+        body: chain ? JSON.stringify({ chain }) : undefined,
       })
       if (!response.ok) {
         const data = await response.json()
@@ -348,7 +356,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Refetch failed")
     } finally {
-      setIsRefetching(false)
+      setRefetchingFetcher(null)
     }
   }
 
@@ -442,15 +450,43 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
-                onClick={handleRefetch}
-                disabled={isRefetching || isAnalyzing || isEmbedding}
+                onClick={() => handleRefetch()}
+                disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
               >
-                {isRefetching ? (
+                {refetchingFetcher === "all" ? (
                   <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                 ) : (
                   <RefreshCw className="mr-1 h-3 w-3" />
                 )}
                 Refetch
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => handleRefetch(["direct"])}
+                disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
+              >
+                {refetchingFetcher === "direct" ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <Globe className="mr-1 h-3 w-3" />
+                )}
+                Direct
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => handleRefetch(["wayback"])}
+                disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
+              >
+                {refetchingFetcher === "wayback" ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <Archive className="mr-1 h-3 w-3" />
+                )}
+                Archive
               </Button>
               {(steps[1].status === "pending" || steps[1].status === "failed") && steps[0].status === "success" && (
                 <Button
@@ -458,7 +494,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                   size="sm"
                   className="h-7 text-xs"
                   onClick={handleAnalyze}
-                  disabled={isRefetching || isAnalyzing || isEmbedding}
+                  disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
                 >
                   {isAnalyzing ? (
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -474,7 +510,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                   size="sm"
                   className="h-7 text-xs"
                   onClick={handleEmbed}
-                  disabled={isRefetching || isAnalyzing || isEmbedding}
+                  disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
                 >
                   {isEmbedding ? (
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />

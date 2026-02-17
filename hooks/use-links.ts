@@ -137,7 +137,8 @@ export function useLinks(options: UseLinksOptions = {}) {
   return {
     links: data?.links || [],
     pagination: data?.pagination,
-    isLoading: isLoading || isValidating, // Show loading during revalidation too
+    isLoading,
+    isValidating,
     error,
     mutate,
   }
