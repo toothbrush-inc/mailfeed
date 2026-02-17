@@ -166,7 +166,7 @@ function formatTrigger(trigger: string): string {
     case "direct_manual":
       return "Direct"
     case "wayback_manual":
-      return "Archive"
+      return "Wayback"
     default:
       return trigger
   }
@@ -383,7 +383,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
     setIsEmbedding(true)
     setActionError(null)
     try {
-      const response = await fetch(`/api/embeddings/generate?limit=1`, {
+      const response = await fetch(`/api/links/${linkId}/embed`, {
         method: "POST",
       })
       if (!response.ok) {
@@ -445,81 +445,86 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
             </div>
 
             {/* Pipeline action buttons */}
-            <div className="flex items-center gap-2 pt-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => handleRefetch()}
-                disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
-              >
-                {refetchingFetcher === "all" ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-1 h-3 w-3" />
-                )}
-                Refetch
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => handleRefetch(["direct"])}
-                disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
-              >
-                {refetchingFetcher === "direct" ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                ) : (
-                  <Globe className="mr-1 h-3 w-3" />
-                )}
-                Direct
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => handleRefetch(["wayback"])}
-                disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
-              >
-                {refetchingFetcher === "wayback" ? (
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                ) : (
-                  <Archive className="mr-1 h-3 w-3" />
-                )}
-                Archive
-              </Button>
-              {(steps[1].status === "pending" || steps[1].status === "failed") && steps[0].status === "success" && (
+            <div className="flex flex-col gap-2 pt-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Fetch:</span>
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-7 text-xs"
-                  onClick={handleAnalyze}
+                  onClick={() => handleRefetch()}
                   disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
                 >
-                  {isAnalyzing ? (
+                  {refetchingFetcher === "all" ? (
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                   ) : (
-                    <Sparkles className="mr-1 h-3 w-3" />
+                    <RefreshCw className="mr-1 h-3 w-3" />
                   )}
-                  {steps[1].status === "failed" ? "Re-analyze" : "Analyze"}
+                  All
                 </Button>
-              )}
-              {(steps[2].status === "pending" || steps[2].status === "failed") && steps[0].status === "success" && (
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-7 text-xs"
-                  onClick={handleEmbed}
+                  onClick={() => handleRefetch(["direct"])}
                   disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
                 >
-                  {isEmbedding ? (
+                  {refetchingFetcher === "direct" ? (
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                   ) : (
-                    <Database className="mr-1 h-3 w-3" />
+                    <Globe className="mr-1 h-3 w-3" />
                   )}
-                  {steps[2].status === "failed" ? "Re-embed" : "Embed"}
+                  Direct
                 </Button>
-              )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => handleRefetch(["wayback"])}
+                  disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
+                >
+                  {refetchingFetcher === "wayback" ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  ) : (
+                    <Archive className="mr-1 h-3 w-3" />
+                  )}
+                  Wayback
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                {(steps[1].status === "pending" || steps[1].status === "failed") && steps[0].status === "success" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleAnalyze}
+                    disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
+                  >
+                    {isAnalyzing ? (
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="mr-1 h-3 w-3" />
+                    )}
+                    {steps[1].status === "failed" ? "Re-analyze" : "Analyze"}
+                  </Button>
+                )}
+                {(steps[2].status === "pending" || steps[2].status === "failed") && steps[0].status === "success" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleEmbed}
+                    disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
+                  >
+                    {isEmbedding ? (
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                    ) : (
+                      <Database className="mr-1 h-3 w-3" />
+                    )}
+                    {steps[2].status === "failed" ? "Re-embed" : "Embed"}
+                  </Button>
+                )}
+              </div>
             </div>
 
             {actionError && (
