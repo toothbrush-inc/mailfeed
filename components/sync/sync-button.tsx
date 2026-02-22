@@ -4,11 +4,12 @@ import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useSync } from "@/hooks/use-sync"
 import { cn } from "@/lib/utils"
-import { AlertTriangle, LogIn, MoreVertical, ChevronDown } from "lucide-react"
+import { AlertTriangle, LogIn, ChevronDown, RefreshCw, History, RotateCcw } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
@@ -16,6 +17,41 @@ function formatCoverageDate(iso: string | null | undefined): string {
   if (!iso) return ""
   const d = new Date(iso)
   return d.toLocaleDateString("en-US", { month: "short", year: "numeric" })
+}
+
+function formatRelativeTime(iso: string | null | undefined): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  const diffHr = Math.floor(diffMin / 60)
+  const diffDays = Math.floor(diffHr / 24)
+
+  if (diffMin < 1) return "just now"
+  if (diffMin < 60) return `${diffMin}m ago`
+  if (diffHr < 24) return `${diffHr}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
+function SyncIcon({ spinning }: { spinning: boolean }) {
+  return (
+    <svg
+      className={cn("h-4 w-4", spinning && "animate-spin")}
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+      />
+    </svg>
+  )
 }
 
 export function SyncButton() {
@@ -38,9 +74,9 @@ export function SyncButton() {
   const hasSynced = syncStatus?.hasSynced ?? false
   const newestDate = result?.newestEmailDate ?? syncStatus?.newestEmailDate
   const oldestDate = result?.oldestEmailDate ?? syncStatus?.oldestEmailDate
+  const lastSyncAt = syncStatus?.lastSyncAt
   const emailCount = result?.emailsSynced ?? syncStatus?.emailCount ?? 0
 
-  // Determine primary button behavior
   const handlePrimary = () => {
     if (queryMismatch || !hasSynced) {
       initialSync()
@@ -55,7 +91,7 @@ export function SyncButton() {
       ? "Resync"
       : !hasSynced
         ? "Start Sync"
-        : "Check New"
+        : "Sync"
 
   // Show re-auth prompt if required
   if (requiresReauth) {
@@ -81,7 +117,7 @@ export function SyncButton() {
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1.5">
       {/* Query change warning */}
       {queryMismatch && (
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-950">
@@ -92,76 +128,88 @@ export function SyncButton() {
         </div>
       )}
 
-      <div className="flex items-center gap-2">
-        {/* Primary sync button */}
-        <Button onClick={handlePrimary} disabled={isLoading} variant="outline" size="sm">
-          <svg
-            className={cn("mr-2 h-4 w-4", isLoading && "animate-spin")}
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+      <div className="flex items-center gap-3">
+        {/* Split button: primary action + dropdown */}
+        <div className="flex items-center">
+          <Button
+            onClick={handlePrimary}
+            disabled={isLoading}
+            variant="outline"
+            size="sm"
+            className="rounded-r-none border-r-0"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-          {primaryLabel}
-        </Button>
-
-        {/* Load Older button */}
-        {hasMoreHistory && !queryMismatch && hasSynced && (
-          <Button onClick={loadMore} disabled={isLoading} variant="outline" size="sm">
-            <ChevronDown className="mr-1 h-4 w-4" />
-            Load Older
+            <SyncIcon spinning={isLoading} />
+            <span className="ml-2">{primaryLabel}</span>
           </Button>
-        )}
-
-        {/* Overflow menu */}
-        {hasSynced && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={isLoading}>
-                <MoreVertical className="h-4 w-4" />
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-l-none px-2"
+                disabled={isLoading}
+              >
+                <ChevronDown className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem onClick={() => checkNew()} disabled={!hasSynced || queryMismatch}>
+                <div className="flex items-start gap-2">
+                  <RefreshCw className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <div>Check for new emails</div>
+                    {lastSyncAt && (
+                      <div className="text-xs text-muted-foreground">
+                        Last checked {formatRelativeTime(lastSyncAt)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => loadMore()} disabled={!hasSynced || queryMismatch}>
+                <div className="flex items-start gap-2">
+                  <History className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <div>Load older emails</div>
+                    {oldestDate && (
+                      <div className="text-xs text-muted-foreground">
+                        Synced back to {formatCoverageDate(oldestDate)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => fullResync()}>
-                Full Resync
+                <div className="flex items-start gap-2">
+                  <RotateCcw className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>Full resync</div>
+                </div>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        </div>
+
+        {/* Last sync result feedback */}
+        {!isLoading && result?.upToDate && (
+          <span className="text-xs text-green-600">Up to date</span>
+        )}
+        {!isLoading && result?.emailsProcessed != null && result.emailsProcessed > 0 && (
+          <span className="text-xs text-muted-foreground">
+            +{result.emailsProcessed} emails, {result.linksFetched ?? 0} links
+          </span>
         )}
       </div>
 
-      {/* Coverage line + result info */}
-      {(emailCount > 0 || result) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {emailCount > 0 && (
-            <span className="font-medium">
-              {emailCount} emails synced
-              {oldestDate && newestDate && (
-                <> ({formatCoverageDate(oldestDate)} &ndash; {formatCoverageDate(newestDate)})</>
-              )}
-            </span>
+      {/* Stats line */}
+      {emailCount > 0 && (
+        <div className="text-xs text-muted-foreground">
+          {emailCount} emails
+          {oldestDate && newestDate && (
+            <> &middot; {formatCoverageDate(oldestDate)} &ndash; {formatCoverageDate(newestDate)}</>
           )}
-
-          {!isLoading && result?.emailsProcessed != null && result.emailsProcessed > 0 && (
-            <span>(+{result.emailsProcessed} new)</span>
-          )}
-          {!isLoading && result?.linksFetched != null && result.linksFetched > 0 && (
-            <span>{result.linksFetched} links fetched</span>
-          )}
-
-          {!isLoading && result?.upToDate && (
-            <span className="text-green-600">Up to date</span>
-          )}
-
-          {hasMoreHistory && (
-            <span className="text-amber-600">More history available</span>
+          {lastSyncAt && (
+            <> &middot; synced {formatRelativeTime(lastSyncAt)}</>
           )}
         </div>
       )}

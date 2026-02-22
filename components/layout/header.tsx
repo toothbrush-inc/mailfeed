@@ -24,13 +24,9 @@ export function Header({ user }: HeaderProps) {
           <SyncButton />
 
           <div className="flex items-center gap-3">
-            {user.image && (
-              <img
-                src={user.image}
-                alt={user.name || "User"}
-                className="h-8 w-8 rounded-full"
-              />
-            )}
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-sm font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+              {(user.name || user.email || "?").charAt(0).toUpperCase()}
+            </div>
             <div className="hidden sm:block">
               <p className="text-sm font-medium">{user.name}</p>
               <p className="text-xs text-muted-foreground">{user.email}</p>

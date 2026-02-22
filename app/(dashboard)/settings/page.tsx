@@ -51,13 +51,9 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
-            {session.user.image && (
-              <img
-                src={session.user.image}
-                alt={session.user.name || "User"}
-                className="h-16 w-16 rounded-full"
-              />
-            )}
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-200 text-2xl font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+              {(session.user.name || session.user.email || "?").charAt(0).toUpperCase()}
+            </div>
             <div>
               <p className="font-medium">{session.user.name}</p>
               <p className="text-sm text-muted-foreground">{session.user.email}</p>
