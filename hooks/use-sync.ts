@@ -4,6 +4,8 @@ import { useState, useCallback } from "react"
 import { useSWRConfig } from "swr"
 import useSWR from "swr"
 
+type SyncMode = "check-new" | "load-more" | "initial" | "full-resync"
+
 interface SyncResult {
   emailsProcessed: number
   emailsSynced: number
@@ -15,16 +17,14 @@ interface SyncResult {
   nestedLinksCreated?: number
   nestedLinksFetched?: number
   pagesProcessed?: number
-  pagesSkipped?: number
-  hasMorePages?: boolean
+  hasMoreHistory: boolean
   gmailTotalEstimate?: number
+  mode: SyncMode
+  upToDate: boolean
+  queryChanged: boolean
+  newestEmailDate: string | null
+  oldestEmailDate: string | null
   errors: string[]
-}
-
-interface SyncOptions {
-  fullSync?: boolean
-  continueSync?: boolean
-  resetSync?: boolean
 }
 
 interface SyncError {
@@ -37,7 +37,12 @@ interface SyncStatus {
   hasSynced: boolean
   emailCount: number
   lastSyncAt: string | null
-  hasMorePages: boolean
+  hasMoreHistory: boolean
+  newestEmailDate: string | null
+  oldestEmailDate: string | null
+  syncQuery: string | null
+  currentQuery: string
+  queryMismatch: boolean
 }
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
@@ -49,28 +54,19 @@ export function useSync() {
   const [result, setResult] = useState<SyncResult | null>(null)
   const { mutate } = useSWRConfig()
 
-  // Fetch initial sync status to know if "Sync Older" should be shown
   const { data: syncStatus, mutate: mutateSyncStatus } = useSWR<SyncStatus>(
     "/api/sync/status",
     fetcher
   )
 
-  const sync = useCallback(async (options?: SyncOptions) => {
+  const runSync = useCallback(async (mode: SyncMode) => {
     setIsLoading(true)
     setError(null)
     setRequiresReauth(false)
 
     try {
       const url = new URL("/api/sync", window.location.origin)
-      if (options?.fullSync) {
-        url.searchParams.set("fullSync", "true")
-      }
-      if (options?.continueSync) {
-        url.searchParams.set("continue", "true")
-      }
-      if (options?.resetSync) {
-        url.searchParams.set("reset", "true")
-      }
+      url.searchParams.set("mode", mode)
 
       const response = await fetch(url.toString(), {
         method: "POST",
@@ -79,7 +75,6 @@ export function useSync() {
       if (!response.ok) {
         const data: SyncError = await response.json()
 
-        // Check if re-authentication is required
         if (data.requiresReauth) {
           setRequiresReauth(true)
           setError(data.error || "Please sign in again to continue syncing.")
@@ -92,12 +87,11 @@ export function useSync() {
       const data: SyncResult = await response.json()
       setResult(data)
 
-      // Invalidate links and categories cache to refresh the feed
+      // Invalidate caches to refresh the feed
       mutate("/api/links")
       mutate("/api/categories")
       mutate("/api/stats")
       mutate("/api/emails/stats")
-      // Refresh sync status to update hasMorePages
       mutateSyncStatus()
 
       return data
@@ -110,22 +104,31 @@ export function useSync() {
     }
   }, [mutate, mutateSyncStatus])
 
+  const checkNew = useCallback(() => runSync("check-new"), [runSync])
+  const loadMore = useCallback(() => runSync("load-more"), [runSync])
+  const initialSync = useCallback(() => runSync("initial"), [runSync])
+  const fullResync = useCallback(() => runSync("full-resync"), [runSync])
+
   const clearReauthRequired = useCallback(() => {
     setRequiresReauth(false)
     setError(null)
   }, [])
 
-  // Use hasMorePages from result (after sync) or syncStatus (on page load)
-  const hasMorePages = result?.hasMorePages ?? syncStatus?.hasMorePages ?? false
+  const hasMoreHistory = result?.hasMoreHistory ?? syncStatus?.hasMoreHistory ?? false
+  const queryMismatch = result?.queryChanged ?? syncStatus?.queryMismatch ?? false
 
   return {
-    sync,
+    checkNew,
+    loadMore,
+    initialSync,
+    fullResync,
     isLoading,
     error,
     result,
     requiresReauth,
     clearReauthRequired,
-    hasMorePages,
+    hasMoreHistory,
+    queryMismatch,
     syncStatus,
   }
 }

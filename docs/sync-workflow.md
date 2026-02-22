@@ -2,14 +2,74 @@
 
 > **IMPORTANT**: This document must be updated whenever changes are made to the sync workflow logic in the files listed in the [Key Files Reference](#key-files-reference) section.
 
-## High-Level Flow
+## High-Level Flow — Mode-Based Sync
+
+The sync system uses four modes, driven by date-based Gmail search operators (`after:`, `before:`) for incremental sync. No persistent page tokens are stored — pagination within a single request uses Gmail's `nextPageToken` ephemerally.
+
+### Sync Modes
+
+| Mode | Trigger | Behavior |
+|------|---------|----------|
+| `check-new` | Default sync button | Appends `after:` to query using `syncNewestEmailDate` |
+| `load-more` | "Load Older" button | Appends `before:` to query using `syncOldestEmailDate` |
+| `initial` | First sync or after query change | No date filter, fetches from beginning |
+| `full-resync` | Overflow menu | Same as `initial` (clears state, doesn't delete data) |
+
+### User Model — Sync Fields
+
+```
+User
+├── lastSyncAt           DateTime?   (when sync last completed)
+├── syncQuery            String?     (email query active when sync state was captured)
+├── syncNewestEmailDate  DateTime?   (receivedAt of most recent synced email)
+└── syncOldestEmailDate  DateTime?   (receivedAt of oldest synced email)
+```
+
+### Date-Based Incremental Sync
+
+Gmail's `after:` and `before:` operators use day granularity (YYYY/MM/DD). To handle boundary overlap, `check-new` subtracts 1 day from `syncNewestEmailDate` for the `after:` filter, and `load-more` adds 1 day to `syncOldestEmailDate` for the `before:` filter. Existing `gmailId` deduplication handles any re-seen emails.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           EMAIL SYNC WORKFLOW                                │
+│                    MODE-BASED SYNC DISPATCH                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-[Gmail API] ──► Fetch emails matching user query (default: from:me to:me)
+POST /api/sync?mode=<mode>
+        │
+        ▼
+┌──────────────────┐
+│ Parse mode param │
+│ (default:        │
+│  check-new)      │
+└────────┬─────────┘
+         │
+         ├── check-new ──────► Query mismatch? ──YES──► Return { queryChanged: true }
+         │                          │ NO
+         │                          ▼
+         │                     syncNewestEmailDate null? ──YES──► Fall through to initial
+         │                          │ NO
+         │                          ▼
+         │                     Build: query + after:(newestDate - 1 day)
+         │                     Fetch 1 page
+         │                     If no new emails → { upToDate: true }
+         │
+         ├── load-more ──────► syncOldestEmailDate null? ──YES──► Error
+         │                          │ NO
+         │                          ▼
+         │                     Build: query + before:(oldestDate + 1 day)
+         │                     Fetch up to maxPagesLoadMore pages
+         │
+         ├── initial ────────► Clear sync state (syncQuery, dates)
+         │                     Fetch plain query, up to maxPagesInitial pages
+         │                     Set syncQuery = current query
+         │
+         └── full-resync ───► Same as initial
+```
+
+## Email Processing Flow
+
+```
+[Gmail API] ──► Fetch emails matching augmented query
                         │
                         ▼
               ┌─────────────────┐
@@ -229,6 +289,19 @@
                                 ▼
 ```
 
+## Post-Sync Coverage Update
+
+After every sync (all modes), `updateSyncCoverage()` queries the Email table for min/max `receivedAt` and updates `syncNewestEmailDate` and `syncOldestEmailDate` on the User.
+
+## Query Change Detection
+
+When the email query is changed in settings:
+1. `PATCH /api/settings` detects the change
+2. Clears `syncQuery`, `syncNewestEmailDate`, `syncOldestEmailDate` on User
+3. Returns `{ queryChanged: true }` to the client
+4. SyncButton UI shows an amber warning and changes the primary action to "Resync"
+5. Clicking "Resync" triggers `initial` mode sync with the new query
+
 ## Nested Links Processing (Social Media)
 
 ```
@@ -352,10 +425,18 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
+│  SYNC MODE DISPATCH                                                        │
+│  └─► check-new: after: filter from syncNewestEmailDate                    │
+│  └─► load-more: before: filter from syncOldestEmailDate                   │
+│  └─► initial/full-resync: no date filter, fetches from beginning          │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────┐
 │  GMAIL API                                                                  │
-│  └─► Emails matching user query (configurable, default: from:me to:me)     │
-│       └─► Filter already processed                                          │
-│            └─► Batch fetch email contents (configurable concurrency)        │
+│  └─► Emails matching augmented query (with date operators)                │
+│       └─► Filter already processed (gmailId dedup)                        │
+│            └─► Batch fetch email contents (configurable concurrency)       │
 └────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -387,6 +468,13 @@
                                     │
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────────┐
+│  SYNC COVERAGE UPDATE                                                       │
+│  └─► updateSyncCoverage(): query min/max receivedAt from Email table      │
+│       └─► Update syncNewestEmailDate and syncOldestEmailDate on User      │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────┐
 │  AI ANALYSIS (configurable BAML client, default: Gemini)                    │
 │  └─► Generate summary                                                       │
 │       └─► Extract key points                                               │
@@ -408,6 +496,21 @@
 │  - Highlight status                                                         │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Settings
+
+### Sync Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `sync.emailConcurrency` | 10 | Emails fetched in parallel from Gmail |
+| `sync.linkConcurrency` | 5 | Links fetched in parallel during sync |
+| `sync.maxPagesInitial` | 5 | Pages fetched on first sync or full resync |
+| `sync.maxPagesLoadMore` | 5 | Pages fetched when loading older history |
+
+`check-new` always fetches exactly 1 page (using `after:` filter to narrow results).
 
 ---
 
@@ -457,7 +560,9 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 
 | Stage | File | Function |
 |-------|------|----------|
-| Sync orchestration | `app/api/sync/route.ts` | `POST()`, `processLink()`, `processLinksInParallel()` |
+| Sync orchestration | `app/api/sync/route.ts` | `POST()`, `processLink()`, `processLinksInParallel()`, `handleInitialSync()` |
+| Sync status | `app/api/sync/status/route.ts` | `GET()` — coverage dates, query mismatch detection |
+| Sync coverage | `lib/sync-coverage.ts` | `updateSyncCoverage()`, `formatGmailDate()` |
 | User settings | `lib/settings.ts`, `lib/user-settings.ts` | `resolveSettings()`, `getUserSettings()` |
 | AI provider config | `lib/ai-provider.ts`, `lib/baml-registry.ts` | `isAiConfigured()`, `buildClientRegistry()` |
 | Gmail integration | `lib/gmail.ts` | `fetchEmails()`, `batchGetEmailContents()` |
@@ -471,25 +576,20 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 | Fetch attempt recording | `lib/fetch-attempts.ts` | `recordFetchAttempts()`, `recordSingleFetchAttempt()` |
 | Fetch attempts API | `app/api/links/[id]/attempts/route.ts` | List attempts (no rawHtml) |
 | Fetch attempt detail API | `app/api/links/[id]/attempts/[attemptId]/route.ts` | Single attempt (with rawHtml) |
+| Client hook | `hooks/use-sync.ts` | `useSync()` — `checkNew()`, `loadMore()`, `initialSync()`, `fullResync()` |
+| Sync button | `components/sync/sync-button.tsx` | Mode-based UI with coverage display |
+| Sync settings | `components/settings/sync-settings.tsx` | `maxPagesInitial`, `maxPagesLoadMore` |
+| Email settings | `components/settings/email-settings.tsx` | Query change with sync reset warning |
 
 ---
 
-## Cleanup Tasks (Planned)
+## Migration Strategy for Existing Users
 
-### High Priority
-1. **Unify Link Processing** - Merge `processLink()` and `processNestedLinks()` into single `lib/link-processor.ts`
-2. **Extract URL Validation** - Create `lib/link-utils.ts` with `shouldExcludeUrl()`, `checkDuplicateByFinalUrl()`
-
-### Medium Priority
-3. **Break Down processLink** - Split 250-line function into focused helpers
-4. **Strategy Pattern for Content Fetcher** - (Optional) Separate oEmbed, Readability, metadata strategies
-
-### Quick Wins
-5. **Centralize Domain Constants** - Create `lib/constants/domains.ts`
-6. **Standardize Error Logging** - Create `lib/logger.ts` with `syncLogger`
-7. **Extract Status Transitions** - Create `lib/link-status.ts`
-
-See full details in project plan file.
+- `syncPageToken` and `oldestSyncPageToken` columns dropped
+- New fields (`syncQuery`, `syncNewestEmailDate`, `syncOldestEmailDate`) default to null
+- First "Check New" after migration: `syncNewestEmailDate` is null → treated as `initial` mode
+- Subsequent syncs use the fast `after:` path
+- Zero-downtime, backward-compatible
 
 ---
 

@@ -5,6 +5,12 @@ import { hashUrl, extractDomain } from "@/lib/link-extractor"
 import { isExcludedUrl } from "@/lib/constants/domains"
 import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher"
 import { processNestedLinks } from "@/lib/process-nested-links"
+import { triggerAutoAnalysisAndEmbedding } from "@/lib/ai-triggers"
+import { getUserSettings } from "@/lib/user-settings"
+import { fetchWithFallbackChain } from "@/lib/fetchers"
+import { generateOperationId, recordFetchAttempts } from "@/lib/fetch-attempts"
+import "@/lib/fetchers/direct"
+import "@/lib/fetchers/wayback"
 
 export async function POST(request: NextRequest) {
   const session = await auth()
@@ -13,6 +19,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const settings = await getUserSettings(session.user.id)
   const body = await request.json()
   const { url } = body as { url?: string }
 
@@ -62,8 +69,16 @@ export async function POST(request: NextRequest) {
 
     console.log("[/api/links/add] Created link:", link.id, "for URL:", url)
 
-    // Fetch content
-    const content = await fetchAndParseContent(url)
+    // Fetch content with fallback chain
+    const operationId = generateOperationId()
+    const content = await fetchWithFallbackChain(url, settings.fetching.fallbackChain, {
+      timeoutMs: settings.fetching.fetchTimeoutMs,
+    })
+
+    // Record fetch attempts
+    recordFetchAttempts(link.id, operationId, "manual_add", content.attempts).catch(err =>
+      console.error("[/api/links/add] Failed to record fetch attempts:", err)
+    )
 
     if (!content.success) {
       const updatedLink = await prisma.link.update({
@@ -134,9 +149,12 @@ export async function POST(request: NextRequest) {
       rawHtml: content.rawHtml || null,
       finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
       domain,
-    })
+    }, settings)
 
     console.log("[/api/links/add] Nested links:", nestedResult)
+
+    // Trigger auto-analysis and embedding (fire and forget)
+    triggerAutoAnalysisAndEmbedding(updatedLink.id, session.user.id)
 
     return NextResponse.json({
       success: true,

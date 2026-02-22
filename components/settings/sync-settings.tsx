@@ -14,9 +14,8 @@ export function SyncSettings() {
   const [values, setValues] = useState({
     emailConcurrency: 10,
     linkConcurrency: 5,
-    maxPagesNormal: 1,
-    maxPagesContinue: 5,
-    maxPagesFull: 20,
+    maxPagesLoadMore: 5,
+    maxPagesInitial: 5,
   })
   const [initialized, setInitialized] = useState(false)
 
@@ -86,43 +85,38 @@ export function SyncSettings() {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="max-pages-normal">Normal Sync Pages</Label>
+            <Label htmlFor="max-pages-initial">Initial Sync Pages</Label>
             <Input
-              id="max-pages-normal"
-              type="number"
-              min={1}
-              max={50}
-              value={values.maxPagesNormal}
-              onChange={(e) => updateValue("maxPagesNormal", e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="max-pages-continue">Continue Sync Pages</Label>
-            <Input
-              id="max-pages-continue"
-              type="number"
-              min={1}
-              max={50}
-              value={values.maxPagesContinue}
-              onChange={(e) => updateValue("maxPagesContinue", e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="max-pages-full">Full Sync Pages</Label>
-            <Input
-              id="max-pages-full"
+              id="max-pages-initial"
               type="number"
               min={1}
               max={100}
-              value={values.maxPagesFull}
-              onChange={(e) => updateValue("maxPagesFull", e.target.value)}
+              value={values.maxPagesInitial}
+              onChange={(e) => updateValue("maxPagesInitial", e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              Pages fetched on first sync or full resync
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="max-pages-load-more">Load More Pages</Label>
+            <Input
+              id="max-pages-load-more"
+              type="number"
+              min={1}
+              max={50}
+              value={values.maxPagesLoadMore}
+              onChange={(e) => updateValue("maxPagesLoadMore", e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Pages fetched when loading older history
+            </p>
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Maximum Gmail pages to fetch per sync mode. Each page contains up to 50 emails.
+          Each page contains up to 50 emails. &ldquo;Check New&rdquo; always fetches 1 page.
         </p>
 
         {hasChanges && (

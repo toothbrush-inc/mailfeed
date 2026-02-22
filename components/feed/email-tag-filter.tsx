@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { FEATURE_FLAGS } from "@/lib/flags"
 
 type EmailTag = "ARTICLE_LINK" | "REMINDER" | "MEETING_INFO" | "TODO" | "OTHER"
 
@@ -17,6 +18,8 @@ const TAGS: { value: EmailTag; label: string }[] = [
 export function EmailTagFilter() {
   const searchParams = useSearchParams()
   const currentTag = searchParams.get("tag")
+
+  if (!FEATURE_FLAGS.enableAnalysis) return null
 
   return (
     <div className="flex flex-wrap gap-2 mb-4">

@@ -1,4 +1,4 @@
-import { fetchAndParseContent } from "@/lib/content-fetcher"
+import { fetchAndParseContent, isPoorContent } from "@/lib/content-fetcher"
 import { registerFetcher, type ContentFetcher, type FetchResult } from "./index"
 
 const directFetcher: ContentFetcher = {
@@ -6,7 +6,17 @@ const directFetcher: ContentFetcher = {
   name: "Direct Fetch",
   description: "Fetches content directly from the URL using Readability",
   async fetch(url: string, options?: { timeoutMs?: number }): Promise<FetchResult> {
-    return fetchAndParseContent(url, options)
+    const result = await fetchAndParseContent(url, options)
+
+    if (result.success && isPoorContent(result)) {
+      return {
+        ...result,
+        success: false,
+        error: "Poor content quality (likely JS-rendered or empty)",
+      }
+    }
+
+    return result
   },
 }
 

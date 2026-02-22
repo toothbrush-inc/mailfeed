@@ -29,6 +29,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LinkDebugDialog } from "./link-debug-dialog"
+import { FEATURE_FLAGS } from "@/lib/flags"
 
 interface NestedLinkItemProps {
   link: {
@@ -169,19 +170,19 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
     <div
       className={cn(
         "rounded-lg border bg-card p-4 transition-colors hover:bg-muted/50",
-        link.isHighlighted && "ring-2 ring-amber-400 dark:ring-amber-500",
+        FEATURE_FLAGS.enableAnalysis && link.isHighlighted && "ring-2 ring-amber-400 dark:ring-amber-500",
         isRead && "opacity-60"
       )}
     >
       {/* Header */}
       <div className="flex items-start gap-3">
-        {link.isHighlighted && (
+        {FEATURE_FLAGS.enableAnalysis && link.isHighlighted && (
           <Star className="h-4 w-4 mt-1 text-amber-500 fill-amber-500 shrink-0" />
         )}
         <div className="flex-1 min-w-0 space-y-2">
           {/* Title and domain */}
           <div className="space-y-1">
-            {link.isHighlighted && (
+            {FEATURE_FLAGS.enableAnalysis && link.isHighlighted && (
               <div className="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
                 <span>Highlighted</span>
               </div>
@@ -324,12 +325,12 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
           )}
 
           {/* AI Summary */}
-          {link.aiSummary && (
+          {FEATURE_FLAGS.enableAnalysis && link.aiSummary && (
             <p className="text-sm text-muted-foreground">{link.aiSummary}</p>
           )}
 
           {/* Key Points */}
-          {link.aiKeyPoints && link.aiKeyPoints.length > 0 && (
+          {FEATURE_FLAGS.enableAnalysis && link.aiKeyPoints && link.aiKeyPoints.length > 0 && (
             <div className="space-y-1">
               <p className="text-xs font-medium">Key Points:</p>
               <ul className="list-inside list-disc space-y-0.5 text-xs text-muted-foreground">
@@ -341,14 +342,14 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
           )}
 
           {/* Highlight reason */}
-          {link.highlightReason && (
+          {FEATURE_FLAGS.enableAnalysis && link.highlightReason && (
             <p className="text-xs italic text-amber-600 dark:text-amber-400">
               &ldquo;{link.highlightReason}&rdquo;
             </p>
           )}
 
           {/* Tags */}
-          <div className="flex flex-col gap-1.5 pt-1">
+          {FEATURE_FLAGS.enableAnalysis && <div className="flex flex-col gap-1.5 pt-1">
             {link.linkTags?.length > 0 && (
               <div className="flex flex-wrap items-center gap-1">
                 <span className="text-xs text-muted-foreground font-medium">Type:</span>
@@ -392,7 +393,7 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
                 ))}
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-1 pt-2">

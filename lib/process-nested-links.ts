@@ -1,7 +1,11 @@
 import { prisma } from "./prisma"
 import { extractNestedUrls, isSocialMediaLink } from "./nested-link-extractor"
 import { hashUrl, extractDomain } from "./link-extractor"
-import { fetchAndParseContent, estimateReadingTime } from "./content-fetcher"
+import { estimateReadingTime } from "./content-fetcher"
+import { fetchWithFallbackChain } from "./fetchers"
+import { recordFetchAttempts, generateOperationId } from "./fetch-attempts"
+import { triggerAutoAnalysisAndEmbedding } from "./ai-triggers"
+import type { ResolvedSettings } from "./settings"
 
 // Domains to exclude for nested links (social media, images, etc.)
 const EXCLUDED_NESTED_FINAL_DOMAINS = [
@@ -57,7 +61,8 @@ export async function processNestedLinks(
     rawHtml: string | null
     finalDomain: string | null
     domain: string | null
-  }
+  },
+  settings: ResolvedSettings
 ): Promise<ProcessNestedLinksResult> {
   const result: ProcessNestedLinksResult = {
     created: 0,
@@ -103,7 +108,7 @@ export async function processNestedLinks(
         url,
         urlHash,
         domain: extractDomain(url),
-        fetchStatus: "PENDING",
+        fetchStatus: "FETCHING",
       },
     })
 
@@ -117,8 +122,16 @@ export async function processNestedLinks(
         data: { fetchStatus: "FETCHING" },
       })
 
-      const content = await fetchAndParseContent(url)
+      const operationId = generateOperationId()
+      const content = await fetchWithFallbackChain(url, settings.fetching.fallbackChain, {
+        timeoutMs: settings.fetching.fetchTimeoutMs,
+      })
       const rawHtml = content.rawHtml
+
+      // Fire-and-forget: record fetch attempts
+      recordFetchAttempts(childLink.id, operationId, "nested_fetch", content.attempts).catch((err) =>
+        console.error("[Nested Links] Failed to record fetch attempts:", err)
+      )
 
       if (!content.success) {
         await prisma.link.update({
@@ -191,6 +204,9 @@ export async function processNestedLinks(
       })
 
       result.fetched++
+
+      // Trigger auto-analysis for nested link
+      triggerAutoAnalysisAndEmbedding(childLink.id, parentLink.userId)
     } catch (fetchError) {
       result.errors.push(`Failed to process nested link ${url}: ${fetchError}`)
       await prisma.link.update({

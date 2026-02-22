@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Mail, ExternalLink, Star, Sparkles, Loader2, ChevronDown, ChevronUp } from "lucide-react"
+import { FEATURE_FLAGS } from "@/lib/flags"
 
 interface EmailLink {
   id: string
@@ -191,40 +192,42 @@ export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
                 {email.subject || "No subject"}
               </a>
             </h3>
-            <div className="flex items-center gap-2 pt-1">
-              {localTags.map((tag) => (
-                <span
-                  key={tag}
-                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TAG_COLORS[tag]}`}
+            {FEATURE_FLAGS.enableAnalysis && (
+              <div className="flex items-center gap-2 pt-1">
+                {localTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TAG_COLORS[tag]}`}
+                  >
+                    {TAG_LABELS[tag]}
+                  </span>
+                ))}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleIngest}
+                  disabled={isIngesting}
+                  className="h-6 px-2 text-xs"
                 >
-                  {TAG_LABELS[tag]}
-                </span>
-              ))}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleIngest}
-                disabled={isIngesting}
-                className="h-6 px-2 text-xs"
-              >
-                {isIngesting ? (
-                  <>
-                    <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                    Analyzing...
-                  </>
-                ) : hasBeenIngested ? (
-                  <>
-                    <Sparkles className="mr-1 h-3 w-3" />
-                    Re-analyze
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-1 h-3 w-3" />
-                    Analyze
-                  </>
-                )}
-              </Button>
-            </div>
+                  {isIngesting ? (
+                    <>
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : hasBeenIngested ? (
+                    <>
+                      <Sparkles className="mr-1 h-3 w-3" />
+                      Re-analyze
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-1 h-3 w-3" />
+                      Analyze
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -288,7 +291,7 @@ export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
                 key={link.id}
                 className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
               >
-                {link.isHighlighted && (
+                {FEATURE_FLAGS.enableAnalysis && link.isHighlighted && (
                   <Star className="h-4 w-4 mt-0.5 text-amber-500 fill-amber-500 shrink-0" />
                 )}
                 <div className="flex-1 min-w-0 space-y-1">
@@ -313,11 +316,12 @@ export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
                   {link.domain && (
                     <p className="text-xs text-muted-foreground">{link.domain}</p>
                   )}
-                  {link.aiSummary && (
+                  {FEATURE_FLAGS.enableAnalysis && link.aiSummary && (
                     <p className="text-sm text-muted-foreground line-clamp-2">
                       {link.aiSummary}
                     </p>
                   )}
+                  {FEATURE_FLAGS.enableAnalysis && (link.aiCategory || link.aiTags?.length > 0) && (
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     {link.aiCategory && (
                       <Badge variant="secondary" className="text-xs">
@@ -329,9 +333,10 @@ export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
                         {tag}
                       </Badge>
                     ))}
+                  </div>
+                  )}
                 </div>
               </div>
-            </div>
           ))}
           </div>
         )}

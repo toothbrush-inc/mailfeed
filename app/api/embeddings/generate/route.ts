@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import {
-  generateEmbedding,
-  prepareTextForEmbedding,
-  formatEmbeddingForPgVector,
+  generateAndStoreEmbedding,
 } from "@/lib/embeddings"
 import { isPgVectorAvailable } from "@/lib/vector-search"
 import { getUserSettings } from "@/lib/user-settings"
@@ -32,6 +30,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: getMissingEnvVarMessage(settings), code: "AI_NOT_CONFIGURED" },
       { status: 503 }
+    )
+  }
+
+  if (!settings.embeddings.enabled) {
+    return NextResponse.json(
+      { error: "Embeddings are disabled in settings", code: "EMBEDDINGS_DISABLED" },
+      { status: 403 }
     )
   }
 
@@ -69,13 +74,7 @@ export async function POST(request: NextRequest) {
         userId: session.user.id,
         embeddingStatus: { in: retry ? ["PENDING", "FAILED"] : ["PENDING"] },
       },
-      select: {
-        id: true,
-        title: true,
-        contentText: true,
-        description: true,
-        aiSummary: true,
-      },
+      select: { id: true },
       take: limit + 1, // Fetch one extra to check if there are more
       orderBy: { createdAt: "desc" },
     })
@@ -87,56 +86,17 @@ export async function POST(request: NextRequest) {
     for (const link of linksToProcess) {
       result.processed++
 
-      // Prepare text for embedding
-      const text = prepareTextForEmbedding(link)
+      const embeddingResult = await generateAndStoreEmbedding(link.id, settings)
 
-      if (!text) {
-        // Skip links without content
-        await prisma.link.update({
-          where: { id: link.id },
-          data: {
-            embeddingStatus: "SKIPPED",
-            embeddingError: "No content available for embedding",
-          },
-        })
-        result.skipped++
-        continue
-      }
-
-      // Mark as processing
-      await prisma.link.update({
-        where: { id: link.id },
-        data: { embeddingStatus: "PROCESSING" },
-      })
-
-      try {
-        // Generate embedding
-        const embedding = await generateEmbedding(text, "RETRIEVAL_DOCUMENT", settings)
-        const embeddingStr = formatEmbeddingForPgVector(embedding)
-
-        // Store embedding using raw SQL (Prisma doesn't support vector type)
-        await prisma.$executeRaw`
-          UPDATE "Link"
-          SET embedding = ${embeddingStr}::vector,
-              "embeddingStatus" = 'COMPLETED',
-              "embeddedAt" = NOW(),
-              "embeddingError" = NULL
-          WHERE id = ${link.id}
-        `
-
+      if (embeddingResult.success) {
         result.succeeded++
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error"
-        await prisma.link.update({
-          where: { id: link.id },
-          data: {
-            embeddingStatus: "FAILED",
-            embeddingError: errorMessage,
-          },
-        })
-        result.failed++
-        result.errors.push(`Link ${link.id}: ${errorMessage}`)
+      } else {
+        if (embeddingResult.error === "No content to embed") {
+          result.skipped++
+        } else {
+          result.failed++
+          result.errors.push(`Link ${link.id}: ${embeddingResult.error}`)
+        }
       }
 
       // Rate limiting

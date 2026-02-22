@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { FEATURE_FLAGS } from "@/lib/flags"
 import { Loader2, Bot, AlertCircle } from "lucide-react"
 import { useSettings } from "@/hooks/use-settings"
 
@@ -154,19 +156,109 @@ export function AiSettings() {
           </div>
         </div>
 
-        {hasModelChanges && (
-          <Button onClick={handleSaveModels} disabled={isSaving} size="sm">
-            {isSaving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              "Save Model Settings"
-            )}
-          </Button>
-        )}
-      </CardContent>
-    </Card>
+
+
+        <div className="space-y-4 pt-4 border-t">
+          <h3 className="font-medium">Features</h3>
+
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div className="space-y-4">
+              {FEATURE_FLAGS.enableAnalysis && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="analysis-enabled">Content Analysis</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Extract summaries and tags
+                      </p>
+                    </div>
+                    <Switch
+                      id="analysis-enabled"
+                      checked={settings.analysis.enabled}
+                      onCheckedChange={(checked) =>
+                        updateSettings({ analysis: { ...settings.analysis, enabled: checked } })
+                      }
+                      disabled={isSaving}
+                    />
+                  </div>
+
+                  {settings.analysis.enabled && (
+                    <div className="flex items-center justify-between pl-2 border-l-2">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="analysis-autorun">Auto-Analyze</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Run automatically on new links
+                        </p>
+                      </div>
+                      <Switch
+                        id="analysis-autorun"
+                        checked={settings.analysis.autoRun}
+                        onCheckedChange={(checked) =>
+                          updateSettings({ analysis: { ...settings.analysis, autoRun: checked } })
+                        }
+                        disabled={isSaving}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="embeddings-enabled">Vector Embeddings</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Enable semantic search (RAG)
+                  </p>
+                </div>
+                <Switch
+                  id="embeddings-enabled"
+                  checked={settings.embeddings.enabled}
+                  onCheckedChange={(checked) =>
+                    updateSettings({ embeddings: { ...settings.embeddings, enabled: checked } })
+                  }
+                  disabled={isSaving}
+                />
+              </div>
+
+              {settings.embeddings.enabled && (
+                <div className="flex items-center justify-between pl-2 border-l-2">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="embeddings-autorun">Auto-Embed</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Run automatically on new links
+                    </p>
+                  </div>
+                  <Switch
+                    id="embeddings-autorun"
+                    checked={settings.embeddings.autoRun}
+                    onCheckedChange={(checked) =>
+                      updateSettings({ embeddings: { ...settings.embeddings, autoRun: checked } })
+                    }
+                    disabled={isSaving}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {
+          hasModelChanges && (
+            <Button onClick={handleSaveModels} disabled={isSaving} size="sm">
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Model Settings"
+              )}
+            </Button>
+          )
+        }
+      </CardContent >
+    </Card >
   )
 }

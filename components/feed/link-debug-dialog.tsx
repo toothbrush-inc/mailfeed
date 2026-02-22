@@ -28,6 +28,7 @@ import {
   Archive,
 } from "lucide-react"
 import { useFetchAttempts } from "@/hooks/use-fetch-attempts"
+import { FEATURE_FLAGS } from "@/lib/flags"
 
 interface LinkDebugDialogProps {
   linkId: string
@@ -126,11 +127,17 @@ function derivePipelineSteps(link: LinkDebugDialogProps["link"]): PipelineStep[]
     embeddingStep = "skipped"
   }
 
-  return [
+  const steps: PipelineStep[] = [
     { label: "Fetched", status: fetchStatus, timestamp: link.fetchedAt },
-    { label: "Analyzed", status: analysisStatus, timestamp: link.analyzedAt },
-    { label: "Embedded", status: embeddingStep, timestamp: link.embeddedAt },
   ]
+
+  if (FEATURE_FLAGS.enableAnalysis) {
+    steps.push({ label: "Analyzed", status: analysisStatus, timestamp: link.analyzedAt })
+  }
+
+  steps.push({ label: "Embedded", status: embeddingStep, timestamp: link.embeddedAt })
+
+  return steps
 }
 
 function StepIcon({ status }: { status: StepStatus }) {
@@ -453,7 +460,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                   size="sm"
                   className="h-7 text-xs"
                   onClick={() => handleRefetch()}
-                  disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
+                  disabled={refetchingFetcher !== null || isEmbedding}
                 >
                   {refetchingFetcher === "all" ? (
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -467,7 +474,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                   size="sm"
                   className="h-7 text-xs"
                   onClick={() => handleRefetch(["direct"])}
-                  disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
+                  disabled={refetchingFetcher !== null || isEmbedding}
                 >
                   {refetchingFetcher === "direct" ? (
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -481,7 +488,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                   size="sm"
                   className="h-7 text-xs"
                   onClick={() => handleRefetch(["wayback"])}
-                  disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
+                  disabled={refetchingFetcher !== null || isEmbedding}
                 >
                   {refetchingFetcher === "wayback" ? (
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" />
@@ -492,7 +499,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                 </Button>
               </div>
               <div className="flex items-center gap-2">
-                {(steps[1].status === "pending" || steps[1].status === "failed") && steps[0].status === "success" && (
+                {FEATURE_FLAGS.enableAnalysis && (steps.find(s => s.label === "Analyzed")?.status === "pending" || steps.find(s => s.label === "Analyzed")?.status === "failed") && steps.find(s => s.label === "Fetched")?.status === "success" && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -505,23 +512,23 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                     ) : (
                       <Sparkles className="mr-1 h-3 w-3" />
                     )}
-                    {steps[1].status === "failed" ? "Re-analyze" : "Analyze"}
+                    {steps.find(s => s.label === "Analyzed")?.status === "failed" ? "Re-analyze" : "Analyze"}
                   </Button>
                 )}
-                {(steps[2].status === "pending" || steps[2].status === "failed") && steps[0].status === "success" && (
+                {(steps.find(s => s.label === "Embedded")?.status === "pending" || steps.find(s => s.label === "Embedded")?.status === "failed") && steps.find(s => s.label === "Fetched")?.status === "success" && (
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs"
                     onClick={handleEmbed}
-                    disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
+                    disabled={refetchingFetcher !== null || isEmbedding}
                   >
                     {isEmbedding ? (
                       <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                     ) : (
                       <Database className="mr-1 h-3 w-3" />
                     )}
-                    {steps[2].status === "failed" ? "Re-embed" : "Embed"}
+                    {steps.find(s => s.label === "Embedded")?.status === "failed" ? "Re-embed" : "Embed"}
                   </Button>
                 )}
               </div>
@@ -566,14 +573,18 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                   </span>
                 </div>
               )}
-              <div className="flex justify-between gap-2">
-                <span className="text-muted-foreground">AI Category</span>
-                <span className="text-xs">{link.aiCategory || "\u2014"}</span>
-              </div>
-              <div className="flex justify-between gap-2">
-                <span className="text-muted-foreground">Tags</span>
-                <span className="text-xs">{tagCount > 0 ? `${tagCount} tags` : "\u2014"}</span>
-              </div>
+              {FEATURE_FLAGS.enableAnalysis && (
+                <>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">AI Category</span>
+                    <span className="text-xs">{link.aiCategory || "\u2014"}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Tags</span>
+                    <span className="text-xs">{tagCount > 0 ? `${tagCount} tags` : "\u2014"}</span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">Embedding</span>
                 <span className="font-mono text-xs">{link.embeddingStatus || "\u2014"}</span>
@@ -608,7 +619,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                   <span className="text-xs">{formatTimestamp(link.fetchedAt)}</span>
                 </div>
               )}
-              {link.analyzedAt && (
+              {FEATURE_FLAGS.enableAnalysis && link.analyzedAt && (
                 <div className="flex justify-between gap-2">
                   <span className="text-muted-foreground">Analyzed At</span>
                   <span className="text-xs">{formatTimestamp(link.analyzedAt)}</span>
@@ -692,11 +703,10 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                           {/* Timeline line */}
                           <div className="flex flex-col items-center">
                             <div
-                              className={`h-2 w-2 rounded-full mt-1.5 ${
-                                attempt.success
-                                  ? "bg-green-500"
-                                  : "bg-red-500"
-                              }`}
+                              className={`h-2 w-2 rounded-full mt-1.5 ${attempt.success
+                                ? "bg-green-500"
+                                : "bg-red-500"
+                                }`}
                             />
                             {idx < op.attempts.length - 1 && (
                               <div className="w-px flex-1 bg-border min-h-[24px]" />

@@ -172,7 +172,7 @@ export async function POST(
       rawHtml: content.rawHtml || null,
       finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
       domain: link.domain,
-    })
+    }, settings)
 
     console.log("[/api/links/[id]/refetch] Total time:", Date.now() - startTime, "ms")
     console.log("[/api/links/[id]/refetch] Nested links:", nestedResult)

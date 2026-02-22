@@ -11,6 +11,7 @@ import { useSettings } from "@/hooks/use-settings"
 export function EmailSettings() {
   const { settings, updateSettings } = useSettings()
   const [isSaving, setIsSaving] = useState(false)
+  const [querySaved, setQuerySaved] = useState(false)
   const [query, setQuery] = useState("")
   const [initialized, setInitialized] = useState(false)
 
@@ -25,8 +26,10 @@ export function EmailSettings() {
 
   const handleSave = async () => {
     setIsSaving(true)
+    setQuerySaved(false)
     try {
       await updateSettings({ email: { query } })
+      setQuerySaved(true)
     } finally {
       setIsSaving(false)
     }
@@ -82,6 +85,12 @@ export function EmailSettings() {
               "Save Query"
             )}
           </Button>
+        )}
+
+        {querySaved && !hasChanges && (
+          <p className="text-xs text-amber-600">
+            Query changed. Sync state has been reset. Click &ldquo;Resync&rdquo; to sync with the new query.
+          </p>
         )}
       </CardContent>
     </Card>

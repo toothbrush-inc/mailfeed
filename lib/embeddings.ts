@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai"
+import { prisma } from "@/lib/prisma"
 import { DEFAULT_SETTINGS, type ResolvedSettings } from "@/lib/settings"
 
 function getGenAI(): GoogleGenAI {
@@ -145,4 +146,78 @@ export function parseEmbeddingFromPgVector(pgVector: string): number[] {
   // pgvector returns format: [0.1,0.2,...]
   const cleaned = pgVector.replace(/[\[\]]/g, "")
   return cleaned.split(",").map(Number)
+}
+
+/**
+ * Generates and stores an embedding for a single link.
+ * Updates the Link record in the database.
+ */
+export async function generateAndStoreEmbedding(
+  linkId: string,
+  settings: ResolvedSettings,
+  taskType: EmbeddingTaskType = "RETRIEVAL_DOCUMENT"
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const link = await prisma.link.findUnique({
+      where: { id: linkId },
+      select: {
+        id: true,
+        title: true,
+        contentText: true,
+        description: true,
+        aiSummary: true,
+      },
+    })
+
+    if (!link) {
+      return { success: false, error: "Link not found" }
+    }
+
+    const text = prepareTextForEmbedding(link)
+    if (!text) {
+      await prisma.link.update({
+        where: { id: linkId },
+        data: {
+          embeddingStatus: "SKIPPED",
+          embeddingError: "No content available for embedding",
+        },
+      })
+      return { success: false, error: "No content to embed" }
+    }
+
+    await prisma.link.update({
+      where: { id: linkId },
+      data: { embeddingStatus: "PROCESSING" },
+    })
+
+    try {
+      const embedding = await generateEmbedding(text, taskType, settings)
+      const embeddingStr = formatEmbeddingForPgVector(embedding)
+
+      await prisma.$executeRaw`
+        UPDATE "Link"
+        SET embedding = ${embeddingStr}::vector,
+            "embeddingStatus" = 'COMPLETED',
+            "embeddedAt" = NOW(),
+            "embeddingError" = NULL
+        WHERE id = ${linkId}
+      `
+
+      return { success: true }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      await prisma.link.update({
+        where: { id: linkId },
+        data: {
+          embeddingStatus: "FAILED",
+          embeddingError: errorMessage,
+        },
+      })
+      return { success: false, error: errorMessage }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error(`[Embeddings] Error embedding link ${linkId}:`, msg)
+    return { success: false, error: msg }
+  }
 }

@@ -5,6 +5,14 @@ export interface UserSettings {
     embeddingModel?: string
     embeddingDimensions?: number
   }
+  analysis?: {
+    enabled?: boolean
+    autoRun?: boolean
+  }
+  embeddings?: {
+    enabled?: boolean
+    autoRun?: boolean
+  }
   email?: {
     query?: string
   }
@@ -19,9 +27,8 @@ export interface UserSettings {
   sync?: {
     emailConcurrency?: number
     linkConcurrency?: number
-    maxPagesNormal?: number
-    maxPagesContinue?: number
-    maxPagesFull?: number
+    maxPagesLoadMore?: number
+    maxPagesInitial?: number
   }
 }
 
@@ -31,6 +38,14 @@ export interface ResolvedSettings {
     chatModel: string
     embeddingModel: string
     embeddingDimensions: number
+  }
+  analysis: {
+    enabled: boolean
+    autoRun: boolean
+  }
+  embeddings: {
+    enabled: boolean
+    autoRun: boolean
   }
   email: {
     query: string
@@ -46,9 +61,8 @@ export interface ResolvedSettings {
   sync: {
     emailConcurrency: number
     linkConcurrency: number
-    maxPagesNormal: number
-    maxPagesContinue: number
-    maxPagesFull: number
+    maxPagesLoadMore: number
+    maxPagesInitial: number
   }
 }
 
@@ -58,6 +72,14 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
     chatModel: "gemini-3-pro-preview",
     embeddingModel: "gemini-embedding-001",
     embeddingDimensions: 768,
+  },
+  analysis: {
+    enabled: false,
+    autoRun: false,
+  },
+  embeddings: {
+    enabled: true,
+    autoRun: true,
   },
   email: {
     query: "from:me to:me",
@@ -73,9 +95,8 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
   sync: {
     emailConcurrency: 10,
     linkConcurrency: 5,
-    maxPagesNormal: 1,
-    maxPagesContinue: 5,
-    maxPagesFull: 20,
+    maxPagesLoadMore: 5,
+    maxPagesInitial: 5,
   },
 }
 
@@ -100,12 +121,19 @@ export function resolveSettings(raw: UserSettings | null | undefined): ResolvedS
       pageSize: raw.feed?.pageSize ?? DEFAULT_SETTINGS.feed.pageSize,
       defaultSort: raw.feed?.defaultSort ?? DEFAULT_SETTINGS.feed.defaultSort,
     },
+    analysis: {
+      enabled: raw.analysis?.enabled ?? DEFAULT_SETTINGS.analysis.enabled,
+      autoRun: raw.analysis?.autoRun ?? DEFAULT_SETTINGS.analysis.autoRun,
+    },
+    embeddings: {
+      enabled: raw.embeddings?.enabled ?? DEFAULT_SETTINGS.embeddings.enabled,
+      autoRun: raw.embeddings?.autoRun ?? DEFAULT_SETTINGS.embeddings.autoRun,
+    },
     sync: {
       emailConcurrency: raw.sync?.emailConcurrency ?? DEFAULT_SETTINGS.sync.emailConcurrency,
       linkConcurrency: raw.sync?.linkConcurrency ?? DEFAULT_SETTINGS.sync.linkConcurrency,
-      maxPagesNormal: raw.sync?.maxPagesNormal ?? DEFAULT_SETTINGS.sync.maxPagesNormal,
-      maxPagesContinue: raw.sync?.maxPagesContinue ?? DEFAULT_SETTINGS.sync.maxPagesContinue,
-      maxPagesFull: raw.sync?.maxPagesFull ?? DEFAULT_SETTINGS.sync.maxPagesFull,
+      maxPagesLoadMore: raw.sync?.maxPagesLoadMore ?? DEFAULT_SETTINGS.sync.maxPagesLoadMore,
+      maxPagesInitial: raw.sync?.maxPagesInitial ?? DEFAULT_SETTINGS.sync.maxPagesInitial,
     },
   }
 }

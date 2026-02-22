@@ -50,9 +50,10 @@ model User {
   linkReports   LinkReport[]
   settings      Json      @default("{}")
   hiddenDomains String[]  @default([])
-  lastSyncAt    DateTime?
-  syncPageToken       String?   // Gmail pagination token for continue sync (newer emails)
-  oldestSyncPageToken String?   // Gmail pagination token for "sync older" (older emails)
+  lastSyncAt          DateTime?
+  syncQuery           String?    // Email query active when sync state was captured
+  syncNewestEmailDate DateTime?  // receivedAt of most recent synced email
+  syncOldestEmailDate DateTime?  // receivedAt of oldest synced email
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }

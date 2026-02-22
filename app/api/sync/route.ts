@@ -10,20 +10,13 @@ import { syncLogger } from "@/lib/logger"
 import { getUserSettings } from "@/lib/user-settings"
 import { fetchWithFallbackChain } from "@/lib/fetchers"
 import { generateOperationId, recordFetchAttempts } from "@/lib/fetch-attempts"
+import { triggerAutoAnalysisAndEmbedding } from "@/lib/ai-triggers"
+import { formatGmailDate, updateSyncCoverage } from "@/lib/sync-coverage"
 import "@/lib/fetchers/direct"
 import "@/lib/fetchers/wayback"
 import type { ResolvedSettings } from "@/lib/settings"
 
-// NOTE: Sites like avc.xyz use Next.js with React Server Components. Readability
-// may fail to extract content from JS-rendered pages, but we now always extract
-// JSON-LD structured data which provides title, description, and word count.
-
-// TODO: Add headless browser support (Puppeteer/Playwright) for JS-rendered sites.
-// When Readability fails but we detect the page is JS-rendered (e.g., has React
-// hydration scripts, minimal body content), retry fetching with a headless browser
-// to get the fully rendered HTML. This would enable content extraction from modern
-// SPAs and Next.js sites. Consider: 1) Detection heuristics for when to use it,
-// 2) Performance/resource implications, 3) Optional serverless browser service.
+type SyncMode = "check-new" | "load-more" | "initial" | "full-resync"
 
 // Type for link processing results
 interface LinkProcessResult {
@@ -166,6 +159,9 @@ async function processLink(
 
     result.fetched = true
 
+    // Trigger auto-analysis and embedding (fire and forget)
+    triggerAutoAnalysisAndEmbedding(linkId, userId)
+
     // Process nested links from social media posts
     const nestedResult = await processNestedLinks({
       id: linkId,
@@ -176,7 +172,7 @@ async function processLink(
       rawHtml: rawHtml || null,
       finalDomain,
       domain,
-    })
+    }, settings)
     result.nestedCreated = nestedResult.created
     result.nestedFetched = nestedResult.fetched
 
@@ -216,6 +212,196 @@ async function processLinksInParallel(
   return results
 }
 
+// Process a page of Gmail messages: save emails, extract links, fetch content
+async function processEmailPage(
+  messageIds: string[],
+  gmail: Awaited<ReturnType<typeof getGmailClient>>,
+  userId: string,
+  hiddenDomains: Set<string>,
+  settings: ResolvedSettings,
+  syncResults: SyncResults
+) {
+  // Batch fetch email contents in parallel
+  const emailContents = await batchGetEmailContents(messageIds, gmail, settings.sync.emailConcurrency)
+
+  // Collect all links to process
+  const allLinksToProcess: Array<{ id: string; url: string; emailId: string }> = []
+
+  for (let i = 0; i < messageIds.length; i++) {
+    const emailData = emailContents[i]
+    if (!emailData) continue
+
+    try {
+      const email = await prisma.email.create({
+        data: {
+          userId,
+          gmailId: emailData.id,
+          threadId: emailData.threadId,
+          subject: emailData.subject,
+          snippet: emailData.snippet,
+          receivedAt: emailData.receivedAt,
+          rawContent: emailData.content,
+          processedAt: new Date(),
+        },
+      })
+
+      syncResults.emailsProcessed++
+
+      // Extract links from email
+      const links = extractLinks(emailData.content)
+
+      // Batch check for existing links
+      const urlHashes = links.map((linkUrl) => hashUrl(linkUrl))
+      const existingLinks = await prisma.link.findMany({
+        where: {
+          userId,
+          urlHash: { in: urlHashes },
+        },
+        select: { urlHash: true },
+      })
+      const existingUrlHashes = new Set(existingLinks.map((l) => l.urlHash))
+
+      for (const linkUrl of links) {
+        const urlHash = hashUrl(linkUrl)
+        if (existingUrlHashes.has(urlHash)) continue
+        existingUrlHashes.add(urlHash)
+
+        const link = await prisma.link.create({
+          data: {
+            userId,
+            emailId: email.id,
+            url: linkUrl,
+            urlHash,
+            domain: extractDomain(linkUrl),
+            fetchStatus: "PENDING",
+          },
+        })
+
+        syncResults.linksExtracted++
+        allLinksToProcess.push({ id: link.id, url: linkUrl, emailId: email.id })
+      }
+    } catch (emailError) {
+      syncResults.errors.push(
+        `Failed to process email ${messageIds[i]}: ${emailError}`
+      )
+    }
+  }
+
+  // Process all links in parallel
+  if (allLinksToProcess.length > 0) {
+    syncLogger.info(`Processing ${allLinksToProcess.length} links in parallel`)
+    const linkResults = await processLinksInParallel(allLinksToProcess, userId, hiddenDomains, settings, settings.sync.linkConcurrency)
+
+    for (const lr of linkResults) {
+      if (lr.fetched) syncResults.linksFetched++
+      if (lr.skippedExcluded) syncResults.linksSkippedExcluded++
+      if (lr.skippedDuplicate) syncResults.linksSkippedDuplicate++
+      if (lr.skippedHidden) syncResults.linksSkippedHidden++
+      syncResults.nestedLinksCreated += lr.nestedCreated
+      syncResults.nestedLinksFetched += lr.nestedFetched
+      if (lr.error) syncResults.errors.push(lr.error)
+    }
+  }
+}
+
+interface SyncResults {
+  emailsProcessed: number
+  emailsSynced: number
+  linksExtracted: number
+  linksFetched: number
+  linksSkippedExcluded: number
+  linksSkippedDuplicate: number
+  linksSkippedHidden: number
+  nestedLinksCreated: number
+  nestedLinksFetched: number
+  pagesProcessed: number
+  hasMoreHistory: boolean
+  gmailTotalEstimate: number
+  errors: string[]
+  // Response-specific fields
+  mode: SyncMode
+  upToDate: boolean
+  queryChanged: boolean
+  newestEmailDate: string | null
+  oldestEmailDate: string | null
+}
+
+function makeSyncResults(mode: SyncMode): SyncResults {
+  return {
+    emailsProcessed: 0,
+    emailsSynced: 0,
+    linksExtracted: 0,
+    linksFetched: 0,
+    linksSkippedExcluded: 0,
+    linksSkippedDuplicate: 0,
+    linksSkippedHidden: 0,
+    nestedLinksCreated: 0,
+    nestedLinksFetched: 0,
+    pagesProcessed: 0,
+    hasMoreHistory: false,
+    gmailTotalEstimate: 0,
+    errors: [],
+    mode,
+    upToDate: false,
+    queryChanged: false,
+    newestEmailDate: null,
+    oldestEmailDate: null,
+  }
+}
+
+// Paginated fetch + process loop shared by initial / load-more
+async function fetchAndProcessPages(
+  userId: string,
+  query: string,
+  maxPages: number,
+  gmail: Awaited<ReturnType<typeof getGmailClient>>,
+  hiddenDomains: Set<string>,
+  settings: ResolvedSettings,
+  syncResults: SyncResults
+) {
+  let pageToken: string | undefined
+  let currentPage = 0
+  const emailsPerPage = 50
+
+  do {
+    currentPage++
+    syncLogger.info(`Processing page ${currentPage} (${syncResults.mode} mode, max ${maxPages})`)
+
+    const { messages, nextPageToken, resultSizeEstimate } = await fetchEmails(
+      userId, query, emailsPerPage, pageToken, gmail
+    )
+    pageToken = nextPageToken || undefined
+
+    if (currentPage === 1) {
+      syncResults.gmailTotalEstimate = resultSizeEstimate
+    }
+
+    if (messages.length === 0) {
+      syncLogger.info(`No messages on page ${currentPage}, stopping`)
+      break
+    }
+
+    // Filter out already-processed emails
+    const messageIds = messages.map((m) => m.id).filter(Boolean) as string[]
+    const existingEmails = await prisma.email.findMany({
+      where: { gmailId: { in: messageIds } },
+      select: { gmailId: true },
+    })
+    const existingGmailIds = new Set(existingEmails.map((e) => e.gmailId))
+    const newMessageIds = messageIds.filter((id) => !existingGmailIds.has(id))
+
+    if (newMessageIds.length === 0) {
+      syncLogger.info(`All emails on page ${currentPage} already processed`)
+      continue
+    }
+
+    syncResults.pagesProcessed++
+    await processEmailPage(newMessageIds, gmail, userId, hiddenDomains, settings, syncResults)
+  } while (pageToken && currentPage < maxPages)
+
+  syncResults.hasMoreHistory = !!pageToken
+}
+
 export async function POST(request: Request) {
   const session = await auth()
 
@@ -226,222 +412,109 @@ export async function POST(request: Request) {
   const userId = session.user.id
   const settings = await getUserSettings(userId)
 
-  // Check for sync parameters
+  // Parse mode from query params
   const reqUrl = new URL(request.url)
-  const fullSync = reqUrl.searchParams.get("fullSync") === "true"
-  const continueSync = reqUrl.searchParams.get("continue") === "true"
-  const resetSync = reqUrl.searchParams.get("reset") === "true"
-  const maxPages = fullSync
-    ? settings.sync.maxPagesFull
-    : continueSync
-      ? settings.sync.maxPagesContinue
-      : settings.sync.maxPagesNormal
+  const mode = (reqUrl.searchParams.get("mode") || "check-new") as SyncMode
 
-  // Reset sync clears the stored page token
-  if (resetSync) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { syncPageToken: null },
-    })
-    syncLogger.info("Sync page token reset")
-  }
-  const emailsPerPage = 50
-
-  const syncResults = {
-    emailsProcessed: 0,
-    emailsSynced: 0, // Total emails in DB after sync
-    linksExtracted: 0,
-    linksFetched: 0,
-    linksSkippedExcluded: 0,
-    linksSkippedDuplicate: 0,
-    linksSkippedHidden: 0,
-    nestedLinksCreated: 0,
-    nestedLinksFetched: 0,
-    pagesProcessed: 0,
-    pagesSkipped: 0,
-    hasMorePages: false,
-    gmailTotalEstimate: 0,
-    errors: [] as string[],
-  }
+  const syncResults = makeSyncResults(mode)
 
   try {
-    // Fetch user's hidden domains and stored page token
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { hiddenDomains: true, syncPageToken: true },
+      select: {
+        hiddenDomains: true,
+        syncQuery: true,
+        syncNewestEmailDate: true,
+        syncOldestEmailDate: true,
+      },
     })
     const hiddenDomains = new Set(user?.hiddenDomains || [])
 
-    // Create Gmail client once and reuse throughout the sync
     const gmail = await getGmailClient(userId)
 
-    // For continue mode, start from stored page token
-    // For normal/full sync, start from the beginning
-    let pageToken: string | undefined = continueSync ? (user?.syncPageToken || undefined) : undefined
-    let currentPage = 0
+    // ───────────────────────────────────────
+    // Mode dispatch
+    // ───────────────────────────────────────
 
-    if (continueSync && pageToken) {
-      syncLogger.info("Continuing from stored page token")
+    if (mode === "check-new") {
+      // 1. Query mismatch check
+      if (user?.syncQuery && user.syncQuery !== settings.email.query) {
+        syncResults.queryChanged = true
+        return NextResponse.json(syncResults)
+      }
+
+      // 2. If never synced, fall through to initial
+      if (!user?.syncNewestEmailDate) {
+        return handleInitialSync(userId, settings, gmail, hiddenDomains, syncResults)
+      }
+
+      // 3. Build query with after: filter (subtract 1 day for overlap safety)
+      const afterDate = new Date(user.syncNewestEmailDate)
+      afterDate.setDate(afterDate.getDate() - 1)
+      const query = `${settings.email.query} after:${formatGmailDate(afterDate)}`
+
+      // check-new only fetches 1 page
+      await fetchAndProcessPages(userId, query, 1, gmail, hiddenDomains, settings, syncResults)
+
+      if (syncResults.emailsProcessed === 0) {
+        syncResults.upToDate = true
+      }
+
+      // Update coverage
+      await updateSyncCoverage(userId)
+
+    } else if (mode === "load-more") {
+      if (!user?.syncOldestEmailDate) {
+        return NextResponse.json(
+          { error: "Run initial sync first", mode },
+          { status: 400 }
+        )
+      }
+
+      // Build query with before: filter (add 1 day for overlap safety)
+      const beforeDate = new Date(user.syncOldestEmailDate)
+      beforeDate.setDate(beforeDate.getDate() + 1)
+      const query = `${settings.email.query} before:${formatGmailDate(beforeDate)}`
+
+      await fetchAndProcessPages(
+        userId, query, settings.sync.maxPagesLoadMore, gmail, hiddenDomains, settings, syncResults
+      )
+
+      // Update coverage
+      await updateSyncCoverage(userId)
+
+    } else if (mode === "initial" || mode === "full-resync") {
+      return handleInitialSync(userId, settings, gmail, hiddenDomains, syncResults)
+
+    } else {
+      return NextResponse.json({ error: `Unknown mode: ${mode}` }, { status: 400 })
     }
 
-    // Process pages of emails
-    do {
-      currentPage++
-      const modeLabel = fullSync ? "full" : continueSync ? "continue" : "normal"
-      syncLogger.info(`Processing page ${currentPage} (${modeLabel} mode, max ${maxPages})`)
+    // Finalize
+    syncResults.emailsSynced = await prisma.email.count({ where: { userId } })
 
-      // Step 1: Fetch self-emails from Gmail
-      const { messages, nextPageToken, resultSizeEstimate } = await fetchEmails(userId, settings.email.query, emailsPerPage, pageToken, gmail)
-      pageToken = nextPageToken || undefined
-
-      // Capture total estimate from first page
-      if (currentPage === 1) {
-        syncResults.gmailTotalEstimate = resultSizeEstimate
-      }
-
-      if (messages.length === 0) {
-        syncLogger.info(`No messages on page ${currentPage}, stopping`)
-        break
-      }
-
-      // Filter out already-processed emails first (batch check)
-      const messageIds = messages.map((m) => m.id).filter(Boolean) as string[]
-      const existingEmails = await prisma.email.findMany({
-        where: { gmailId: { in: messageIds } },
-        select: { gmailId: true },
-      })
-      const existingGmailIds = new Set(existingEmails.map((e) => e.gmailId))
-      const newMessageIds = messageIds.filter((id) => !existingGmailIds.has(id))
-
-      if (newMessageIds.length === 0) {
-        syncLogger.info(`All emails on page ${currentPage} already processed`)
-        syncResults.pagesSkipped++
-        // In continue/full sync, keep going to find unprocessed pages
-        // In normal sync, stop at first fully-processed page
-        if (!fullSync && !continueSync) break
-        continue
-      }
-
-      syncResults.pagesProcessed++
-
-      // Batch fetch email contents in parallel (10 at a time)
-      const emailContents = await batchGetEmailContents(newMessageIds, gmail, settings.sync.emailConcurrency)
-
-      // Collect all links to process
-      const allLinksToProcess: Array<{ id: string; url: string; emailId: string }> = []
-
-      // Process each email - save emails and extract links
-      for (let i = 0; i < newMessageIds.length; i++) {
-        const emailData = emailContents[i]
-        if (!emailData) continue
-
-        try {
-          // Save email to database
-          const email = await prisma.email.create({
-            data: {
-              userId,
-              gmailId: emailData.id,
-              threadId: emailData.threadId,
-              subject: emailData.subject,
-              snippet: emailData.snippet,
-              receivedAt: emailData.receivedAt,
-              rawContent: emailData.content,
-              processedAt: new Date(),
-            },
-          })
-
-          syncResults.emailsProcessed++
-
-          // Extract links from email
-          const links = extractLinks(emailData.content)
-
-          // Batch check for existing links
-          const urlHashes = links.map((linkUrl) => hashUrl(linkUrl))
-          const existingLinks = await prisma.link.findMany({
-            where: {
-              userId,
-              urlHash: { in: urlHashes },
-            },
-            select: { urlHash: true },
-          })
-          const existingUrlHashes = new Set(existingLinks.map((l) => l.urlHash))
-
-          // Create new link records
-          for (const linkUrl of links) {
-            const urlHash = hashUrl(linkUrl)
-            if (existingUrlHashes.has(urlHash)) continue
-
-            // Mark as existing to avoid duplicates in same batch
-            existingUrlHashes.add(urlHash)
-
-            const link = await prisma.link.create({
-              data: {
-                userId,
-                emailId: email.id,
-                url: linkUrl,
-                urlHash,
-                domain: extractDomain(linkUrl),
-                fetchStatus: "PENDING",
-              },
-            })
-
-            syncResults.linksExtracted++
-            allLinksToProcess.push({ id: link.id, url: linkUrl, emailId: email.id })
-          }
-        } catch (emailError) {
-          syncResults.errors.push(
-            `Failed to process email ${newMessageIds[i]}: ${emailError}`
-          )
-        }
-      }
-
-      // Process all links in parallel (5 at a time for content fetching)
-      if (allLinksToProcess.length > 0) {
-        syncLogger.info(`Processing ${allLinksToProcess.length} links in parallel`)
-        const linkResults = await processLinksInParallel(allLinksToProcess, userId, hiddenDomains, settings, settings.sync.linkConcurrency)
-
-        // Aggregate results
-        for (const result of linkResults) {
-          if (result.fetched) syncResults.linksFetched++
-          if (result.skippedExcluded) syncResults.linksSkippedExcluded++
-          if (result.skippedDuplicate) syncResults.linksSkippedDuplicate++
-          if (result.skippedHidden) syncResults.linksSkippedHidden++
-          syncResults.nestedLinksCreated += result.nestedCreated
-          syncResults.nestedLinksFetched += result.nestedFetched
-          if (result.error) syncResults.errors.push(result.error)
-        }
-      }
-
-    } while (pageToken && currentPage < maxPages)
-
-    // Set hasMorePages if there's still a pageToken
-    syncResults.hasMorePages = !!pageToken
-
-    // Get total synced emails count
-    syncResults.emailsSynced = await prisma.email.count({
-      where: { userId },
+    const updatedUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { syncNewestEmailDate: true, syncOldestEmailDate: true },
     })
+    syncResults.newestEmailDate = updatedUser?.syncNewestEmailDate?.toISOString() || null
+    syncResults.oldestEmailDate = updatedUser?.syncOldestEmailDate?.toISOString() || null
 
-    // Update user's last sync time and save page token for continue sync
     await prisma.user.update({
       where: { id: userId },
-      data: {
-        lastSyncAt: new Date(),
-        syncPageToken: pageToken || null, // Save for next continue sync
-      },
+      data: { lastSyncAt: new Date() },
     })
 
     syncLogger.info("Completed", {
+      mode,
       pagesProcessed: syncResults.pagesProcessed,
-      pagesSkipped: syncResults.pagesSkipped,
       emails: syncResults.emailsProcessed,
       links: syncResults.linksExtracted,
-      hasMore: syncResults.hasMorePages,
-      gmailTotal: syncResults.gmailTotalEstimate,
+      hasMore: syncResults.hasMoreHistory,
     })
+
     return NextResponse.json(syncResults)
   } catch (error) {
-    // Handle authentication errors specially
     if (error instanceof AuthenticationError) {
       syncLogger.error("Authentication failed", error)
       return NextResponse.json(
@@ -460,4 +533,52 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
+}
+
+async function handleInitialSync(
+  userId: string,
+  settings: ResolvedSettings,
+  gmail: Awaited<ReturnType<typeof getGmailClient>>,
+  hiddenDomains: Set<string>,
+  syncResults: SyncResults
+) {
+  // Clear sync state
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      syncQuery: null,
+      syncNewestEmailDate: null,
+      syncOldestEmailDate: null,
+    },
+  })
+
+  // Fetch with plain query (no date filter)
+  await fetchAndProcessPages(
+    userId, settings.email.query, settings.sync.maxPagesInitial, gmail, hiddenDomains, settings, syncResults
+  )
+
+  // Set sync state from processed emails
+  const coverage = await updateSyncCoverage(userId)
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      syncQuery: settings.email.query,
+      lastSyncAt: new Date(),
+    },
+  })
+
+  syncResults.emailsSynced = await prisma.email.count({ where: { userId } })
+  syncResults.newestEmailDate = coverage.newestEmailDate?.toISOString() || null
+  syncResults.oldestEmailDate = coverage.oldestEmailDate?.toISOString() || null
+
+  syncLogger.info("Initial sync completed", {
+    mode: syncResults.mode,
+    pagesProcessed: syncResults.pagesProcessed,
+    emails: syncResults.emailsProcessed,
+    links: syncResults.linksExtracted,
+    hasMore: syncResults.hasMoreHistory,
+  })
+
+  return NextResponse.json(syncResults)
 }

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Mail, ExternalLink, Clock, AlertTriangle, Loader2, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle, ArchiveRestore } from "lucide-react"
+import { FEATURE_FLAGS } from "@/lib/flags"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Dialog,
@@ -322,14 +323,14 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
     <Card
       className={cn(
         "relative transition-all hover:shadow-md",
-        link.isHighlighted && "ring-2 ring-amber-400 dark:ring-amber-500",
+        FEATURE_FLAGS.enableAnalysis && link.isHighlighted && "ring-2 ring-amber-400 dark:ring-amber-500",
         isRead && "opacity-60"
       )}
     >
       <CardHeader className="space-y-2">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 space-y-1">
-            {link.isHighlighted && (
+            {FEATURE_FLAGS.enableAnalysis && link.isHighlighted && (
               <div className="flex items-center gap-1 text-sm font-medium text-amber-600 dark:text-amber-400">
                 <span>★</span>
                 <span>Highlighted</span>
@@ -559,7 +560,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
           </div>
         )}
 
-        {link.aiSummary && (
+        {FEATURE_FLAGS.enableAnalysis && link.aiSummary && (
           <p className="text-muted-foreground">
             {searchTerm ? (
               <Highlighter
@@ -574,7 +575,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
           </p>
         )}
 
-        {link.aiKeyPoints?.length > 0 && (
+        {FEATURE_FLAGS.enableAnalysis && link.aiKeyPoints?.length > 0 && (
           <div className="space-y-2">
             <p className="text-sm font-medium">Key Points:</p>
             <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
@@ -585,7 +586,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
           </div>
         )}
 
-        {link.highlightReason && (
+        {FEATURE_FLAGS.enableAnalysis && link.highlightReason && (
           <p className="text-sm italic text-amber-600 dark:text-amber-400">
             &ldquo;{link.highlightReason}&rdquo;
           </p>
@@ -697,7 +698,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
 
       <CardFooter className="flex flex-col gap-3">
         {/* Tag groupings */}
-        <div className="flex flex-col gap-2 w-full">
+        {FEATURE_FLAGS.enableAnalysis && <div className="flex flex-col gap-2 w-full">
           {/* Link Type Tags */}
           {link.linkTags?.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -746,7 +747,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
               ))}
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Action buttons */}
         <div className="flex flex-wrap items-center justify-end gap-2 w-full">
