@@ -32,12 +32,6 @@ const features = [
       "Automatically finds, deduplicates, and follows redirects to surface the real URLs.",
   },
   {
-    icon: Sparkles,
-    title: "AI Summaries",
-    description:
-      "Get AI-powered summaries, key points, categorization, and worthiness scores for every link.",
-  },
-  {
     icon: FileText,
     title: "Content Fetching",
     description:
@@ -54,6 +48,13 @@ const features = [
     title: "Reading Feed",
     description:
       "Clean, organized feed with filters, search, categories, and reading time estimates.",
+  },
+  {
+    icon: Sparkles,
+    title: "AI Summaries",
+    description:
+      "AI-powered summaries, key points, categorization, and worthiness scores for every link.",
+    comingSoon: true,
   },
 ]
 
@@ -143,7 +144,7 @@ export function LandingPage({ setupChecks }: { setupChecks?: SetupCheck[] }) {
           </h1>
           <p className="mt-4 text-lg text-zinc-600 sm:text-xl dark:text-zinc-400">
             Turn your self-sent emails into a curated reading feed with
-            AI-powered summaries, categorization, and semantic search.
+            full-text content, semantic search, and smart link extraction.
           </p>
           <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-500">
             Email yourself a link. MailFeed does the rest.
@@ -168,13 +169,24 @@ export function LandingPage({ setupChecks }: { setupChecks?: SetupCheck[] }) {
           {features.map((feature) => (
             <div
               key={feature.title}
-              className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900"
+              className={`rounded-lg border p-6 ${
+                feature.comingSoon
+                  ? "border-dashed border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900/50"
+                  : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+              }`}
             >
-              <feature.icon className="mb-3 h-6 w-6 text-zinc-700 dark:text-zinc-300" />
-              <h3 className="mb-1 font-semibold text-zinc-900 dark:text-zinc-50">
+              <div className="mb-3 flex items-center gap-2">
+                <feature.icon className={`h-6 w-6 ${feature.comingSoon ? "text-zinc-400 dark:text-zinc-500" : "text-zinc-700 dark:text-zinc-300"}`} />
+                {feature.comingSoon && (
+                  <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                    Coming Soon
+                  </span>
+                )}
+              </div>
+              <h3 className={`mb-1 font-semibold ${feature.comingSoon ? "text-zinc-500 dark:text-zinc-400" : "text-zinc-900 dark:text-zinc-50"}`}>
                 {feature.title}
               </h3>
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              <p className={`text-sm ${feature.comingSoon ? "text-zinc-400 dark:text-zinc-500" : "text-zinc-600 dark:text-zinc-400"}`}>
                 {feature.description}
               </p>
             </div>
