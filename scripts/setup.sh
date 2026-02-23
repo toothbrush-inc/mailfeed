@@ -103,14 +103,13 @@ fi
 
 # ── Prompt for API Keys ──────────────────────────────────────────────────────
 echo ""
-echo -e "${bold}You'll need three credentials from Google. Here's where to get them:${reset}"
+echo -e "${bold}You'll need Google OAuth credentials to sign in and sync emails:${reset}"
 echo ""
 echo "  1. Create a Google Cloud project:  https://console.cloud.google.com/projectcreate"
 echo "  2. Enable the Gmail API:           https://console.cloud.google.com/apis/library/gmail.googleapis.com"
 echo "  3. Create OAuth credentials:       https://console.cloud.google.com/apis/credentials/oauthclient"
 echo "     - Application type: Web application"
 echo "     - Redirect URI:     http://localhost:3000/api/auth/callback/google"
-echo "  4. Get a Gemini API key:           https://aistudio.google.com/apikey"
 echo ""
 echo "  Need help? See the step-by-step guide at http://localhost:3000/setup/google (after setup completes)"
 echo ""
@@ -142,6 +141,12 @@ prompt_key() {
 
 prompt_key "GOOGLE_CLIENT_ID"     "Google Client ID"
 prompt_key "GOOGLE_CLIENT_SECRET" "Google Client Secret"
+
+echo ""
+echo -e "${bold}(Optional)${reset} Gemini API key enables AI features."
+echo "  You can add this later in .env. Get a key at: https://aistudio.google.com/apikey"
+echo "  Press Enter to skip"
+echo ""
 prompt_key "GEMINI_API_KEY"       "Gemini API Key"
 
 # ── Start Docker Compose ─────────────────────────────────────────────────────

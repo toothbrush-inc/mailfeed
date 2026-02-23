@@ -36,16 +36,12 @@ export async function analyzeLink(
         })
 
         // Build BAML input
-        const bamlInput = {
-            id: link.id,
-            url: link.url,
-            anchorText: link.title || link.url,
-            rawHtml: link.rawHtml || link.contentText || null,
-        }
+        const anchorText = link.title || link.url
+        const rawHtml = link.rawHtml || link.contentText || undefined
 
         try {
             const clientRegistry = buildClientRegistry(settings)
-            const bamlResult = await b.IngestLink(bamlInput, { clientRegistry })
+            const bamlResult = await b.IngestLink(link.url, anchorText, rawHtml, { clientRegistry })
 
             const linkTags = bamlResult.tags?.map((tag) => String(tag)) || []
             const contentTags = bamlResult.contentTags?.map((tag) => String(tag)) || []
