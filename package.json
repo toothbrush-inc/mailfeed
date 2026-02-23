@@ -1,7 +1,17 @@
 {
   "name": "mailfeed",
   "version": "0.1.0",
-  "private": true,
+  "description": "A personal reading feed that extracts links from your emails, fetches article content, and provides AI-powered features.",
+  "author": "Toothbrush, Inc.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/toothbrush-inc/mailfeed.git"
+  },
+  "homepage": "https://github.com/toothbrush-inc/mailfeed",
+  "bugs": {
+    "url": "https://github.com/toothbrush-inc/mailfeed/issues"
+  },
   "scripts": {
     "prebuild": "npm run generate",
     "generate": "baml-cli generate",

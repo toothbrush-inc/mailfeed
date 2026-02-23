@@ -1,15 +1,15 @@
 # MailFeed
 
-A personal reading feed that extracts links from your self-sent Gmail emails, fetches article content, and provides AI-powered summaries and categorization.
+A personal reading feed that extracts links from your self-sent Gmail emails, fetches article content, and provides AI-powered features.
 
 ## Features
 
-- **Gmail Integration**: Syncs emails you send to yourself (`from:me to:me`)
+- **Gmail Integration**: Syncs emails you send to yourself (`from:me to:me`) by default.
 - **Link Extraction**: Automatically extracts and deduplicates links from emails
 - **Content Fetching**: Fetches article content using Mozilla Readability, with Wayback Machine fallback
-- **AI Analysis**: Summarizes articles, extracts key points, categorizes, and scores content using Google Gemini
 - **Semantic Search (RAG)**: Chat with your saved links using vector similarity search
 - **Reading Feed**: Clean interface to browse, filter, and search your saved content
+- **AI Analysis**: **Coming Soon** Summarizes articles, extracts key points, categorizes, and scores content.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ A personal reading feed that extracts links from your self-sent Gmail emails, fe
 ### 1. Clone and Install
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/toothbrush-inc/mailfeed.git
 cd mailfeed
 npm install
 ```
