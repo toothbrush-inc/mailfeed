@@ -38,16 +38,16 @@ const features = [
       "Fetches full articles with Mozilla Readability. Detects paywalls and falls back to archives.",
   },
   {
-    icon: Search,
-    title: "Semantic Search",
-    description:
-      "Chat with your saved links using vector embeddings and RAG-powered search.",
-  },
-  {
     icon: LayoutList,
     title: "Reading Feed",
     description:
       "Clean, organized feed with filters, search, categories, and reading time estimates.",
+  },
+  {
+    icon: Search,
+    title: "Semantic Search",
+    description:
+      "Chat with your saved links using vector embeddings and RAG-powered search.",
   },
   {
     icon: Sparkles,
@@ -61,18 +61,22 @@ const features = [
 const steps = [
   {
     label: "Clone the repository",
+    why: "Get the source code on your machine",
     code: "git clone https://github.com/davidd8/mailfeed.git\ncd mailfeed",
   },
   {
-    label: "Copy the environment template and fill in your credentials",
+    label: "Copy the environment template",
+    why: "Configure your Google API credentials",
     code: "cp .env.example .env",
   },
   {
     label: "Start everything with Docker Compose",
+    why: "Builds and runs the app + database",
     code: "docker compose up",
   },
   {
     label: "Open your browser",
+    why: "Start using MailFeed",
     code: "http://localhost:3000",
   },
 ]
@@ -143,7 +147,7 @@ export function LandingPage({ setupChecks }: { setupChecks?: SetupCheck[] }) {
             MailFeed
           </h1>
           <p className="mt-4 text-lg text-zinc-600 sm:text-xl dark:text-zinc-400">
-            Turn your self-sent emails into a curated reading feed with
+            Turn your emails into a personalized reading feed with
             full-text content, semantic search, and smart link extraction.
           </p>
           <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-500">
@@ -280,99 +284,108 @@ function QuickStartPath() {
         </p>
       </div>
 
-      <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-        <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          What the script does
-        </h3>
-        <ol className="list-inside list-decimal space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-          <li>Checks for (or installs) Homebrew, Docker Desktop, and Git</li>
-          <li>
-            Clones MailFeed into{" "}
-            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
-              ~/mailfeed
-            </code>
-          </li>
-          <li>
-            Creates{" "}
-            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
-              .env
-            </code>{" "}
-            and generates a secure secret
-          </li>
-          <li>Prompts you for Google OAuth and Gemini API credentials</li>
-          <li>
-            Starts the app with Docker Compose at{" "}
-            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
-              http://localhost:3000
-            </code>
-          </li>
-        </ol>
-      </div>
+      <details className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+        <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-zinc-900 select-none dark:text-zinc-50">
+          Details &amp; prerequisites
+        </summary>
+        <div className="space-y-5 border-t border-zinc-100 px-5 pt-4 pb-5 dark:border-zinc-800">
+          <div>
+            <h4 className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              What the script does
+            </h4>
+            <ol className="list-inside list-decimal space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+              <li>Checks for (or installs) Homebrew, Docker Desktop, and Git</li>
+              <li>
+                Clones MailFeed into{" "}
+                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+                  ~/mailfeed
+                </code>
+              </li>
+              <li>
+                Creates{" "}
+                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+                  .env
+                </code>{" "}
+                and generates a secure secret
+              </li>
+              <li>Prompts you for Google OAuth credentials (and optionally a Gemini API key)</li>
+              <li>
+                Starts the app with Docker Compose at{" "}
+                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+                  http://localhost:3000
+                </code>
+              </li>
+            </ol>
+          </div>
 
-      <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-        <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          Google Cloud Setup
-        </h3>
-        <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">
-          The script will ask for three keys. Follow our{" "}
-          <Link
-            href="/setup/google"
-            className="font-medium text-zinc-900 underline dark:text-zinc-200"
-          >
-            step-by-step guide
-          </Link>{" "}
-          for detailed instructions with screenshots, or use the quick links below:
-        </p>
-        <ol className="list-inside list-decimal space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-          <li>
-            <a
-              href="https://console.cloud.google.com/projectcreate"
-              className="underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Create a project
-            </a>{" "}
-            in Google Cloud Console
-          </li>
-          <li>
-            Enable the{" "}
-            <a
-              href="https://console.cloud.google.com/apis/library/gmail.googleapis.com"
-              className="underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Gmail API
-            </a>
-          </li>
-          <li>
-            <a
-              href="https://console.cloud.google.com/apis/credentials/oauthclient"
-              className="underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Create OAuth 2.0 credentials
-            </a>{" "}
-            (Web application) with redirect URI:{" "}
-            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
-              http://localhost:3000/api/auth/callback/google
-            </code>
-          </li>
-          <li>
-            Get a Gemini API key from{" "}
-            <a
-              href="https://aistudio.google.com/apikey"
-              className="underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Google AI Studio
-            </a>
-          </li>
-        </ol>
-      </div>
+          <div>
+            <h4 className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Google Cloud setup
+            </h4>
+            <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">
+              The script will ask for your Google credentials (the Gemini key is optional). Follow our{" "}
+              <Link
+                href="/setup/google"
+                className="font-medium text-zinc-900 underline dark:text-zinc-200"
+              >
+                step-by-step guide
+              </Link>{" "}
+              for detailed instructions with screenshots, or use the quick links below:
+            </p>
+            <ol className="list-inside list-decimal space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+              <li>
+                <a
+                  href="https://console.cloud.google.com/projectcreate"
+                  className="underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Create a project
+                </a>{" "}
+                in Google Cloud Console
+              </li>
+              <li>
+                Enable the{" "}
+                <a
+                  href="https://console.cloud.google.com/apis/library/gmail.googleapis.com"
+                  className="underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Gmail API
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://console.cloud.google.com/apis/credentials/oauthclient"
+                  className="underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Create OAuth 2.0 credentials
+                </a>{" "}
+                (Web application) with redirect URI:{" "}
+                <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
+                  http://localhost:3000/api/auth/callback/google
+                </code>
+              </li>
+              <li>
+                <span className="text-zinc-400 dark:text-zinc-500">(Optional)</span>{" "}
+                Get a Gemini API key from{" "}
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  className="underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Google AI Studio
+                </a>{" "}
+                — enables AI semantic search
+              </li>
+            </ol>
+          </div>
+        </div>
+      </details>
     </div>
   )
 }
@@ -381,8 +394,8 @@ function DevSetupPath() {
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-        <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          Prerequisites
+        <h3 className="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          Before you start
         </h3>
         <ul className="space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
           <li>
@@ -409,6 +422,7 @@ function DevSetupPath() {
             project with OAuth credentials and Gmail API enabled
           </li>
           <li>
+            <span className="text-zinc-400 dark:text-zinc-500">(Optional)</span>{" "}
             A{" "}
             <a
               href="https://aistudio.google.com/apikey"
@@ -417,19 +431,36 @@ function DevSetupPath() {
               rel="noopener noreferrer"
             >
               Gemini API key
-            </a>
+            </a>{" "}
+            — for AI semantic search
           </li>
         </ul>
+        <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+          Need help with credentials? Follow our{" "}
+          <Link
+            href="/setup/google"
+            className="font-medium text-zinc-900 underline dark:text-zinc-200"
+          >
+            step-by-step Google Cloud guide
+          </Link>
+          .
+        </p>
       </div>
 
-      <ol className="space-y-5">
+      <ol className="space-y-4">
         {steps.map((step, i) => (
-          <li key={i}>
-            <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <li
+            key={i}
+            className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
+          >
+            <p className="mb-1 text-sm font-medium text-zinc-900 dark:text-zinc-50">
               <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
                 {i + 1}
               </span>
               {step.label}
+            </p>
+            <p className="mb-3 pl-7 text-xs text-zinc-500 dark:text-zinc-400">
+              {step.why}
             </p>
             <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm text-zinc-100">
               <code>{step.code}</code>
@@ -437,90 +468,6 @@ function DevSetupPath() {
           </li>
         ))}
       </ol>
-
-      <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-        <h3 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          Google Cloud Setup
-        </h3>
-        <p className="mb-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Follow our{" "}
-          <Link
-            href="/setup/google"
-            className="font-medium text-zinc-900 underline dark:text-zinc-200"
-          >
-            step-by-step guide
-          </Link>{" "}
-          for detailed instructions with screenshots.
-        </p>
-        <ol className="list-inside list-decimal space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-          <li>
-            <a
-              href="https://console.cloud.google.com/projectcreate"
-              className="underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Create a project
-            </a>{" "}
-            in Google Cloud Console
-          </li>
-          <li>
-            Enable the{" "}
-            <a
-              href="https://console.cloud.google.com/apis/library/gmail.googleapis.com"
-              className="underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Gmail API
-            </a>
-          </li>
-          <li>
-            Configure the{" "}
-            <a
-              href="https://console.cloud.google.com/apis/credentials/consent"
-              className="underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              OAuth consent screen
-            </a>{" "}
-            with{" "}
-            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
-              gmail.readonly
-            </code>{" "}
-            scope
-          </li>
-          <li>
-            <a
-              href="https://console.cloud.google.com/apis/credentials/oauthclient"
-              className="underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Create OAuth 2.0 credentials
-            </a>{" "}
-            (Web application type)
-          </li>
-          <li>
-            Add redirect URI:{" "}
-            <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
-              http://localhost:3000/api/auth/callback/google
-            </code>
-          </li>
-          <li>
-            Get a Gemini API key from{" "}
-            <a
-              href="https://aistudio.google.com/apikey"
-              className="underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Google AI Studio
-            </a>
-          </li>
-        </ol>
-      </div>
     </div>
   )
 }

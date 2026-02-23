@@ -11,7 +11,7 @@ export default function LoginPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">MailFeed</CardTitle>
           <CardDescription>
-            Turn your self-sent emails into a curated reading feed with AI-powered summaries
+            Turn your emails into a personalized reading feed with AI-powered features
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -41,7 +41,7 @@ export default function LoginPage() {
             Sign in with Google
           </Button>
           <p className="text-center text-sm text-muted-foreground">
-            We&apos;ll request read-only access to your Gmail to find emails you&apos;ve sent to yourself.
+            We&apos;ll request read-only access to your Gmail to create your personalized reading feed.
           </p>
         </CardContent>
       </Card>

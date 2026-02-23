@@ -1,20 +1,50 @@
+"use client"
+
+import { useState } from "react"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Check, Copy } from "lucide-react"
+import { Button } from "@/components/ui/button"
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 2000)
+        })
+      }}
+      className="absolute top-2.5 right-2.5 rounded-md border border-zinc-700 bg-zinc-800 p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
+      aria-label="Copy to clipboard"
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  )
+}
 
 function StepImage({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false)
+
   return (
     <div className="relative mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800">
-      <img
-        src={src}
-        alt={alt}
-        className="w-full"
-      />
+      {!failed && (
+        <img
+          src={src}
+          alt={alt}
+          className="w-full"
+          onError={() => setFailed(true)}
+        />
+      )}
       <div className="flex items-center justify-center p-8 text-sm text-zinc-400 dark:text-zinc-500">
         {alt}
       </div>
     </div>
   )
 }
+
+const TOTAL_STEPS = 6
 
 export default function GoogleSetupPage() {
   return (
@@ -38,8 +68,9 @@ export default function GoogleSetupPage() {
       {/* Content */}
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
         <p className="mb-10 text-sm text-zinc-600 dark:text-zinc-400">
-          MailFeed needs a Google Cloud project with OAuth credentials (to read your Gmail) and a
-          Gemini API key (for AI summaries). This guide walks you through each step.
+          MailFeed needs a Google Cloud project with OAuth credentials (to read your Gmail).
+          A Gemini API key is optional — it enables AI-powered features like semantic search.
+          This guide walks you through each step.
         </p>
 
         <div className="space-y-12">
@@ -50,6 +81,9 @@ export default function GoogleSetupPage() {
                 1
               </span>
               Create a Google Cloud Project
+              <span className="text-sm font-normal text-zinc-400 dark:text-zinc-500">
+                Step 1 of {TOTAL_STEPS}
+              </span>
             </h2>
             <div className="mt-3 pl-10">
               <ol className="list-inside list-decimal space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
@@ -89,6 +123,9 @@ export default function GoogleSetupPage() {
                 2
               </span>
               Enable the Gmail API
+              <span className="text-sm font-normal text-zinc-400 dark:text-zinc-500">
+                Step 2 of {TOTAL_STEPS}
+              </span>
             </h2>
             <div className="mt-3 pl-10">
               <ol className="list-inside list-decimal space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
@@ -123,6 +160,9 @@ export default function GoogleSetupPage() {
                 3
               </span>
               Configure the OAuth Consent Screen
+              <span className="text-sm font-normal text-zinc-400 dark:text-zinc-500">
+                Step 3 of {TOTAL_STEPS}
+              </span>
             </h2>
             <div className="mt-3 pl-10">
               <ol className="list-inside list-decimal space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
@@ -186,6 +226,9 @@ export default function GoogleSetupPage() {
                 4
               </span>
               Create OAuth 2.0 Credentials
+              <span className="text-sm font-normal text-zinc-400 dark:text-zinc-500">
+                Step 4 of {TOTAL_STEPS}
+              </span>
             </h2>
             <div className="mt-3 pl-10">
               <ol className="list-inside list-decimal space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
@@ -218,9 +261,12 @@ export default function GoogleSetupPage() {
                 <li>
                   Under <strong>Authorized redirect URIs</strong>, click <strong>Add URI</strong> and
                   enter:
-                  <pre className="mt-2 overflow-x-auto rounded-lg bg-zinc-900 px-4 py-3 text-sm text-zinc-100">
-                    <code>http://localhost:3000/api/auth/callback/google</code>
-                  </pre>
+                  <div className="relative mt-2">
+                    <pre className="overflow-x-auto rounded-lg bg-zinc-900 px-4 py-3 pr-10 text-sm text-zinc-100">
+                      <code>http://localhost:3000/api/auth/callback/google</code>
+                    </pre>
+                    <CopyButton text="http://localhost:3000/api/auth/callback/google" />
+                  </div>
                 </li>
                 <li>Click <strong>Create</strong>.</li>
               </ol>
@@ -238,6 +284,9 @@ export default function GoogleSetupPage() {
                 5
               </span>
               Copy Client ID and Client Secret
+              <span className="text-sm font-normal text-zinc-400 dark:text-zinc-500">
+                Step 5 of {TOTAL_STEPS}
+              </span>
             </h2>
             <div className="mt-3 pl-10">
               <ol className="list-inside list-decimal space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
@@ -251,10 +300,13 @@ export default function GoogleSetupPage() {
                     .env
                   </code>{" "}
                   file:
-                  <pre className="mt-2 overflow-x-auto rounded-lg bg-zinc-900 px-4 py-3 text-sm text-zinc-100">
-                    <code>{`GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+                  <div className="relative mt-2">
+                    <pre className="overflow-x-auto rounded-lg bg-zinc-900 px-4 py-3 pr-10 text-sm text-zinc-100">
+                      <code>{`GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"`}</code>
-                  </pre>
+                    </pre>
+                    <CopyButton text={`GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"\nGOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"`} />
+                  </div>
                 </li>
                 <li>
                   You can also find these later under{" "}
@@ -283,8 +335,17 @@ GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"`}</code>
                 6
               </span>
               Get a Gemini API Key
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                Optional
+              </span>
+              <span className="text-sm font-normal text-zinc-400 dark:text-zinc-500">
+                Step 6 of {TOTAL_STEPS}
+              </span>
             </h2>
             <div className="mt-3 pl-10">
+              <p className="mb-3 text-sm text-zinc-500 dark:text-zinc-400">
+                This key powers AI semantic search. MailFeed works without it — you can add it later.
+              </p>
               <ol className="list-inside list-decimal space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
                 <li>
                   Go to{" "}
@@ -307,9 +368,12 @@ GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"`}</code>
                     .env
                   </code>{" "}
                   file:
-                  <pre className="mt-2 overflow-x-auto rounded-lg bg-zinc-900 px-4 py-3 text-sm text-zinc-100">
-                    <code>{`GEMINI_API_KEY="your-gemini-api-key"`}</code>
-                  </pre>
+                  <div className="relative mt-2">
+                    <pre className="overflow-x-auto rounded-lg bg-zinc-900 px-4 py-3 pr-10 text-sm text-zinc-100">
+                      <code>{`GEMINI_API_KEY="your-gemini-api-key"`}</code>
+                    </pre>
+                    <CopyButton text={`GEMINI_API_KEY="your-gemini-api-key"`} />
+                  </div>
                 </li>
               </ol>
               <StepImage
@@ -325,24 +389,20 @@ GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"`}</code>
           <h2 className="mb-2 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
             You&apos;re all set
           </h2>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            With all three values in your{" "}
+          <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+            With your OAuth credentials in the{" "}
             <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
               .env
             </code>{" "}
-            file, start the app with{" "}
+            file (and optionally a Gemini key for AI features), start the app with{" "}
             <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs dark:bg-zinc-800">
               docker compose up
             </code>{" "}
-            and open{" "}
-            <a
-              href="http://localhost:3000"
-              className="font-medium text-zinc-900 underline dark:text-zinc-200"
-            >
-              http://localhost:3000
-            </a>
-            .
+            and sign in.
           </p>
+          <Button asChild>
+            <Link href="/login">Sign in to MailFeed</Link>
+          </Button>
         </div>
 
         {/* Footer */}
