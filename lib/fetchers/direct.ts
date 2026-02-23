@@ -1,4 +1,5 @@
 import { fetchAndParseContent, isPoorContent } from "@/lib/content-fetcher"
+import { isXUrl } from "@/lib/x-article-resolver"
 import { registerFetcher, type ContentFetcher, type FetchResult } from "./index"
 
 const directFetcher: ContentFetcher = {
@@ -8,7 +9,8 @@ const directFetcher: ContentFetcher = {
   async fetch(url: string, options?: { timeoutMs?: number }): Promise<FetchResult> {
     const result = await fetchAndParseContent(url, options)
 
-    if (result.success && isPoorContent(result)) {
+    // Skip poor-content check for tweet URLs — short text is expected
+    if (result.success && isPoorContent(result) && !isXUrl(url)) {
       return {
         ...result,
         success: false,

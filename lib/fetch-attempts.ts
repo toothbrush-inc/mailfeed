@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/prisma"
 import type { FetchAttemptDetail } from "@/lib/fetchers"
 
+// PostgreSQL text columns reject null bytes (0x00)
+function stripNullBytes(s: string | undefined): string | undefined {
+  return s?.replaceAll("\0", "")
+}
+
 export function generateOperationId(): string {
   return crypto.randomUUID()
 }
@@ -22,8 +27,8 @@ export async function recordFetchAttempts(
       trigger,
       sequence: a.sequence,
       success: a.success,
-      error: a.error,
-      rawHtml: a.rawHtml,
+      error: stripNullBytes(a.error),
+      rawHtml: stripNullBytes(a.rawHtml),
       durationMs: a.durationMs,
     })),
   })
@@ -52,8 +57,8 @@ export async function recordSingleFetchAttempt(
       trigger,
       sequence: 1,
       success: detail.success,
-      error: detail.error,
-      rawHtml: detail.rawHtml,
+      error: stripNullBytes(detail.error),
+      rawHtml: stripNullBytes(detail.rawHtml),
       durationMs: detail.durationMs,
     },
   })

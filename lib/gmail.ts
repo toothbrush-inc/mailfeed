@@ -39,6 +39,15 @@ export async function getGmailClient(userId: string): Promise<GmailClient> {
     throw new AuthenticationError("No Google account connected", "NO_ACCOUNT")
   }
 
+  // Check that the stored token has the Gmail scope
+  const grantedScopes = account.scope || ""
+  if (!grantedScopes.includes("gmail.readonly")) {
+    throw new AuthenticationError(
+      "Gmail access was not granted. Please sign out, revoke MailFeed at https://myaccount.google.com/permissions, and sign in again to grant Gmail access.",
+      "INSUFFICIENT_SCOPE"
+    )
+  }
+
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET
@@ -106,13 +115,24 @@ export async function getGmailClient(userId: string): Promise<GmailClient> {
   return google.gmail({ version: "v1", auth: oauth2Client })
 }
 
+// Helper to check if an error is an insufficient scopes error (403)
+function isInsufficientScopeError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase()
+    const status = (error as { status?: number })?.status
+    return status === 403 && message.includes("insufficient authentication scopes")
+  }
+  return false
+}
+
 // Helper to check if an error is an auth error
 function isAuthError(error: unknown): boolean {
   if (error instanceof Error) {
     const message = error.message.toLowerCase()
     const code = String((error as { code?: string | number })?.code || "").toLowerCase()
     const status = (error as { status?: number })?.status
-    const responseError = (error as { response?: { data?: { error?: string } } })?.response?.data?.error?.toLowerCase() || ""
+    const rawResponseError = (error as { response?: { data?: { error?: unknown } } })?.response?.data?.error
+    const responseError = (typeof rawResponseError === "string" ? rawResponseError : "").toLowerCase()
 
     return (
       message.includes("invalid_grant") ||
@@ -138,6 +158,13 @@ async function handleGmailApiError(error: unknown): Promise<never> {
     errors: (error as { errors?: unknown[] })?.errors,
     response: (error as { response?: { data?: unknown } })?.response?.data,
   })
+
+  if (isInsufficientScopeError(error)) {
+    throw new AuthenticationError(
+      "Gmail access was not granted. Please sign out, revoke MailFeed at https://myaccount.google.com/permissions, and sign in again to grant Gmail access.",
+      "INSUFFICIENT_SCOPE"
+    )
+  }
 
   if (isAuthError(error)) {
     throw new AuthenticationError(

@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useSync } from "@/hooks/use-sync"
@@ -55,11 +56,16 @@ function SyncIcon({ spinning }: { spinning: boolean }) {
 }
 
 export function SyncButton() {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
   const {
     checkNew, loadMore, initialSync, fullResync,
     isLoading, result, error, requiresReauth, clearReauthRequired,
     hasMoreHistory, queryMismatch, syncStatus,
   } = useSync()
+
+  if (!mounted) return null
 
   const handleReauth = async () => {
     try {
@@ -96,22 +102,15 @@ export function SyncButton() {
   // Show re-auth prompt if required
   if (requiresReauth) {
     return (
-      <div className="flex flex-col gap-3">
-        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
-          <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-          <div className="flex-1 space-y-2">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-              Google session expired
-            </p>
-            <p className="text-xs text-amber-700 dark:text-amber-300">
-              Your Google authorization has expired or been revoked. Please sign in again to continue syncing emails.
-            </p>
-            <Button onClick={handleReauth} size="sm" variant="outline" className="mt-2">
-              <LogIn className="mr-2 h-4 w-4" />
-              Sign in with Google
-            </Button>
-          </div>
-        </div>
+      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 dark:border-amber-800 dark:bg-amber-950">
+        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+        <span className="text-xs text-amber-700 dark:text-amber-300">
+          Google session expired
+        </span>
+        <Button onClick={handleReauth} size="sm" variant="outline" className="h-7 text-xs">
+          <LogIn className="mr-1.5 h-3.5 w-3.5" />
+          Reconnect
+        </Button>
       </div>
     )
   }

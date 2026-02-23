@@ -71,8 +71,8 @@ async function processLink(
     })
     const rawHtml = content.rawHtml
 
-    // Fire-and-forget: record fetch attempts without blocking sync
-    recordFetchAttempts(linkId, operationId, "sync", content.attempts).catch((err) =>
+    // Record fetch attempts before any potential link deletion to avoid FK violations
+    await recordFetchAttempts(linkId, operationId, "sync", content.attempts).catch((err) =>
       console.error("[Sync] Failed to record fetch attempts:", err)
     )
 
