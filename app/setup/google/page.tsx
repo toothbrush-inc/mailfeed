@@ -110,7 +110,7 @@ export default function GoogleSetupPage() {
                 <li>Make sure the new project is selected in the top navigation bar.</li>
               </ol>
               <StepImage
-                src="/images/setup/step-1-create-project.png"
+                src="/images/setup/create-project.png"
                 alt="Google Cloud Console — Create Project page with project name field"
               />
             </div>
@@ -147,7 +147,7 @@ export default function GoogleSetupPage() {
                 </li>
               </ol>
               <StepImage
-                src="/images/setup/step-2-enable-gmail-api.png"
+                src="/images/setup/enable-gmail-api.png"
                 alt="Gmail API page in API Library with the Enable button highlighted"
               />
             </div>
@@ -205,15 +205,21 @@ export default function GoogleSetupPage() {
                     https://www.googleapis.com/auth/gmail.readonly
                   </code>
                 </li>
+              </ol>
+              <StepImage
+                src="/images/setup/add-scopes.png"
+                alt="Add or Remove Scopes dialog with gmail.readonly scope selected"
+              />
+              <ol start={5} className="mt-3 list-inside list-decimal space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
                 <li>
-                  On the <strong>Test users</strong> step, add the Gmail address you&apos;ll use to log in.
+                  Now configure the audience of users who can access your app. On the <strong>Test users</strong> step, add the Gmail address you&apos;ll use to log in.
                 </li>
                 <li>
                   Click <strong>Save and Continue</strong> through the remaining steps.
                 </li>
               </ol>
               <StepImage
-                src="/images/setup/step-3-consent-screen.png"
+                src="/images/setup/configure-audience.png"
                 alt="OAuth consent screen configuration with app name, scopes, and test users"
               />
             </div>
@@ -271,7 +277,7 @@ export default function GoogleSetupPage() {
                 <li>Click <strong>Create</strong>.</li>
               </ol>
               <StepImage
-                src="/images/setup/step-4-create-credentials.png"
+                src="/images/setup/create-credentials.png"
                 alt="Create OAuth client ID form with Web application type and redirect URI"
               />
             </div>
@@ -321,10 +327,6 @@ GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"`}</code>
                   by clicking the credential name.
                 </li>
               </ol>
-              <StepImage
-                src="/images/setup/step-5-copy-credentials.png"
-                alt="OAuth client created dialog showing Client ID and Client Secret values"
-              />
             </div>
           </section>
 
@@ -334,7 +336,7 @@ GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"`}</code>
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-200 text-sm font-bold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
                 6
               </span>
-              Get a Gemini API Key
+              Get an AI Platform API Key
               <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
                 Optional
               </span>
@@ -344,7 +346,8 @@ GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"`}</code>
             </h2>
             <div className="mt-3 pl-10">
               <p className="mb-3 text-sm text-zinc-500 dark:text-zinc-400">
-                This key powers AI semantic search. MailFeed works without it — you can add it later.
+                This key powers AI semantic search. MailFeed works without it — you can add it later. 
+                The simplest way to get one is through Google AI Studio with a Gemini API key.
               </p>
               <ol className="list-inside list-decimal space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
                 <li>
@@ -377,7 +380,7 @@ GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"`}</code>
                 </li>
               </ol>
               <StepImage
-                src="/images/setup/step-6-gemini-api-key.png"
+                src="/images/setup/create-gemini-api-key.png"
                 alt="Google AI Studio API key creation page"
               />
             </div>
