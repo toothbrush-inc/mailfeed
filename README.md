@@ -124,6 +124,19 @@ docker compose logs -f postgres
 docker exec -it mailfeed-postgres-v2 psql -U postgres -d mailfeed
 ```
 
+### Updating Environment Variables
+
+To add or change an environment variable (e.g. adding a `GEMINI_API_KEY` later):
+
+1. Edit the `.env` file in the project root
+2. Restart the app container to pick up the change:
+
+```bash
+docker compose up -d app
+```
+
+No rebuild is needed — the container reads `.env` at startup.
+
 ## Development Commands
 
 ```bash
@@ -182,7 +195,7 @@ lib/
 - **Database**: PostgreSQL + pgvector
 - **ORM**: Prisma
 - **Auth**: NextAuth.js v5
-- **AI**: Google Gemini (analysis + embeddings)
+- **AI**: Google Gemini (default)
 - **UI**: React 19, Tailwind CSS v4, shadcn/ui
 - **Data Fetching**: SWR
 
