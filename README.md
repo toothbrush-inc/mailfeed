@@ -1,165 +1,119 @@
 # MailFeed
 
-A personal reading feed that extracts links from your self-sent Gmail emails, fetches article content, and provides AI-powered features.
+**Your reading list, owned by you.**
+
+Turn your emails into a personalized reading feed with full-text content, semantic search, and smart link extraction. Self-hosted, open source, and private by design.
+
+> *"If you've ever emailed yourself before, this app is for you."*
+>
+> *"I mean, doesn't everyone do this?"* — David
+
+> *"Another read-it-later app shut down and took my whole library with it. Never again."*
+> — David, after losing his bookmarks for the third time
+
+> *"I already email myself links. Why not just turn that into the whole app?"*
+> — David, at 2 AM, convincing himself to build this
+
+> *"I miss RSS readers. I miss Google Reader. I will not let go."*
+> — David, mass-replying to everyone who said RSS is dead
+
+<!-- Add a screenshot: ![MailFeed Feed](docs/images/feed.png) -->
+
+## How It Works
+
+1. Email yourself a link (or any email matching your configured query)
+2. MailFeed syncs it, extracts the links, and fetches the full article content
+3. Browse everything in a clean reading feed with search and filters
 
 ## Features
 
-- **Gmail Integration**: Syncs emails you send to yourself (`from:me to:me`) by default.
-- **Link Extraction**: Automatically extracts and deduplicates links from emails
-- **Content Fetching**: Fetches article content using Mozilla Readability, with Wayback Machine fallback
-- **Semantic Search (RAG)**: Chat with your saved links using vector similarity search
-- **Reading Feed**: Clean interface to browse, filter, and search your saved content
-- **AI Analysis**: **Coming Soon** Summarizes articles, extracts key points, categorizes, and scores content.
-
-## Prerequisites
-
-- Node.js 18+
-- Docker (for PostgreSQL with pgvector)
-- Google Cloud account (for Gmail API and Gemini)
+- **Gmail Integration** — Syncs emails you send to yourself (`from:me to:me`) by default, configurable to any Gmail query
+- **Smart Link Extraction** — Automatically finds, deduplicates, and follows redirects to surface real URLs
+- **Content Fetching** — Fetches full articles with Mozilla Readability, falls back to the Wayback Machine for lost content
+- **Reading Feed** — Clean interface with filters, search, categories, and reading time estimates
+- **Semantic Search** — Chat with your saved links using vector embeddings and RAG-powered search
+- **AI Analysis** — *(Coming Soon)* Summaries, key points, categorization, and content scoring
 
 ## Quick Start
 
-### 1. Clone and Install
+### One-command setup (macOS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/toothbrush-inc/mailfeed/main/scripts/setup.sh | bash
+```
+
+This installs Docker if needed, clones the repo, walks you through entering your Google credentials, and starts everything. Open [http://localhost:3000](http://localhost:3000) when it's done.
+
+**You'll need:**
+- Google OAuth credentials ([create them here](https://console.cloud.google.com/apis/credentials/oauthclient)) with the Gmail API enabled
+- *(Optional)* A [Gemini API key](https://aistudio.google.com/apikey) for AI features — you can add this later
+
+### Manual setup
+
+```bash
+git clone https://github.com/toothbrush-inc/mailfeed.git
+cd mailfeed
+cp .env.example .env        # Add your Google credentials
+docker compose up --build -d # Start the app + database
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+### Developer setup (without Docker)
 
 ```bash
 git clone https://github.com/toothbrush-inc/mailfeed.git
 cd mailfeed
 npm install
+cp .env.example .env        # Add your credentials + DATABASE_URL
+docker compose up -d postgres # Start just the database
+npx prisma db push          # Apply schema
+npm run dev                 # Start dev server
 ```
-
-### 2. Start PostgreSQL with pgvector
-
-```bash
-docker compose up -d
-```
-
-This starts PostgreSQL 16 with the pgvector extension pre-installed.
-
-### 3. Configure Environment
-
-Copy the example environment file and fill in your values:
-
-```bash
-cp .env.example .env
-```
-
-Required variables:
-
-```env
-# Database (matches docker-compose defaults)
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/mailfeed"
-
-# NextAuth
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="<generate with: openssl rand -base64 32>"
-
-# Google OAuth (for Gmail access)
-GOOGLE_CLIENT_ID="<your-google-client-id>"
-GOOGLE_CLIENT_SECRET="<your-google-client-secret>"
-
-# Google Gemini API
-GEMINI_API_KEY="<your-gemini-api-key>"
-```
-
-### 4. Set Up the Database
-
-```bash
-# Push Prisma schema to database
-npx prisma db push
-
-# Enable pgvector extension and create embedding columns
-docker exec mailfeed-postgres-v2 psql -U postgres -d mailfeed -c "CREATE EXTENSION IF NOT EXISTS vector;"
-npx prisma db execute --file prisma/migrations/20250111000000_add_vector_embeddings/migration.sql
-```
-
-### 5. Run the Development Server
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to use the app.
 
 ## Google Cloud Setup
 
-### Gmail API + OAuth
+You need a Google Cloud project with OAuth credentials to sign in and access Gmail.
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the **Gmail API**
-4. Go to **APIs & Services > Credentials**
-5. Create **OAuth 2.0 Client ID** (Web application)
-6. Add authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
-7. Copy the Client ID and Client Secret to your `.env`
+1. [Create a Google Cloud project](https://console.cloud.google.com/projectcreate)
+2. [Enable the Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com)
+3. [Create OAuth 2.0 credentials](https://console.cloud.google.com/apis/credentials/oauthclient) (Web application)
+   - Add redirect URI: `http://localhost:3000/api/auth/callback/google`
+4. Configure the [OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent)
+   - Add scope: `https://www.googleapis.com/auth/gmail.readonly`
+   - Add your email as a test user (if using External)
+5. Copy the Client ID and Client Secret into your `.env`
 
-### OAuth Consent Screen
-
-1. Go to **APIs & Services > OAuth consent screen**
-2. Configure the consent screen (External or Internal)
-3. Add scope: `https://www.googleapis.com/auth/gmail.readonly`
-4. Add your email as a test user (if using External)
-
-### Gemini API
-
-1. Go to [Google AI Studio](https://aistudio.google.com/)
-2. Create an API key
-3. Copy it to `GEMINI_API_KEY` in your `.env`
+**Gemini API (optional):** Get a key from [Google AI Studio](https://aistudio.google.com/apikey) and add it as `GEMINI_API_KEY` in `.env`. This enables semantic search and AI features.
 
 ## Docker Commands
 
 ```bash
-# Start PostgreSQL
-docker compose up -d
-
-# Stop PostgreSQL (data persists)
-docker compose down
-
-# Stop and delete all data
-docker compose down -v
-
-# View logs
-docker compose logs -f postgres
-
-# Connect to database
-docker exec -it mailfeed-postgres-v2 psql -U postgres -d mailfeed
+docker compose up -d          # Start everything
+docker compose down           # Stop (data persists)
+docker compose down -v        # Stop and delete all data
+docker compose logs -f app    # View app logs
+docker compose logs -f postgres # View database logs
 ```
 
 ### Updating Environment Variables
 
-To add or change an environment variable (e.g. adding a `GEMINI_API_KEY` later):
+To add or change a variable (e.g. adding `GEMINI_API_KEY` later):
 
-1. Edit the `.env` file in the project root
-2. Restart the app container to pick up the change:
+1. Edit `.env` in the project root
+2. Restart the container: `docker compose up -d app`
 
-```bash
-docker compose up -d app
-```
+No rebuild needed — the container reads `.env` at startup.
 
-No rebuild is needed — the container reads `.env` at startup.
-
-## Development Commands
+## Development
 
 ```bash
 npm run dev          # Start development server
-npm run build        # Create production build
-npm run start        # Run production server
+npm run build        # Production build
 npm run lint         # Run ESLint
-
-# Prisma
-npx prisma db push   # Push schema changes to database
-npx prisma generate  # Generate Prisma client
-npx prisma studio    # Open database GUI
+npx prisma studio    # Database GUI
+npx prisma db push   # Apply schema changes
 ```
-
-## Semantic Search (RAG)
-
-MailFeed supports AI-powered semantic search using pgvector embeddings:
-
-1. **Check Status**: Go to Settings to see embedding coverage
-2. **Generate Embeddings**: Click "Generate Embeddings" to process your links
-3. **Use Chat**: The chatbot will use semantic similarity to find relevant content
-
-Embeddings are generated using Gemini's `gemini-embedding-001` model (768 dimensions).
 
 ## Architecture
 
@@ -170,20 +124,16 @@ app/
 │   ├── feed/              # Main reading feed
 │   ├── emails/            # Email list view
 │   ├── settings/          # User settings
-│   └── reports/           # Reported links (admin)
+│   └── reports/           # Reported links
 ├── api/
 │   ├── sync/              # Email sync endpoint
-│   ├── links/             # Link CRUD operations
+│   ├── links/             # Link CRUD
 │   ├── chat/              # RAG chatbot
-│   └── embeddings/        # Embedding generation
-components/
-├── ui/                    # shadcn/ui components
-├── feed/                  # Feed display components
-└── layout/                # Header, sidebar
-lib/
-├── prisma.ts              # Database client
+│   └── embeddings/        # Vector embeddings
+components/                # React components
+lib/                       # Core logic
 ├── gmail.ts               # Gmail API integration
-├── content-fetcher.ts     # Article content extraction
+├── content-fetcher.ts     # Article extraction
 ├── gemini.ts              # AI analysis
 ├── embeddings.ts          # Vector embeddings
 └── vector-search.ts       # Similarity search
@@ -195,9 +145,12 @@ lib/
 - **Database**: PostgreSQL + pgvector
 - **ORM**: Prisma
 - **Auth**: NextAuth.js v5
-- **AI**: Google Gemini (default)
+- **AI**: Google Gemini
 - **UI**: React 19, Tailwind CSS v4, shadcn/ui
-- **Data Fetching**: SWR
+
+## FAQ
+
+See [FAQ.md](FAQ.md) for common questions about privacy, email syncing, AI features, and more.
 
 ## License
 
