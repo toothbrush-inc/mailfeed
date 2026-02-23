@@ -61,7 +61,7 @@ export function EmailFeedContainer() {
               ? `No emails found matching "${search}".`
               : tag
               ? `No emails found with the "${tag.replace(/_/g, " ")}" tag.`
-              : "Click the \"Sync Emails\" button to fetch emails you've sent to yourself."}
+              : "Click the \"Sync\" button to fetch emails."}
           </p>
         </div>
       </div>

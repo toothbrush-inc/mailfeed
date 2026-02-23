@@ -97,7 +97,7 @@ export function FeedContainer() {
               ? `No links found with the "${tag.replace(/_/g, " ")}" tag.`
               : domain
               ? `No links found from "${domain}".`
-              : "Click the \"Sync Emails\" button to fetch links from emails you've sent to yourself."}
+              : "Click the \"Sync\" button to fetch links."}
           </p>
           <div className="mt-4">
             <AddLinkButton onSuccess={mutate} />
