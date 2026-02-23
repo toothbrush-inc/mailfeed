@@ -15,6 +15,8 @@ import {
   TriangleAlert,
   Terminal,
   Code,
+  Check,
+  Copy,
 } from "lucide-react"
 import type { SetupCheck } from "@/app/page"
 
@@ -141,18 +143,60 @@ export function LandingPage({ setupChecks }: { setupChecks?: SetupCheck[] }) {
       )}
 
       {/* Hero */}
-      <section className="flex flex-col items-center justify-center px-4 pt-24 pb-16 text-center sm:px-6 lg:px-8">
+      <section className="flex flex-col items-center justify-center px-4 pt-24 pb-20 text-center sm:px-6 lg:px-8">
         <div className="max-w-3xl">
           <h1 className="text-4xl font-bold tracking-tight text-zinc-900 sm:text-5xl lg:text-6xl dark:text-zinc-50">
             MailFeed
           </h1>
-          <p className="mt-4 text-lg text-zinc-600 sm:text-xl dark:text-zinc-400">
-            Turn your emails into a personalized reading feed with
-            full-text content, semantic search, and smart link extraction.
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-zinc-600 sm:text-xl dark:text-zinc-400">
+            Your reading list, owned by you.
           </p>
-          <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-500">
-            Email yourself a link. MailFeed does the rest.
+          <p className="mx-auto mt-3 max-w-2xl text-base text-zinc-500 dark:text-zinc-500">
+            Turn your emails into a personalized reading feed with full-text content, semantic search, and smart link extraction.
           </p>
+
+          <div className="mx-auto mt-10 grid max-w-4xl gap-4 text-left sm:grid-cols-3">
+            <blockquote className="rounded-lg border border-zinc-200 bg-white px-5 py-5 sm:col-span-3 dark:border-zinc-800 dark:bg-zinc-900">
+              <p className="text-center text-base font-medium text-zinc-900 dark:text-zinc-50">
+                &ldquo;If you&apos;ve ever emailed yourself before, this app is for you.&rdquo;
+              </p>
+              <footer className="mt-2 text-center text-sm text-zinc-400 dark:text-zinc-500">
+                &ldquo;I mean, doesn&apos;t everyone do this?&rdquo; &mdash; David
+              </footer>
+            </blockquote>
+            <blockquote className="rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                &ldquo;Another read-it-later app shut down and took my whole library with it. Never again.&rdquo;
+              </p>
+              <footer className="mt-3 text-xs text-zinc-400 dark:text-zinc-500">
+                &mdash; David, after losing his bookmarks for the third time
+              </footer>
+            </blockquote>
+            <blockquote className="rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                &ldquo;I already email myself links. Why not just turn that into the whole app?&rdquo;
+              </p>
+              <footer className="mt-3 text-xs text-zinc-400 dark:text-zinc-500">
+                &mdash; David, at 2 AM, convincing himself to build this
+              </footer>
+            </blockquote>
+            <blockquote className="rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                &ldquo;I miss RSS readers. I miss Google Reader. I will not let go.&rdquo;
+              </p>
+              <footer className="mt-3 text-xs text-zinc-400 dark:text-zinc-500">
+                &mdash; David, mass-replying to everyone who said RSS is dead
+              </footer>
+            </blockquote>
+          </div>
+
+          <p className="mt-10 text-lg font-medium text-zinc-900 dark:text-zinc-50">
+            MailFeed is for you.
+          </p>
+          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-500">
+            Email yourself a link. MailFeed turns it into a full-text reading feed with search and smart extraction.
+          </p>
+
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Button asChild size="lg">
               <Link href="/login">Get Started</Link>
@@ -201,6 +245,26 @@ export function LandingPage({ setupChecks }: { setupChecks?: SetupCheck[] }) {
       {/* Install */}
       <InstallSection />
 
+      {/* Hosted Interest */}
+      <section className="mx-auto max-w-2xl px-4 py-16 text-center sm:px-6 lg:px-8">
+        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+          Don&apos;t want to self-host?
+        </h2>
+        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+          We&apos;re considering a hosted version so you don&apos;t have to manage anything yourself.
+          If that sounds interesting, let us know!
+        </p>
+        <Button asChild variant="outline" className="mt-5">
+          <a
+            href="https://github.com/davidd8/mailfeed/issues/new?title=Interested+in+a+hosted+version&body=I%27d+love+a+hosted+option+so+I+don%27t+have+to+self-host.+Count+me+in+for+$5+per+month!"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            I&apos;d use a hosted version
+          </a>
+        </Button>
+      </section>
+
       {/* Footer */}
       <footer className="border-t border-zinc-200 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-500">
         <p>
@@ -219,13 +283,32 @@ export function LandingPage({ setupChecks }: { setupChecks?: SetupCheck[] }) {
   )
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 2000)
+        })
+      }}
+      className="absolute top-2.5 right-2.5 rounded-md border border-zinc-700 bg-zinc-800 p-1.5 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
+      aria-label="Copy to clipboard"
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  )
+}
+
 function InstallSection() {
   const [activeTab, setActiveTab] = useState<"quick" | "dev">("quick")
 
   return (
     <section
       id="install"
-      className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8"
+      className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8"
     >
       <h2 className="mb-2 text-center text-2xl font-bold text-zinc-900 dark:text-zinc-50">
         Self-Host MailFeed
@@ -275,9 +358,12 @@ function QuickStartPath() {
           Run this single command in Terminal. It installs Docker, clones the
           repo, and walks you through entering your API keys.
         </p>
-        <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm text-zinc-100">
-          <code>curl -fsSL https://raw.githubusercontent.com/davidd8/mailfeed/main/scripts/setup.sh | bash</code>
-        </pre>
+        <div className="relative">
+          <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 pr-10 text-sm text-zinc-100">
+            <code>curl -fsSL https://raw.githubusercontent.com/davidd8/mailfeed/main/scripts/setup.sh | bash</code>
+          </pre>
+          <CopyButton text="curl -fsSL https://raw.githubusercontent.com/davidd8/mailfeed/main/scripts/setup.sh | bash" />
+        </div>
         <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-500">
           macOS only. Requires an internet connection. The script will prompt you
           for Google API credentials.
