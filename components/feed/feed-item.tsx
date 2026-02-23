@@ -442,16 +442,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
           </div>
         )}
 
-        {link.isPaywalled && (
-          <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
-            <AlertTriangle className="h-4 w-4" />
-            <span>
-              {link.paywallType === "hard" && "Paywalled content"}
-              {link.paywallType === "soft" && "Limited free access"}
-              {link.paywallType === "registration" && "Registration required"}
-            </span>
-          </div>
-        )}
+        {/* Paywall type indicator hidden for now */}
 
         {/* X Article URL resolution prompt */}
         {isXArticleUrl && !link.finalUrl && (

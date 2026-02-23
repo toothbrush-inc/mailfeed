@@ -222,16 +222,7 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
           )}
 
           {/* Status indicators */}
-          {link.isPaywalled && (
-            <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
-              <AlertTriangle className="h-3 w-3" />
-              <span>
-                {link.paywallType === "hard" && "Paywalled"}
-                {link.paywallType === "soft" && "Limited access"}
-                {link.paywallType === "registration" && "Registration required"}
-              </span>
-            </div>
-          )}
+          {/* Paywall type indicator hidden for now */}
 
           {link.contentSource === "wayback" && (
             <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
