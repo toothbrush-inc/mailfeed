@@ -17,13 +17,28 @@ Turn your emails into a personalized reading feed with full-text content, semant
 > *"I miss RSS readers. I miss Google Reader. I will not let go."*
 > — David, mass-replying to everyone who said RSS is dead
 
-<!-- Add a screenshot: ![MailFeed Feed](docs/images/feed.png) -->
-
 ## How It Works
 
 1. Email yourself a link (or any email matching your configured query)
 2. MailFeed syncs it, extracts the links, and fetches the full article content
 3. Browse everything in a clean reading feed with search and filters
+
+## How It Looks
+
+![MailFeed Reading Feed](public/images/screenshots/feed.png)
+
+<details>
+<summary>More screenshots</summary>
+
+### Settings & Chat
+
+![Settings and Chat](public/images/screenshots/settings-chat.png)
+
+### Link Statistics
+
+![Link Statistics](public/images/screenshots/stats.png)
+
+</details>
 
 ## Features
 

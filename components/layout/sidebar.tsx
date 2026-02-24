@@ -21,7 +21,7 @@ export function Sidebar() {
               : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-800/50"
           )}
         >
-          <span>All Links</span>
+          <span>Links</span>
           {stats?.links !== undefined && (
             <span className="text-xs text-zinc-400">{stats.links}</span>
           )}
