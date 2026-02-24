@@ -130,6 +130,42 @@ npx prisma studio    # Database GUI
 npx prisma db push   # Apply schema changes
 ```
 
+## API
+
+### Add a Link
+
+You can add links to MailFeed programmatically — useful for browser extensions, shortcuts, or other integrations.
+
+```
+POST /api/links/add
+Content-Type: application/json
+
+{ "url": "https://example.com/article" }
+```
+
+**Authentication:** MailFeed uses session cookies (NextAuth). Requests must include a valid session cookie. If you're building a browser extension that runs on the same origin as your MailFeed instance (e.g. `localhost:3000`), the cookie is sent automatically.
+
+**Example with `curl`** (grab the cookie from your browser's dev tools):
+
+```bash
+curl -X POST http://localhost:3000/api/links/add \
+  -H "Content-Type: application/json" \
+  -b "authjs.session-token=YOUR_SESSION_TOKEN" \
+  -d '{"url": "https://example.com/article"}'
+```
+
+**Responses:**
+
+| Status | Meaning |
+|--------|---------|
+| 200 | Link added and content fetched |
+| 400 | Invalid or excluded URL |
+| 401 | Not authenticated |
+| 409 | URL already exists in your feed |
+| 500 | Server error |
+
+The response includes the full link object with fetched content, metadata, and any nested links extracted from social media posts.
+
 ## Architecture
 
 ```
