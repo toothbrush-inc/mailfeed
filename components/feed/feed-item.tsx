@@ -137,6 +137,31 @@ function sanitizeContentHtml(html: string): string {
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/\s*on\w+=\s*["'][^"']*["']/gi, "")
+    // Add target="_blank" and rel="noopener noreferrer" to all links that don't already have them
+    .replace(/<a\s+([^>]*)>/gi, (match, attrs) => {
+      let newAttrs = attrs
+      const hasTargetBlank = /\btarget\s*=\s*["']_blank["']/i.test(newAttrs)
+      const hasRel = /\brel\s*=/i.test(newAttrs)
+      const hasNoopener = /\bnoopener\b/i.test(newAttrs)
+      
+      // Add target="_blank" if missing
+      if (!hasTargetBlank) {
+        newAttrs += ' target="_blank"'
+      }
+      
+      // Add or update rel attribute
+      if (!hasRel) {
+        newAttrs += ' rel="noopener noreferrer"'
+      } else if (!hasNoopener) {
+        // rel exists but doesn't have noopener, add it (preserve original quote style)
+        newAttrs = newAttrs.replace(/\brel\s*=\s*(["'])([^"']*)\1/i, (relMatch, quote, relValue) => {
+          const newRel = `${relValue} noopener noreferrer`.trim()
+          return `rel=${quote}${newRel}${quote}`
+        })
+      }
+      
+      return `<a ${newAttrs}>`
+    })
 }
 
 export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHideDomain }: FeedItemProps) {

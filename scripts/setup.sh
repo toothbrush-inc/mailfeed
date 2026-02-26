@@ -4,7 +4,7 @@ set -euo pipefail
 # MailFeed Setup Script
 # macOS-focused: installs prerequisites, clones repo, configures .env, starts Docker
 
-REPO_URL="https://github.com/davidd8/mailfeed.git"
+REPO_URL="https://github.com/toothbrush-inc/mailfeed.git"
 INSTALL_DIR="$HOME/mailfeed"
 
 # ── Colors ────────────────────────────────────────────────────────────────────
@@ -111,7 +111,8 @@ echo "  3. Create OAuth credentials:       https://console.cloud.google.com/apis
 echo "     - Application type: Web application"
 echo "     - Redirect URI:     http://localhost:3000/api/auth/callback/google"
 echo ""
-echo "  Need help? See the step-by-step guide at http://localhost:3000/setup/google (after setup completes)"
+echo "  Need help? See the setup guide: https://github.com/toothbrush-inc/mailfeed#google-cloud-setup"
+echo "  Or after getting the app running: http://localhost:3000/setup/google"
 echo ""
 
 prompt_key() {

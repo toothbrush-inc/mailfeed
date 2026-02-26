@@ -64,7 +64,7 @@ const steps = [
   {
     label: "Clone the repository",
     why: "Get the source code on your machine",
-    code: "git clone https://github.com/davidd8/mailfeed.git\ncd mailfeed",
+    code: "git clone https://github.com/toothbrush-inc/mailfeed.git\ncd mailfeed",
   },
   {
     label: "Copy the environment template",
@@ -256,7 +256,7 @@ export function LandingPage({ setupChecks }: { setupChecks?: SetupCheck[] }) {
         </p>
         <Button asChild variant="outline" className="mt-5">
           <a
-            href="https://github.com/davidd8/mailfeed/issues/new?title=Interested+in+a+hosted+version&body=I%27d+love+a+hosted+option+so+I+don%27t+have+to+self-host.+Count+me+in+for+$5+per+month!"
+            href="https://github.com/toothbrush-inc/mailfeed/issues/new?title=Interested+in+a+hosted+version&body=I%27d+love+a+hosted+option+so+I+don%27t+have+to+self-host.+Count+me+in+for+$5+per+month!"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -270,7 +270,7 @@ export function LandingPage({ setupChecks }: { setupChecks?: SetupCheck[] }) {
         <p>
           MailFeed — built with Next.js, Prisma, and Gemini.{" "}
           <a
-            href="https://github.com/davidd8/mailfeed"
+            href="https://github.com/toothbrush-inc/mailfeed"
             className="underline"
             target="_blank"
             rel="noopener noreferrer"
@@ -360,9 +360,9 @@ function QuickStartPath() {
         </p>
         <div className="relative">
           <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-4 pr-10 text-sm text-zinc-100">
-            <code>curl -fsSL https://raw.githubusercontent.com/davidd8/mailfeed/main/scripts/setup.sh | bash</code>
+            <code>curl -fsSL https://raw.githubusercontent.com/toothbrush-inc/mailfeed/main/scripts/setup.sh | bash</code>
           </pre>
-          <CopyButton text="curl -fsSL https://raw.githubusercontent.com/davidd8/mailfeed/main/scripts/setup.sh | bash" />
+          <CopyButton text="curl -fsSL https://raw.githubusercontent.com/toothbrush-inc/mailfeed/main/scripts/setup.sh | bash" />
         </div>
         <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-500">
           macOS only. Requires an internet connection. The script will prompt you
