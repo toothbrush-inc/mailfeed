@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { Pool } from "pg"
 import { encryptionExtension, type EncryptionDb } from "@/lib/crypto/prisma-encryption"
+import { tenantIsolationExtension } from "@/lib/tenant-guard"
 
 function buildClients() {
   const pool = new Pool({
@@ -24,7 +25,9 @@ function buildClients() {
   // the extension) and for lib/user-keys.ts, which handles apiKeysEnc
   // explicitly. Application code imports `prisma`.
   const base = new PrismaClient({ adapter })
-  const extended = base.$extends(encryptionExtension(base as unknown as EncryptionDb))
+  const extended = base
+    .$extends(encryptionExtension(base as unknown as EncryptionDb))
+    .$extends(tenantIsolationExtension())
   return { pool, base, extended }
 }
 

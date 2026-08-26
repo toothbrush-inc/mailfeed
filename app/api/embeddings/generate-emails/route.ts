@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
               "embeddingStatus" = 'COMPLETED',
               "embeddedAt" = NOW(),
               "embeddingError" = NULL
-          WHERE id = ${email.id}
+          WHERE id = ${email.id} AND "userId" = ${session.user.id}
         `
 
         result.succeeded++

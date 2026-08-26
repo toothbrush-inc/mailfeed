@@ -68,6 +68,7 @@ export async function GET(request: NextRequest) {
       take: limit,
       include: {
         links: {
+          where: { userId: session.user.id },
           select: {
             id: true,
             url: true,

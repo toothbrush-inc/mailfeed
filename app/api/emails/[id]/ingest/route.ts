@@ -21,17 +21,13 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // Fetch the email
-  const email = await prisma.email.findUnique({
-    where: { id },
+  // Never load another user's row (decryption uses the row's DEK).
+  const email = await prisma.email.findFirst({
+    where: { id, userId: session.user.id },
   })
 
   if (!email) {
     return NextResponse.json({ error: "Email not found" }, { status: 404 })
-  }
-
-  if (email.userId !== session.user.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
 
   if (!email.rawContent) {
@@ -99,10 +95,11 @@ export async function POST(
     }
 
     // Fetch the updated email with links
-    const emailWithLinks = await prisma.email.findUnique({
-      where: { id },
+    const emailWithLinks = await prisma.email.findFirst({
+      where: { id, userId: session.user.id },
       include: {
         links: {
+          where: { userId: session.user.id },
           select: {
             id: true,
             url: true,

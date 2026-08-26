@@ -57,6 +57,21 @@ encryption keeps working; rows encrypt as they are next written.
   end-to-end. The format is versioned so a user-held wrapping key could be
   added later.
 
+## Tenant isolation
+
+Encryption at rest is not access control: ciphertext carries the owner's
+user id, so a query that returns another user's row would still decrypt.
+Mailboxes stay private because:
+
+- Every email list/search/count requires `where.userId` (enforced by
+  `lib/tenant-guard.ts`). Unscoped `findMany` throws rather than returning
+  mixed mailboxes.
+- API handlers that take an email or link id from the client look up
+  `{ id, userId: session.user.id }` before decrypting nested email bodies.
+- Gmail message ids are unique per user (`@@unique([userId, gmailId])`),
+  not globally, so one account cannot collide with or skip another's sync.
+- Chat and vector search SQL already filter `Email`/`Link` by `userId`.
+
 ## Verifying
 
 ```

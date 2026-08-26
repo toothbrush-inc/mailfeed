@@ -384,7 +384,7 @@ async function fetchAndProcessPages(
     // Filter out already-processed emails
     const messageIds = messages.map((m) => m.id).filter(Boolean) as string[]
     const existingEmails = await prisma.email.findMany({
-      where: { gmailId: { in: messageIds } },
+      where: { userId, gmailId: { in: messageIds } },
       select: { gmailId: true },
     })
     const existingGmailIds = new Set(existingEmails.map((e) => e.gmailId))
