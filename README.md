@@ -74,6 +74,9 @@ cp .env.example .env        # Add your Google credentials
 docker compose up --build -d # Start the app + database
 ```
 
+The app container runs `prisma migrate deploy` on startup, so schema
+migrations (including per-user email uniqueness) apply automatically.
+
 Open [http://localhost:3000](http://localhost:3000).
 
 ### Developer setup (without Docker)
@@ -84,7 +87,7 @@ cd mailfeed
 npm install
 cp .env.example .env        # Add your credentials + DATABASE_URL
 docker compose up -d postgres # Start just the database
-npx prisma db push          # Apply schema
+npx prisma migrate deploy   # Apply schema
 npm run dev                 # Start dev server
 ```
 
@@ -129,7 +132,7 @@ npm run dev          # Start development server
 npm run build        # Production build
 npm run lint         # Run ESLint
 npx prisma studio    # Database GUI
-npx prisma db push   # Apply schema changes
+npx prisma migrate deploy  # Apply schema changes
 ```
 
 ## API
