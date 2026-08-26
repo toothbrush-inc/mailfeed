@@ -6,6 +6,7 @@ import { estimateReadingTime } from "@/lib/content-fetcher"
 import { recordSingleFetchAttempt } from "@/lib/fetch-attempts"
 import { b } from "@/baml_client"
 import { getUserSettings } from "@/lib/user-settings"
+import { getUserAiKeys } from "@/lib/user-keys"
 import { buildClientRegistry } from "@/lib/baml-registry"
 
 export async function POST(
@@ -34,7 +35,10 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
 
-  const settings = await getUserSettings(session.user.id)
+  const [settings, aiKeys] = await Promise.all([
+    getUserSettings(session.user.id),
+    getUserAiKeys(session.user.id),
+  ])
 
   try {
     // Update status to indicate we're fetching from archive
@@ -111,7 +115,7 @@ export async function POST(
       })
 
       try {
-        const clientRegistry = buildClientRegistry(settings)
+        const clientRegistry = buildClientRegistry(settings, aiKeys)
         const analysis = await b.IngestLink(
           urlToFetch,
           waybackResult.title,

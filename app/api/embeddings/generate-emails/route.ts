@@ -7,7 +7,7 @@ import {
 } from "@/lib/embeddings"
 import { isPgVectorAvailable } from "@/lib/vector-search"
 import { getUserSettings } from "@/lib/user-settings"
-import { isAiConfigured, getMissingEnvVarMessage } from "@/lib/ai-provider"
+import { getUserAiKeys, resolveGeminiKey } from "@/lib/user-keys"
 
 interface GenerateResult {
   processed: number
@@ -54,11 +54,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const settings = await getUserSettings(session.user.id)
+  const [settings, aiKeys] = await Promise.all([
+    getUserSettings(session.user.id),
+    getUserAiKeys(session.user.id),
+  ])
 
-  if (!isAiConfigured(settings)) {
+  // Chat and embeddings run on Gemini regardless of the selected analysis
+  // client, so gate on the Gemini key specifically.
+  const geminiKey = resolveGeminiKey(aiKeys)
+  if (!geminiKey) {
     return NextResponse.json(
-      { error: getMissingEnvVarMessage(settings), code: "AI_NOT_CONFIGURED" },
+      { error: "Embeddings need a Gemini API key. Add yours in Settings → AI.", code: "AI_NOT_CONFIGURED" },
       { status: 503 }
     )
   }
@@ -138,7 +144,7 @@ export async function POST(request: NextRequest) {
 
       try {
         // Generate embedding
-        const embedding = await generateEmbedding(text, "RETRIEVAL_DOCUMENT", settings)
+        const embedding = await generateEmbedding(text, "RETRIEVAL_DOCUMENT", settings, aiKeys)
         const embeddingStr = formatEmbeddingForPgVector(embedding)
 
         // Store embedding using raw SQL (Prisma doesn't support vector type)

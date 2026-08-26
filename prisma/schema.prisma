@@ -50,6 +50,13 @@ model User {
   linkReports   LinkReport[]
   settings      Json      @default("{}")
   hiddenDomains String[]  @default([])
+  // Envelope encryption: per-user DEK wrapped by the KEK (Cloud KMS or
+  // MAILFEED_KEK). Minted on first use; deleting it crypto-shreds the
+  // user's encrypted rows.
+  dekWrapped    String?
+  // The user's own LLM API keys (BYOK), encrypted under their DEK with a
+  // prefix the transparent read path refuses to decrypt. See lib/user-keys.ts.
+  apiKeysEnc    String?
   lastSyncAt          DateTime?
   syncQuery           String?    // Email query active when sync state was captured
   syncNewestEmailDate DateTime?  // receivedAt of most recent synced email

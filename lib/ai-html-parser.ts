@@ -1,5 +1,6 @@
 import { b } from "@/baml_client"
 import type { ResolvedSettings } from "@/lib/settings"
+import type { AiKeys } from "@/lib/user-keys"
 import { buildClientRegistry } from "@/lib/baml-registry"
 
 export interface AIParseResult {
@@ -15,11 +16,12 @@ export interface AIParseResult {
 export async function parseHtmlWithAI(
   url: string,
   rawHtml: string,
-  settings?: ResolvedSettings
+  settings?: ResolvedSettings,
+  aiKeys?: AiKeys
 ): Promise<AIParseResult> {
   console.log(`[AI HTML Parser] Parsing ${url} with AI...`)
 
-  const bamlOptions = settings ? { clientRegistry: buildClientRegistry(settings) } : undefined
+  const bamlOptions = settings ? { clientRegistry: buildClientRegistry(settings, aiKeys) } : undefined
   const result = await b.IngestLink(url, "", rawHtml, bamlOptions)
 
   // Map all tag types to string arrays

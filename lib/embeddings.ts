@@ -1,12 +1,14 @@
 import { GoogleGenAI } from "@google/genai"
 import { prisma } from "@/lib/prisma"
 import { DEFAULT_SETTINGS, type ResolvedSettings } from "@/lib/settings"
+import { resolveApiKey, type AiKeys } from "@/lib/user-keys"
 
-function getGenAI(): GoogleGenAI {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY is not configured")
+function getGenAI(apiKey?: string): GoogleGenAI {
+  const key = apiKey || process.env.GEMINI_API_KEY
+  if (!key) {
+    throw new Error("No Gemini API key: add one in Settings → AI or set GEMINI_API_KEY")
   }
-  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+  return new GoogleGenAI({ apiKey: key })
 }
 
 // Default values (still exported for backwards compatibility with vector-search, etc.)
@@ -71,12 +73,13 @@ export function prepareTextForEmbedding(link: LinkData): string | null {
 export async function generateEmbedding(
   text: string,
   taskType: EmbeddingTaskType = "RETRIEVAL_DOCUMENT",
-  settings?: ResolvedSettings
+  settings?: ResolvedSettings,
+  aiKeys?: AiKeys
 ): Promise<number[]> {
   const model = settings?.ai.embeddingModel ?? EMBEDDING_MODEL
   const dimensions = settings?.ai.embeddingDimensions ?? EMBEDDING_DIMENSIONS
 
-  const result = await getGenAI().models.embedContent({
+  const result = await getGenAI(resolveApiKey(aiKeys, "GEMINI_API_KEY")).models.embedContent({
     model,
     contents: text,
     config: {
@@ -155,7 +158,8 @@ export function parseEmbeddingFromPgVector(pgVector: string): number[] {
 export async function generateAndStoreEmbedding(
   linkId: string,
   settings: ResolvedSettings,
-  taskType: EmbeddingTaskType = "RETRIEVAL_DOCUMENT"
+  taskType: EmbeddingTaskType = "RETRIEVAL_DOCUMENT",
+  aiKeys?: AiKeys
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const link = await prisma.link.findUnique({
@@ -191,7 +195,7 @@ export async function generateAndStoreEmbedding(
     })
 
     try {
-      const embedding = await generateEmbedding(text, taskType, settings)
+      const embedding = await generateEmbedding(text, taskType, settings, aiKeys)
       const embeddingStr = formatEmbeddingForPgVector(embedding)
 
       await prisma.$executeRaw`

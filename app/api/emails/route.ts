@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { findEmailIdsMatchingText } from "@/lib/email-search"
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
@@ -31,22 +32,29 @@ export async function GET(request: NextRequest) {
   }
 
   if (search) {
-    where.OR = [
-      { subject: { contains: search, mode: "insensitive" } },
-      { rawContent: { contains: search, mode: "insensitive" } },
-      { snippet: { contains: search, mode: "insensitive" } },
-      {
-        links: {
-          some: {
-            OR: [
-              { title: { contains: search, mode: "insensitive" } },
-              { aiSummary: { contains: search, mode: "insensitive" } },
-              { aiCategory: { contains: search, mode: "insensitive" } },
-            ],
-          },
+    // subject/snippet/rawContent are encrypted at rest, so the database
+    // cannot substring-match them. Decrypt-and-filter email bodies; link
+    // fields stay SQL-searchable. O(user's mailbox), fine at personal scale.
+    const [linkMatches, emailIds] = await Promise.all([
+      prisma.link.findMany({
+        where: {
+          userId: session.user.id,
+          emailId: { not: null },
+          OR: [
+            { title: { contains: search, mode: "insensitive" } },
+            { aiSummary: { contains: search, mode: "insensitive" } },
+            { aiCategory: { contains: search, mode: "insensitive" } },
+          ],
         },
-      },
-    ]
+        select: { emailId: true },
+      }),
+      findEmailIdsMatchingText(session.user.id, search),
+    ])
+    const matchedIds = new Set(emailIds)
+    for (const match of linkMatches) {
+      if (match.emailId) matchedIds.add(match.emailId)
+    }
+    where.id = { in: Array.from(matchedIds) }
   }
 
   const queryStart = Date.now()

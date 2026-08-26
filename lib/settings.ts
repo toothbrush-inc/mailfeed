@@ -69,7 +69,7 @@ export interface ResolvedSettings {
 export const DEFAULT_SETTINGS: ResolvedSettings = {
   ai: {
     bamlClient: "CustomGemini",
-    chatModel: "gemini-3-pro-preview",
+    chatModel: "gemini-3.6-flash",
     embeddingModel: "gemini-embedding-001",
     embeddingDimensions: 768,
   },

@@ -1,4 +1,5 @@
 import { getUserSettings } from "@/lib/user-settings"
+import { getUserAiKeys, resolveGeminiKey } from "@/lib/user-keys"
 import { analyzeLink } from "@/lib/analysis"
 import { generateAndStoreEmbedding } from "@/lib/embeddings"
 import { isAiConfigured } from "@/lib/ai-provider"
@@ -9,18 +10,26 @@ export async function triggerAutoAnalysisAndEmbedding(
     userId: string
 ) {
     try {
-        const settings = await getUserSettings(userId)
+        const [settings, aiKeys] = await Promise.all([
+            getUserSettings(userId),
+            getUserAiKeys(userId),
+        ])
 
-        if (!isAiConfigured(settings)) {
+        // Analysis runs on the selected BAML client; embeddings always run
+        // on Gemini. Gate each independently so a user with only a Gemini
+        // key still gets embeddings.
+        const analysisConfigured = isAiConfigured(settings, aiKeys)
+        const geminiConfigured = !!resolveGeminiKey(aiKeys)
+        if (!analysisConfigured && !geminiConfigured) {
             console.log("[AI Triggers] Skipping - AI not configured")
             return
         }
 
         // 1. Analysis
-        if (FEATURE_FLAGS.enableAnalysis && settings.analysis.enabled && settings.analysis.autoRun) {
+        if (analysisConfigured && FEATURE_FLAGS.enableAnalysis && settings.analysis.enabled && settings.analysis.autoRun) {
             console.log(`[AI Triggers] Triggering auto-analysis for link ${linkId}`)
             // Fire and forget, but log error if it fails
-            analyzeLink(linkId, settings).then((result) => {
+            analyzeLink(linkId, settings, aiKeys).then((result) => {
                 if (!result.success) {
                     console.error(`[AI Triggers] Auto-analysis failed for ${linkId}:`, result.error)
                 }
@@ -30,10 +39,10 @@ export async function triggerAutoAnalysisAndEmbedding(
         }
 
         // 2. Embeddings
-        if (settings.embeddings.enabled && settings.embeddings.autoRun) {
+        if (geminiConfigured && settings.embeddings.enabled && settings.embeddings.autoRun) {
             console.log(`[AI Triggers] Triggering auto-embedding for link ${linkId}`)
             // Fire and forget
-            generateAndStoreEmbedding(linkId, settings).then((result) => {
+            generateAndStoreEmbedding(linkId, settings, "RETRIEVAL_DOCUMENT", aiKeys).then((result) => {
                 if (!result.success) {
                     console.error(`[AI Triggers] Auto-embedding failed for ${linkId}:`, result.error)
                 }

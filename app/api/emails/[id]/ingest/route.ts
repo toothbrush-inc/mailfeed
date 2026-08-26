@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { b } from "@/baml_client"
 import { hashUrl, extractDomain } from "@/lib/link-extractor"
 import { getUserSettings } from "@/lib/user-settings"
+import { getUserAiKeys } from "@/lib/user-keys"
 import { buildClientRegistry } from "@/lib/baml-registry"
 
 export async function POST(
@@ -37,13 +38,16 @@ export async function POST(
     return NextResponse.json({ error: "Email has no content to ingest" }, { status: 400 })
   }
 
-  const settings = await getUserSettings(session.user.id)
+  const [settings, aiKeys] = await Promise.all([
+    getUserSettings(session.user.id),
+    getUserAiKeys(session.user.id),
+  ])
 
   try {
     console.log("[/api/emails/[id]/ingest] Calling BAML IngestEmail...")
     const bamlStart = Date.now()
 
-    const clientRegistry = buildClientRegistry(settings)
+    const clientRegistry = buildClientRegistry(settings, aiKeys)
     const result = await b.IngestEmail(email.subject || "", email.rawContent, { clientRegistry })
 
     console.log("[/api/emails/[id]/ingest] BAML completed in", Date.now() - bamlStart, "ms")

@@ -47,6 +47,8 @@ Turn your emails into a personalized reading feed with full-text content, semant
 - **Content Fetching** — Fetches full articles with Mozilla Readability, falls back to the Wayback Machine for lost content
 - **Reading Feed** — Clean interface with filters, search, categories, and reading time estimates
 - **Semantic Search** — Chat with your saved links using vector embeddings and RAG-powered search
+- **Encrypted at Rest** *(optional)* — Set a master key (`MAILFEED_KEK` or Cloud KMS) and emails, Gmail tokens, and stored API keys are encrypted per user with AES-256-GCM — see `docs/encryption.md`
+- **Bring Your Own Key** — Each user can set their own Gemini key in Settings (stored encrypted); on shared instances set `MAILFEED_SHARED_ENV_KEYS=false` so each user's AI usage runs on their own key
 - **AI Analysis** — *(Coming Soon)* Summaries, key points, categorization, and content scoring
 
 ## Quick Start

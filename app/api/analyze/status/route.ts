@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { getUserSettings } from "@/lib/user-settings"
+import { getUserAiKeys } from "@/lib/user-keys"
 import { isAiConfigured } from "@/lib/ai-provider"
 
 export async function GET() {
@@ -12,8 +13,9 @@ export async function GET() {
   }
 
   try {
-    const [settings, statusCounts] = await Promise.all([
+    const [settings, aiKeys, statusCounts] = await Promise.all([
       getUserSettings(session.user.id),
+      getUserAiKeys(session.user.id),
       prisma.link.groupBy({
         by: ["fetchStatus"],
         where: { userId: session.user.id },
@@ -44,7 +46,7 @@ export async function GET() {
       analyzing,
       failed,
       notReady,
-      aiConfigured: isAiConfigured(settings),
+      aiConfigured: isAiConfigured(settings, aiKeys),
       coverage,
     })
   } catch (error) {
