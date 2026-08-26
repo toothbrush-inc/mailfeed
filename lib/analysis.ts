@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { b } from "@/baml_client"
 import { buildClientRegistry } from "@/lib/baml-registry"
 import type { ResolvedSettings } from "@/lib/settings"
+import type { AiKeys } from "@/lib/user-keys"
 
 export interface AnalysisResult {
     success: boolean
@@ -10,7 +11,8 @@ export interface AnalysisResult {
 
 export async function analyzeLink(
     linkId: string,
-    settings: ResolvedSettings
+    settings: ResolvedSettings,
+    aiKeys?: AiKeys
 ): Promise<AnalysisResult> {
     try {
         const link = await prisma.link.findUnique({
@@ -40,7 +42,7 @@ export async function analyzeLink(
         const rawHtml = link.rawHtml || link.contentText || undefined
 
         try {
-            const clientRegistry = buildClientRegistry(settings)
+            const clientRegistry = buildClientRegistry(settings, aiKeys)
             const bamlResult = await b.IngestLink(link.url, anchorText, rawHtml, { clientRegistry })
 
             const linkTags = bamlResult.tags?.map((tag) => String(tag)) || []

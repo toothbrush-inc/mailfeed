@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Loader2, AlertCircle, CheckCircle, Sparkles, KeyRound, ExternalLink, RotateCcw } from "lucide-react"
 import { useSettings } from "@/hooks/use-settings"
+import { missingAiKeyHint } from "@/lib/ai-key-hint"
 
 interface StatusCounts {
   total: number
@@ -41,7 +42,7 @@ export function EmbeddingSection() {
   const [lastLinkResult, setLastLinkResult] = useState<GenerateResult | null>(null)
   const [lastEmailResult, setLastEmailResult] = useState<GenerateResult | null>(null)
   const [aiNotConfigured, setAiNotConfigured] = useState(false)
-  const { requiredEnvVar } = useSettings()
+  const { encryptionEnabled } = useSettings()
 
   const { data: status, mutate } = useSWR<EmbeddingStatus>(
     "/api/embeddings/status",
@@ -162,7 +163,7 @@ export function EmbeddingSection() {
                 AI API Key Required
               </p>
               <p className="text-sm text-amber-600 dark:text-amber-400">
-                To generate embeddings, add <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">{requiredEnvVar || "GEMINI_API_KEY"}</code> to your <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">.env</code> file and restart the server.
+                {missingAiKeyHint(encryptionEnabled, "GEMINI_API_KEY")}
               </p>
             </div>
           </div>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Loader2, AlertCircle, CheckCircle, Brain, KeyRound, RotateCcw } from "lucide-react"
 import { useSettings } from "@/hooks/use-settings"
+import { missingAiKeyHint } from "@/lib/ai-key-hint"
 
 interface AnalyzeStatus {
   total: number
@@ -34,7 +35,7 @@ export function AnalyzeSection() {
   const [isReanalyzing, setIsReanalyzing] = useState(false)
   const [lastResult, setLastResult] = useState<AnalyzeResult | null>(null)
   const [aiNotConfigured, setAiNotConfigured] = useState(false)
-  const { requiredEnvVar } = useSettings()
+  const { requiredEnvVar, encryptionEnabled } = useSettings()
 
   const { data: status, mutate } = useSWR<AnalyzeStatus>(
     "/api/analyze/status",
@@ -121,7 +122,7 @@ export function AnalyzeSection() {
                 AI API Key Required
               </p>
               <p className="text-sm text-amber-600 dark:text-amber-400">
-                To analyze content, add <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">{requiredEnvVar || "GEMINI_API_KEY"}</code> to your <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">.env</code> file and restart the server.
+                {missingAiKeyHint(encryptionEnabled, requiredEnvVar || "GEMINI_API_KEY")}
               </p>
             </div>
           </div>

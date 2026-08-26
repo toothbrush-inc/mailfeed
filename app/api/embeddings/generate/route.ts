@@ -6,7 +6,7 @@ import {
 } from "@/lib/embeddings"
 import { isPgVectorAvailable } from "@/lib/vector-search"
 import { getUserSettings } from "@/lib/user-settings"
-import { isAiConfigured, getMissingEnvVarMessage } from "@/lib/ai-provider"
+import { getUserAiKeys, missingGeminiKeyMessage, resolveGeminiKey } from "@/lib/user-keys"
 
 interface GenerateResult {
   processed: number
@@ -24,11 +24,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const settings = await getUserSettings(session.user.id)
+  const [settings, aiKeys] = await Promise.all([
+    getUserSettings(session.user.id),
+    getUserAiKeys(session.user.id),
+  ])
 
-  if (!isAiConfigured(settings)) {
+  // Chat and embeddings run on Gemini regardless of the selected analysis
+  // client, so gate on the Gemini key specifically.
+  const geminiKey = resolveGeminiKey(aiKeys)
+  if (!geminiKey) {
     return NextResponse.json(
-      { error: getMissingEnvVarMessage(settings), code: "AI_NOT_CONFIGURED" },
+      { error: missingGeminiKeyMessage("Embeddings"), code: "AI_NOT_CONFIGURED" },
       { status: 503 }
     )
   }
@@ -86,7 +92,7 @@ export async function POST(request: NextRequest) {
     for (const link of linksToProcess) {
       result.processed++
 
-      const embeddingResult = await generateAndStoreEmbedding(link.id, settings)
+      const embeddingResult = await generateAndStoreEmbedding(link.id, settings, "RETRIEVAL_DOCUMENT", aiKeys)
 
       if (embeddingResult.success) {
         result.succeeded++

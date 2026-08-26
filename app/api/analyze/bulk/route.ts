@@ -3,6 +3,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { b } from "@/baml_client"
 import { getUserSettings } from "@/lib/user-settings"
+import { getUserAiKeys } from "@/lib/user-keys"
 import { isAiConfigured, getMissingEnvVarMessage } from "@/lib/ai-provider"
 import { analyzeLink } from "@/lib/analysis"
 import { FEATURE_FLAGS } from "@/lib/flags"
@@ -31,9 +32,12 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const settings = await getUserSettings(session.user.id)
+  const [settings, aiKeys] = await Promise.all([
+    getUserSettings(session.user.id),
+    getUserAiKeys(session.user.id),
+  ])
 
-  if (!isAiConfigured(settings)) {
+  if (!isAiConfigured(settings, aiKeys)) {
     return NextResponse.json(
       { error: getMissingEnvVarMessage(settings), code: "AI_NOT_CONFIGURED" },
       { status: 503 }
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
     // Note: We process sequentially to avoid hitting rate limits too hard,
     // though analyzeLink handles individual errors gracefully.
     for (const link of linksToProcess) {
-      const analysisResult = await analyzeLink(link.id, settings)
+      const analysisResult = await analyzeLink(link.id, settings, aiKeys)
 
       if (analysisResult.success) {
         result.succeeded++

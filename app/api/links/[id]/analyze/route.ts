@@ -3,6 +3,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { b } from "@/baml_client"
 import { getUserSettings } from "@/lib/user-settings"
+import { getUserAiKeys } from "@/lib/user-keys"
 import { isAiConfigured, getMissingEnvVarMessage } from "@/lib/ai-provider"
 import { buildClientRegistry } from "@/lib/baml-registry"
 
@@ -20,9 +21,12 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const settings = await getUserSettings(session.user.id)
+  const [settings, aiKeys] = await Promise.all([
+    getUserSettings(session.user.id),
+    getUserAiKeys(session.user.id),
+  ])
 
-  if (!isAiConfigured(settings)) {
+  if (!isAiConfigured(settings, aiKeys)) {
     return NextResponse.json(
       { error: getMissingEnvVarMessage(settings), code: "AI_NOT_CONFIGURED" },
       { status: 503 }
@@ -62,7 +66,7 @@ export async function POST(
     // Call BAML IngestLink with url, title (as anchor text), and raw HTML or email content
     // Prefer rawHtml (stored from content fetch) over email rawContent
     const htmlContent = link.rawHtml || link.contentText || link.email?.rawContent || undefined
-    const clientRegistry = buildClientRegistry(settings)
+    const clientRegistry = buildClientRegistry(settings, aiKeys)
     const result = await b.IngestLink(
       link.url,
       link.title || link.url,

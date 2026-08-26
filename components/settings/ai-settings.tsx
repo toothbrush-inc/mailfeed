@@ -3,9 +3,12 @@
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Bot, AlertCircle } from "lucide-react"
-import { useSettings } from "@/hooks/use-settings"
+import { Bot, AlertCircle, KeyRound } from "lucide-react"
+import { useSettings, type AiKeyName } from "@/hooks/use-settings"
+import { missingAiKeyHint } from "@/lib/ai-key-hint"
 
 const BAML_CLIENTS = [
   { name: "CustomGemini", label: "Google Gemini", envVar: "GEMINI_API_KEY" },
@@ -22,6 +25,7 @@ const BAML_CLIENTS = [
 // Chat model options grouped by BAML client
 const CHAT_MODELS_BY_CLIENT: Record<string, Array<{ value: string; label: string }>> = {
   CustomGemini: [
+    { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
     { value: "gemini-2.5-pro-preview-05-06", label: "Gemini 2.5 Pro" },
     { value: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash" },
     { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
@@ -63,8 +67,73 @@ const CHAT_MODELS_BY_CLIENT: Record<string, Array<{ value: string; label: string
   ],
 }
 
+// Gemini only for now: chat and semantic search run on Gemini regardless of
+// the selected analysis client, so one key unlocks every feature.
+const API_KEY_PROVIDERS: Array<{ name: AiKeyName; label: string; envVar: string }> = [
+  { name: "gemini", label: "Google Gemini", envVar: "GEMINI_API_KEY" },
+]
+
+function ApiKeyRow({
+  provider,
+  savedMask,
+  onSave,
+  onClear,
+}: {
+  provider: { name: AiKeyName; label: string; envVar: string }
+  savedMask?: string
+  onSave: (value: string) => Promise<void>
+  onClear: () => Promise<void>
+}) {
+  const [value, setValue] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await fn()
+      setValue("")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update API key")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={`key-${provider.name}`}>{provider.label}</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          id={`key-${provider.name}`}
+          type="password"
+          autoComplete="off"
+          placeholder={savedMask ? `Saved (${savedMask})` : "Not set — using the host's key if available"}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={busy}
+        />
+        <Button
+          size="sm"
+          disabled={busy || value.trim() === ""}
+          onClick={() => run(() => onSave(value.trim()))}
+        >
+          Save
+        </Button>
+        {savedMask && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => run(onClear)}>
+            Clear
+          </Button>
+        )}
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  )
+}
+
 export function AiSettings() {
-  const { settings, aiKeyConfigured, requiredEnvVar, updateSettings } = useSettings()
+  const { settings, aiKeyConfigured, requiredEnvVar, aiKeys, encryptionEnabled, updateApiKeys, updateSettings } = useSettings()
   const [isSaving, setIsSaving] = useState(false)
 
   if (!settings) return null
@@ -115,9 +184,7 @@ export function AiSettings() {
                 API Key Missing
               </p>
               <p className="text-sm text-amber-600 dark:text-amber-400">
-                Add <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">{requiredEnvVar}</code> to
-                your <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">.env</code> file
-                for the selected platform.
+                {missingAiKeyHint(encryptionEnabled, requiredEnvVar || "GEMINI_API_KEY")}
               </p>
             </div>
           </div>
@@ -166,6 +233,34 @@ export function AiSettings() {
           <p className="text-xs text-muted-foreground">
             Model used for the chat feature.
           </p>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4" />
+            <Label>Your API Keys</Label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Your Gemini key powers chat, semantic search, and embeddings for your
+            account. It is stored encrypted with your account key and used only for
+            your own requests. Get one at aistudio.google.com/apikey.
+          </p>
+          {encryptionEnabled === false && (
+            <p className="text-xs text-muted-foreground">
+              Per-user keys need encryption at rest, which this instance has not
+              configured (<code className="rounded bg-muted px-1 py-0.5">MAILFEED_KEK</code>).
+              Self-hosted single-user setups can keep using the server&apos;s env keys.
+            </p>
+          )}
+          {encryptionEnabled !== false && API_KEY_PROVIDERS.map((provider) => (
+            <ApiKeyRow
+              key={provider.name}
+              provider={provider}
+              savedMask={aiKeys?.[provider.name]}
+              onSave={(value) => updateApiKeys({ [provider.name]: value }).then(() => undefined)}
+              onClear={() => updateApiKeys({ [provider.name]: null }).then(() => undefined)}
+            />
+          ))}
         </div>
       </CardContent>
     </Card>

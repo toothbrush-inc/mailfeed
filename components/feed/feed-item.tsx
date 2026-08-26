@@ -154,7 +154,7 @@ function sanitizeContentHtml(html: string): string {
         newAttrs += ' rel="noopener noreferrer"'
       } else if (!hasNoopener) {
         // rel exists but doesn't have noopener, add it (preserve original quote style)
-        newAttrs = newAttrs.replace(/\brel\s*=\s*(["'])([^"']*)\1/i, (relMatch, quote, relValue) => {
+        newAttrs = newAttrs.replace(/\brel\s*=\s*(["'])([^"']*)\1/i, (relMatch: string, quote: string, relValue: string) => {
           const newRel = `${relValue} noopener noreferrer`.trim()
           return `rel=${quote}${newRel}${quote}`
         })

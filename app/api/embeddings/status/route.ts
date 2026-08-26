@@ -2,8 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { isPgVectorAvailable } from "@/lib/vector-search"
-import { getUserSettings } from "@/lib/user-settings"
-import { isAiConfigured } from "@/lib/ai-provider"
+import { getUserAiKeys, resolveGeminiKey } from "@/lib/user-keys"
 
 interface StatusCounts {
   total: number
@@ -30,9 +29,9 @@ export async function GET() {
   }
 
   try {
-    const [pgvectorAvailable, settings] = await Promise.all([
+    const [pgvectorAvailable, aiKeys] = await Promise.all([
       isPgVectorAvailable(),
-      getUserSettings(session.user.id),
+      getUserAiKeys(session.user.id),
     ])
 
     // Get counts for links
@@ -93,7 +92,7 @@ export async function GET() {
 
     const status: EmbeddingStatus = {
       pgvectorAvailable,
-      geminiConfigured: isAiConfigured(settings),
+      geminiConfigured: !!resolveGeminiKey(aiKeys),
       links: {
         total: linkTotal,
         embedded: linkEmbedded,

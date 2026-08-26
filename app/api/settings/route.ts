@@ -3,6 +3,15 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { resolveSettings, type UserSettings } from "@/lib/settings"
 import { getRequiredApiKeyEnvVar } from "@/lib/ai-provider"
+import {
+  getUserAiKeys,
+  setUserAiKeys,
+  maskAiKeys,
+  resolveApiKey,
+  AI_KEY_NAMES,
+  type AiKeyName,
+} from "@/lib/user-keys"
+import { encryptionConfigured } from "@/lib/crypto/kek"
 
 export async function GET() {
   const session = await auth()
@@ -18,11 +27,16 @@ export async function GET() {
 
   const resolved = resolveSettings(user?.settings as UserSettings | null)
   const envVar = getRequiredApiKeyEnvVar(resolved.ai.bamlClient)
+  const aiKeys = await getUserAiKeys(session.user.id)
 
   return NextResponse.json({
     settings: resolved,
-    aiKeyConfigured: !!process.env[envVar],
+    aiKeyConfigured: !!resolveApiKey(aiKeys, envVar),
     requiredEnvVar: envVar,
+    // Masked (last 4 only); live keys never leave the server.
+    aiKeys: maskAiKeys(aiKeys),
+    // BYOK storage needs encryption at rest; the UI hides the inputs otherwise.
+    encryptionEnabled: encryptionConfigured(),
   })
 }
 
@@ -34,7 +48,29 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = await request.json()
-  const partial: UserSettings = body
+  // BYOK keys ride the same PATCH but are stored encrypted in their own
+  // column, never inside the settings JSON (which GET returns wholesale).
+  const { apiKeys: apiKeyUpdates, ...rest } = body as UserSettings & {
+    apiKeys?: Partial<Record<AiKeyName, string | null>>
+  }
+  const partial: UserSettings = rest
+
+  let storedKeys = await getUserAiKeys(session.user.id)
+  if (apiKeyUpdates && typeof apiKeyUpdates === "object") {
+    const sanitized: Partial<Record<AiKeyName, string | null>> = {}
+    for (const name of AI_KEY_NAMES) {
+      const value = apiKeyUpdates[name]
+      if (typeof value === "string" || value === null) sanitized[name] = value
+    }
+    try {
+      storedKeys = await setUserAiKeys(session.user.id, sanitized)
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Failed to store API keys" },
+        { status: 400 }
+      )
+    }
+  }
 
   // Load current raw settings and deep-merge
   const user = await prisma.user.findUnique({
@@ -75,8 +111,10 @@ export async function PATCH(request: NextRequest) {
 
   return NextResponse.json({
     settings: resolvedNew,
-    aiKeyConfigured: !!process.env[envVar],
+    aiKeyConfigured: !!resolveApiKey(storedKeys, envVar),
     requiredEnvVar: envVar,
+    aiKeys: maskAiKeys(storedKeys),
+    encryptionEnabled: encryptionConfigured(),
     queryChanged,
   })
 }

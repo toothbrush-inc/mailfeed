@@ -1,5 +1,11 @@
-import { prisma } from "@/lib/prisma"
+import { prisma, basePrisma } from "@/lib/prisma"
 import { Prisma } from "@prisma/client"
+import { makeDecryptDeep } from "@/lib/crypto/prisma-encryption"
+
+// Raw SQL rows normally pass through the encryption extension too, but this
+// keeps the unified search correct even if a raw path bypasses it. Decrypting
+// already-plaintext values is a no-op.
+const decryptDeep = makeDecryptDeep(basePrisma)
 import { formatEmbeddingForPgVector, EMBEDDING_DIMENSIONS } from "./embeddings"
 
 export interface SimilarLink {
@@ -236,7 +242,9 @@ export async function searchSimilarContent(
     `
 
     // Transform results into typed objects
-    return results.map((row) => {
+    const decrypted = await decryptDeep(results)
+
+    return decrypted.map((row) => {
       if (row.type === 'email') {
         return {
           type: 'email' as const,

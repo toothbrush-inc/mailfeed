@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
 import { GoogleGenAI } from "@google/genai"
 import { generateEmbedding } from "@/lib/embeddings"
 import { searchSimilarContent, SimilarContent, textSearchLinks } from "@/lib/vector-search"
+import { textSearchEmails } from "@/lib/email-search"
 import { getUserSettings } from "@/lib/user-settings"
-import { isAiConfigured, getMissingEnvVarMessage } from "@/lib/ai-provider"
+import { getUserAiKeys, missingGeminiKeyMessage, resolveGeminiKey } from "@/lib/user-keys"
 
 interface ChatMessage {
   role: "user" | "assistant"
@@ -31,16 +31,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const settings = await getUserSettings(session.user.id)
+  const [settings, aiKeys] = await Promise.all([
+    getUserSettings(session.user.id),
+    getUserAiKeys(session.user.id),
+  ])
 
-  if (!isAiConfigured(settings)) {
+  // Chat and embeddings run on Gemini regardless of the selected analysis
+  // client, so gate on the Gemini key specifically.
+  const geminiKey = resolveGeminiKey(aiKeys)
+  if (!geminiKey) {
     return NextResponse.json(
-      { error: getMissingEnvVarMessage(settings), code: "AI_NOT_CONFIGURED" },
+      { error: missingGeminiKeyMessage("Chat"), code: "AI_NOT_CONFIGURED" },
       { status: 503 }
     )
   }
 
-  const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
+  const genAI = new GoogleGenAI({ apiKey: geminiKey })
 
   try {
     const body: ChatRequest = await request.json()
@@ -56,7 +62,7 @@ export async function POST(request: NextRequest) {
     // Try to generate query embedding for semantic search
     let queryEmbedding: number[] | null = null
     try {
-      queryEmbedding = await generateEmbedding(searchTerm, "RETRIEVAL_QUERY", settings)
+      queryEmbedding = await generateEmbedding(searchTerm, "RETRIEVAL_QUERY", settings, aiKeys)
     } catch (error) {
       console.log("[/api/chat] Embedding generation failed, using text search:", error)
     }
@@ -76,38 +82,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If vector search didn't find anything, fall back to text search for links
+    // If vector search didn't find anything, fall back to text search.
+    // Email subject/body are encrypted at rest, so this decrypts then
+    // substring-matches rather than ILIKE in SQL.
     if (relevantContent.length === 0) {
-      const textLinks = await textSearchLinks(session.user.id, searchTerm, 5)
-      relevantContent = textLinks.map(link => ({ type: 'link' as const, ...link }))
-
-      // Also search emails with text
-      const textEmails = await prisma.email.findMany({
-        where: {
-          userId: session.user.id,
-          OR: [
-            { subject: { contains: searchTerm, mode: "insensitive" } },
-            { rawContent: { contains: searchTerm, mode: "insensitive" } },
-          ],
-        },
-        select: {
-          id: true,
-          subject: true,
-          snippet: true,
-          receivedAt: true,
-        },
-        take: 5,
-        orderBy: { receivedAt: "desc" },
-      })
-
-      relevantContent.push(...textEmails.map(email => ({
-        type: 'email' as const,
-        id: email.id,
-        subject: email.subject,
-        snippet: email.snippet,
-        receivedAt: email.receivedAt,
-        similarity: 0.5,
-      })))
+      const [textLinks, textEmails] = await Promise.all([
+        textSearchLinks(session.user.id, searchTerm, 5),
+        textSearchEmails(session.user.id, searchTerm, 5),
+      ])
+      relevantContent = [
+        ...textLinks.map(link => ({ type: 'link' as const, ...link })),
+        ...textEmails.map(email => ({ type: 'email' as const, ...email })),
+      ]
     }
 
     // Build context from the retrieved data

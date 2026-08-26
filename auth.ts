@@ -8,6 +8,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   callbacks: {
     ...authConfig.callbacks,
+    async signIn({ user }) {
+      // Hosted instances gate sign-up: ALLOWED_EMAILS is a comma-separated
+      // allowlist. Unset means open (local/self-hosted single-user setups).
+      const allowed = process.env.ALLOWED_EMAILS
+      if (!allowed?.trim()) return true
+      const list = allowed.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean)
+      const email = user.email?.toLowerCase()
+      if (email && list.includes(email)) return true
+      console.warn("[Auth] Sign-in rejected: not on ALLOWED_EMAILS")
+      return false
+    },
     async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id
