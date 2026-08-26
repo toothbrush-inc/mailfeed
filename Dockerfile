@@ -1,14 +1,13 @@
-# ---- Stage 1: Dependencies ----
-FROM node:24-alpine AS deps
+# BAML's native addon is glibc-linked (even the *-musl package), so alpine
+# fails at `baml-cli generate` with a missing ld-linux-x86-64.so.2.
+FROM node:24-bookworm-slim AS deps
 WORKDIR /app
-
-RUN apk add --no-cache libc6-compat
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # ---- Stage 2: Build ----
-FROM node:24-alpine AS builder
+FROM node:24-bookworm-slim AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -24,13 +23,13 @@ RUN npx prisma generate
 RUN npm run build
 
 # ---- Stage 3: Production runner ----
-FROM node:24-alpine AS runner
+FROM node:24-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN groupadd --system --gid 1001 nodejs \
+ && useradd --system --uid 1001 --gid nodejs nextjs
 
 # Copy standalone build output
 COPY --from=builder /app/.next/standalone ./
