@@ -27,7 +27,7 @@ User
 
 ### Date-Based Incremental Sync
 
-Gmail's `after:` and `before:` operators use day granularity (YYYY/MM/DD). To handle boundary overlap, `check-new` subtracts 1 day from `syncNewestEmailDate` for the `after:` filter, and `load-more` adds 1 day to `syncOldestEmailDate` for the `before:` filter. Existing `gmailId` deduplication handles any re-seen emails.
+Gmail's `after:` and `before:` operators use day granularity (YYYY/MM/DD). To handle boundary overlap, `check-new` subtracts 1 day from `syncNewestEmailDate` for the `after:` filter, and `load-more` adds 1 day to `syncOldestEmailDate` for the `before:` filter. Existing `gmailId` deduplication is per user (`userId` + `gmailId`).
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -78,7 +78,7 @@ POST /api/sync?mode=<mode>
                        │
          ┌─────────────┴─────────────┐
          │  Already processed?       │
-         │  (check gmailId in DB)    │
+         │  (gmailId for this user)  │
          └─────────────┬─────────────┘
                  YES ◄─┴─► NO
                   │        │
@@ -435,7 +435,7 @@ When the email query is changed in settings:
 ┌────────────────────────────────────────────────────────────────────────────┐
 │  GMAIL API                                                                  │
 │  └─► Emails matching augmented query (with date operators)                │
-│       └─► Filter already processed (gmailId dedup)                        │
+│       └─► Filter already processed (gmailId dedup for this userId)        │
 │            └─► Batch fetch email contents (configurable concurrency)       │
 └────────────────────────────────────────────────────────────────────────────┘
                                     │

@@ -77,7 +77,7 @@ model VerificationToken {
 model Email {
   id          String    @id @default(cuid())
   userId      String
-  gmailId     String    @unique
+  gmailId     String
   threadId    String?
   subject     String?
   snippet     String?
@@ -98,6 +98,7 @@ model Email {
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   links Link[]
 
+  @@unique([userId, gmailId])
   @@index([userId])
   @@index([gmailId])
   @@index([receivedAt])

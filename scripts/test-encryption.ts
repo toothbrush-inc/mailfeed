@@ -158,6 +158,32 @@ async function main() {
   const bobSecret = await textSearchEmails(bob.id, "secret", 5)
   check("text search stays in the owner's mailbox", aliceSecret.length === 1 && bobSecret.length === 0)
 
+  const bobMailbox = await prisma.email.findMany({ where: { userId: bob.id } })
+  check(
+    "bob's list does not include alice's email",
+    bobMailbox.length === 1 && bobMailbox[0].id === bobEmail.id
+  )
+  const crossRead = await prisma.email.findFirst({
+    where: { id: email.id, userId: bob.id },
+  })
+  check("bob cannot load alice's email by id", crossRead === null)
+  let unscopedThrew = false
+  try {
+    await prisma.email.findMany()
+  } catch {
+    unscopedThrew = true
+  }
+  check("unscoped email list is rejected", unscopedThrew)
+  const bobSameGmailId = await prisma.email.create({
+    data: {
+      userId: bob.id,
+      gmailId: "gm-1",
+      subject: "Bob colliding gmail id",
+      receivedAt: new Date("2026-01-02T12:00:00Z"),
+    },
+  })
+  check("gmailId uniqueness is per user", bobSameGmailId.gmailId === "gm-1")
+
   // --- account tokens; update path resolves owner from the row ---
   const account = await prisma.account.create({
     data: {

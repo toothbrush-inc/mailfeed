@@ -148,6 +148,7 @@ export async function GET(request: NextRequest) {
       take: limit,
       include: {
         email: {
+          where: { userId: session.user.id },
           select: {
             gmailId: true,
             subject: true,
@@ -161,6 +162,7 @@ export async function GET(request: NextRequest) {
           },
         },
         childLinks: {
+          where: { userId: session.user.id },
           select: {
             id: true,
             url: true,

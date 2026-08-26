@@ -33,11 +33,12 @@ export async function POST(
     )
   }
 
-  // Fetch the link with its email content and raw HTML
-  const link = await prisma.link.findUnique({
-    where: { id },
+  // Scope by user before including email body so another mailbox is never decrypted.
+  const link = await prisma.link.findFirst({
+    where: { id, userId: session.user.id },
     include: {
       email: {
+        where: { userId: session.user.id },
         select: {
           rawContent: true,
         },
@@ -47,10 +48,6 @@ export async function POST(
 
   if (!link) {
     return NextResponse.json({ error: "Link not found" }, { status: 404 })
-  }
-
-  if (link.userId !== session.user.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
 
   try {
@@ -116,6 +113,7 @@ export async function POST(
       },
       include: {
         email: {
+          where: { userId: session.user.id },
           select: {
             gmailId: true,
             subject: true,
