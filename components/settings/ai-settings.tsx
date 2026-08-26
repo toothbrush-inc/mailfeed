@@ -25,10 +25,8 @@ const BAML_CLIENTS = [
 // Chat model options grouped by BAML client
 const CHAT_MODELS_BY_CLIENT: Record<string, Array<{ value: string; label: string }>> = {
   CustomGemini: [
+    { value: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
     { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
-    { value: "gemini-2.5-pro-preview-05-06", label: "Gemini 2.5 Pro" },
-    { value: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash" },
-    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
   ],
   CustomGPT5: [
     { value: "gpt-5", label: "GPT-5" },

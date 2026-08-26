@@ -7,7 +7,7 @@ import { missingGeminiKeyMessage, resolveApiKey, type AiKeys } from "@/lib/user-
 // CustomFast and OpenaiFallback are strategy clients composed of the leaf
 // clients below; they carry no provider/model of their own.
 export const BAML_CLIENTS = [
-  { name: "CustomGemini", label: "Google Gemini", envVar: "GEMINI_API_KEY", provider: "google-ai", model: "gemini-3-pro-preview" },
+  { name: "CustomGemini", label: "Google Gemini", envVar: "GEMINI_API_KEY", provider: "google-ai", model: "gemini-3.1-pro-preview" },
   { name: "CustomGPT5", label: "OpenAI GPT-5", envVar: "OPENAI_API_KEY", provider: "openai-responses", model: "gpt-5" },
   { name: "CustomGPT5Mini", label: "OpenAI GPT-5 Mini", envVar: "OPENAI_API_KEY", provider: "openai-responses", model: "gpt-5-mini" },
   { name: "CustomGPT5Chat", label: "OpenAI GPT-5 (Chat)", envVar: "OPENAI_API_KEY", provider: "openai", model: "gpt-5" },
