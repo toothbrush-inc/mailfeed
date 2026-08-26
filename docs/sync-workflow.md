@@ -594,3 +594,12 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 ---
 
 *Last updated: February 2026*
+
+## Background auto-sync
+
+Set `MAILFEED_AUTO_SYNC_INTERVAL_MINUTES` and the server runs the same
+incremental `check-new` sync on a timer for every user with a connected
+Gmail account (`instrumentation.ts` → `lib/auto-sync.ts`). Users who never
+ran their initial sync, whose query changed, or whose token needs re-auth
+are skipped — those three cases stay user decisions in the app. Unset, sync
+remains manual.
