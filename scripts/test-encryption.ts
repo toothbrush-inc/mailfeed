@@ -55,6 +55,9 @@ async function plaintextModeMain() {
   )
   check("BYOK storage refused without encryption", byokRefused)
 
+  const { missingGeminiKeyMessage: plaintextHint } = await import("../lib/user-keys")
+  check("missing-key hint points at .env without KEK", plaintextHint("Chat").includes(".env"))
+
   process.env.MAILFEED_REQUIRE_ENCRYPTION = "true"
   const writeRefused = await prisma.email
     .create({
@@ -211,11 +214,13 @@ async function main() {
 
   // --- key resolution honors MAILFEED_SHARED_ENV_KEYS ---
   process.env.GEMINI_API_KEY = "host-key"
-  const { resolveGeminiKey } = await import("../lib/user-keys")
+  const { resolveGeminiKey, resolveApiKey, missingGeminiKeyMessage } = await import("../lib/user-keys")
   check("user key wins over host key", resolveGeminiKey({ gemini: "user-key" }) === "user-key")
   check("host key serves keyless users by default", resolveGeminiKey({}) === "host-key")
+  check("missing-key hint points at Settings when encrypted", missingGeminiKeyMessage("Chat").includes("Settings"))
   process.env.MAILFEED_SHARED_ENV_KEYS = "false"
   check("sharing off: keyless users get nothing", resolveGeminiKey({}) === undefined)
+  check("sharing off: env fallback is also blocked", resolveApiKey(undefined, "GEMINI_API_KEY") === undefined)
   check("sharing off: user key still works", resolveGeminiKey({ gemini: "user-key" }) === "user-key")
   delete process.env.MAILFEED_SHARED_ENV_KEYS
   delete process.env.GEMINI_API_KEY

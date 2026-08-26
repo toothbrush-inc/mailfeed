@@ -55,6 +55,15 @@ export function resolveGeminiKey(keys: AiKeys | undefined): string | undefined {
   return resolveApiKey(keys, "GEMINI_API_KEY")
 }
 
+/** Where to put a Gemini key: Settings when BYOK storage is on, otherwise .env. */
+export function missingGeminiKeyMessage(feature?: string): string {
+  const prefix = feature ? `${feature} needs a Gemini API key.` : "No Gemini API key."
+  if (encryptionConfigured()) {
+    return `${prefix} Add yours in Settings → AI.`
+  }
+  return `${prefix} Set GEMINI_API_KEY in your .env file.`
+}
+
 export async function getUserAiKeys(userId: string): Promise<AiKeys> {
   const user = await basePrisma.user.findUnique({
     where: { id: userId },

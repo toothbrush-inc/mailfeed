@@ -47,7 +47,14 @@ export function useSettings() {
     })
 
     if (!response.ok) {
-      throw new Error("Failed to update API keys")
+      let detail = "Failed to update API keys"
+      try {
+        const body = await response.json()
+        if (typeof body?.error === "string" && body.error.trim()) detail = body.error
+      } catch {
+        // Keep the generic fallback when the body isn't JSON.
+      }
+      throw new Error(detail)
     }
 
     const updated = await response.json()

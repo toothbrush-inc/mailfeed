@@ -7,6 +7,16 @@ function buildClients() {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     max: 5,
+    // Hosted Postgres (and anything behind NAT/PgBouncer) will drop idle
+    // clients. Without an error listener, node-pg treats that as an uncaught
+    // exception and kills the process — nginx then reports a flaky 502 on
+    // whichever request is in flight, and the retry succeeds on a new connection.
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+  })
+  pool.on("error", (error) => {
+    console.error("[Prisma] Idle client error (connection recycled):", error)
   })
   const adapter = new PrismaPg(pool)
   // basePrisma bypasses field encryption. It exists for the crypto layer

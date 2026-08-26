@@ -2,124 +2,123 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 
-// GET: List all domains the user has encountered with link counts and hidden status
-export async function GET() {
+async function requireUserId() {
   const session = await auth()
-
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) }
   }
+  return { userId: session.user.id }
+}
 
-  // Get user's hidden domains
+async function readDomain(request: NextRequest): Promise<string | NextResponse> {
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+  }
+  const domain =
+    typeof body === "object" && body !== null && "domain" in body
+      ? (body as { domain: unknown }).domain
+      : undefined
+  if (!domain || typeof domain !== "string") {
+    return NextResponse.json({ error: "Domain is required" }, { status: 400 })
+  }
+  return domain
+}
+
+async function updateHiddenDomains(
+  userId: string,
+  mutate: (hidden: Set<string>) => void
+): Promise<string[]> {
   const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
+    where: { id: userId },
     select: { hiddenDomains: true },
   })
-
   const hiddenDomains = new Set(user?.hiddenDomains || [])
-
-  // Get unique domains with counts, preferring finalDomain over domain
-  const links = await prisma.link.findMany({
-    where: {
-      userId: session.user.id,
-      fetchStatus: { not: "FAILED" },
-    },
-    select: {
-      domain: true,
-      finalDomain: true,
-    },
+  mutate(hiddenDomains)
+  const next = Array.from(hiddenDomains)
+  // select avoids returning dekWrapped/apiKeysEnc through the encryption
+  // extension; set is the Prisma scalar-list write.
+  await prisma.user.update({
+    where: { id: userId },
+    data: { hiddenDomains: { set: next } },
+    select: { id: true },
   })
+  return next
+}
 
-  // Count domains (prefer finalDomain if available)
-  const domainCounts = new Map<string, number>()
+// GET: List all domains the user has encountered with link counts and hidden status
+export async function GET() {
+  const authz = await requireUserId()
+  if ("error" in authz) return authz.error
 
-  for (const link of links) {
-    const domain = link.finalDomain || link.domain
-    if (domain) {
-      domainCounts.set(domain, (domainCounts.get(domain) || 0) + 1)
-    }
-  }
+  try {
+    const [user, rows] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: authz.userId },
+        select: { hiddenDomains: true },
+      }),
+      prisma.$queryRaw<Array<{ domain: string; count: number }>>`
+        SELECT COALESCE("finalDomain", domain) AS domain, COUNT(*)::int AS count
+        FROM "Link"
+        WHERE "userId" = ${authz.userId}
+          AND "fetchStatus" <> 'FAILED'
+          AND COALESCE("finalDomain", domain) IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC
+      `,
+    ])
 
-  // Convert to sorted array with hidden status
-  const domains = Array.from(domainCounts.entries())
-    .map(([domain, count]) => ({
-      domain,
-      count,
-      isHidden: hiddenDomains.has(domain),
+    const hiddenDomains = user?.hiddenDomains || []
+    const hidden = new Set(hiddenDomains)
+    const domains = rows.map((row) => ({
+      domain: row.domain,
+      count: Number(row.count),
+      isHidden: hidden.has(row.domain),
     }))
-    .sort((a, b) => b.count - a.count) // Sort by count descending
 
-  return NextResponse.json({ domains, hiddenDomains: Array.from(hiddenDomains) })
+    return NextResponse.json({ domains, hiddenDomains })
+  } catch (error) {
+    console.error("[/api/domains] GET failed:", error)
+    return NextResponse.json({ error: "Failed to list domains" }, { status: 500 })
+  }
 }
 
 // POST: Hide a domain
 export async function POST(request: NextRequest) {
-  const session = await auth()
+  const authz = await requireUserId()
+  if ("error" in authz) return authz.error
 
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const domain = await readDomain(request)
+  if (domain instanceof NextResponse) return domain
 
-  const body = await request.json()
-  const { domain } = body
-
-  if (!domain || typeof domain !== "string") {
-    return NextResponse.json({ error: "Domain is required" }, { status: 400 })
-  }
-
-  // Get current hidden domains
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { hiddenDomains: true },
-  })
-
-  const hiddenDomains = new Set(user?.hiddenDomains || [])
-
-  // Add domain if not already hidden
-  if (!hiddenDomains.has(domain)) {
-    hiddenDomains.add(domain)
-
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { hiddenDomains: Array.from(hiddenDomains) },
+  try {
+    const hiddenDomains = await updateHiddenDomains(authz.userId, (hidden) => {
+      hidden.add(domain)
     })
+    return NextResponse.json({ success: true, hiddenDomains })
+  } catch (error) {
+    console.error("[/api/domains] POST failed:", error)
+    return NextResponse.json({ error: "Failed to hide domain" }, { status: 500 })
   }
-
-  return NextResponse.json({ success: true, hiddenDomains: Array.from(hiddenDomains) })
 }
 
 // DELETE: Unhide a domain
 export async function DELETE(request: NextRequest) {
-  const session = await auth()
+  const authz = await requireUserId()
+  if ("error" in authz) return authz.error
 
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const domain = await readDomain(request)
+  if (domain instanceof NextResponse) return domain
 
-  const body = await request.json()
-  const { domain } = body
-
-  if (!domain || typeof domain !== "string") {
-    return NextResponse.json({ error: "Domain is required" }, { status: 400 })
-  }
-
-  // Get current hidden domains
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { hiddenDomains: true },
-  })
-
-  const hiddenDomains = new Set(user?.hiddenDomains || [])
-
-  // Remove domain if hidden
-  if (hiddenDomains.has(domain)) {
-    hiddenDomains.delete(domain)
-
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { hiddenDomains: Array.from(hiddenDomains) },
+  try {
+    const hiddenDomains = await updateHiddenDomains(authz.userId, (hidden) => {
+      hidden.delete(domain)
     })
+    return NextResponse.json({ success: true, hiddenDomains })
+  } catch (error) {
+    console.error("[/api/domains] DELETE failed:", error)
+    return NextResponse.json({ error: "Failed to unhide domain" }, { status: 500 })
   }
-
-  return NextResponse.json({ success: true, hiddenDomains: Array.from(hiddenDomains) })
 }

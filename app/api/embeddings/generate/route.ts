@@ -6,7 +6,7 @@ import {
 } from "@/lib/embeddings"
 import { isPgVectorAvailable } from "@/lib/vector-search"
 import { getUserSettings } from "@/lib/user-settings"
-import { getUserAiKeys, resolveGeminiKey } from "@/lib/user-keys"
+import { getUserAiKeys, missingGeminiKeyMessage, resolveGeminiKey } from "@/lib/user-keys"
 
 interface GenerateResult {
   processed: number
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   const geminiKey = resolveGeminiKey(aiKeys)
   if (!geminiKey) {
     return NextResponse.json(
-      { error: "Embeddings need a Gemini API key. Add yours in Settings → AI.", code: "AI_NOT_CONFIGURED" },
+      { error: missingGeminiKeyMessage("Embeddings"), code: "AI_NOT_CONFIGURED" },
       { status: 503 }
     )
   }

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { X, Send, Loader2, MessageCircle, ExternalLink, Mail, KeyRound } from "lucide-react"
 import { useSettings } from "@/hooks/use-settings"
+import { missingAiKeyHint } from "@/lib/ai-key-hint"
 
 interface ChatMessage {
   role: "user" | "assistant"
@@ -28,7 +29,7 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [aiNotConfigured, setAiNotConfigured] = useState(false)
-  const { requiredEnvVar } = useSettings()
+  const { encryptionEnabled } = useSettings()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -130,7 +131,7 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
               <KeyRound className="h-12 w-12 mx-auto mb-4 text-amber-500 opacity-80" />
               <p className="text-sm font-medium">AI API Key Required</p>
               <p className="text-xs text-muted-foreground mt-2">
-                To use AI chat, add <code className="bg-muted px-1 py-0.5 rounded text-xs">{requiredEnvVar || "GEMINI_API_KEY"}</code> to your <code className="bg-muted px-1 py-0.5 rounded text-xs">.env</code> file and restart the server.
+                {missingAiKeyHint(encryptionEnabled, "GEMINI_API_KEY")}
               </p>
             </div>
           )}

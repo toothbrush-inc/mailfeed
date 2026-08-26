@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Bot, AlertCircle, KeyRound } from "lucide-react"
 import { useSettings, type AiKeyName } from "@/hooks/use-settings"
+import { missingAiKeyHint } from "@/lib/ai-key-hint"
 
 const BAML_CLIENTS = [
   { name: "CustomGemini", label: "Google Gemini", envVar: "GEMINI_API_KEY" },
@@ -85,12 +86,16 @@ function ApiKeyRow({
 }) {
   const [value, setValue] = useState("")
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true)
+    setError(null)
     try {
       await fn()
       setValue("")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update API key")
     } finally {
       setBusy(false)
     }
@@ -122,6 +127,7 @@ function ApiKeyRow({
           </Button>
         )}
       </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )
 }
@@ -178,9 +184,7 @@ export function AiSettings() {
                 API Key Missing
               </p>
               <p className="text-sm text-amber-600 dark:text-amber-400">
-                Add your own key for the selected platform below, or set{" "}
-                <code className="rounded bg-amber-100 px-1 py-0.5 text-xs dark:bg-amber-900">{requiredEnvVar}</code>{" "}
-                on the server.
+                {missingAiKeyHint(encryptionEnabled, requiredEnvVar || "GEMINI_API_KEY")}
               </p>
             </div>
           </div>

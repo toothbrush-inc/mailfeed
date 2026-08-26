@@ -1,12 +1,13 @@
 import { GoogleGenAI } from "@google/genai"
 import { prisma } from "@/lib/prisma"
 import { DEFAULT_SETTINGS, type ResolvedSettings } from "@/lib/settings"
-import { resolveApiKey, type AiKeys } from "@/lib/user-keys"
+import { missingGeminiKeyMessage, resolveApiKey, type AiKeys } from "@/lib/user-keys"
 
 function getGenAI(apiKey?: string): GoogleGenAI {
-  const key = apiKey || process.env.GEMINI_API_KEY
+  // Honor MAILFEED_SHARED_ENV_KEYS: never spend the host key when sharing is off.
+  const key = apiKey || resolveApiKey(undefined, "GEMINI_API_KEY")
   if (!key) {
-    throw new Error("No Gemini API key: add one in Settings → AI or set GEMINI_API_KEY")
+    throw new Error(missingGeminiKeyMessage())
   }
   return new GoogleGenAI({ apiKey: key })
 }

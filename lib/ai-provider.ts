@@ -1,5 +1,6 @@
 import type { ResolvedSettings } from "@/lib/settings"
-import { resolveApiKey, type AiKeys } from "@/lib/user-keys"
+import { encryptionConfigured } from "@/lib/crypto/kek"
+import { missingGeminiKeyMessage, resolveApiKey, type AiKeys } from "@/lib/user-keys"
 
 // provider/model mirror baml_src/clients.baml so a per-user key can
 // re-register the same client name with an explicit api_key (BYOK).
@@ -33,7 +34,10 @@ export function isAiConfigured(settings: ResolvedSettings, keys?: AiKeys): boole
 export function getMissingEnvVarMessage(settings: ResolvedSettings): string {
   const envVar = getRequiredApiKeyEnvVar(settings.ai.bamlClient)
   if (envVar === "GEMINI_API_KEY") {
-    return "No Gemini API key. Add yours in Settings → AI."
+    return missingGeminiKeyMessage()
   }
-  return `No API key for this model (${envVar} is not set on the server). Switch to Google Gemini in Settings → AI to use your own key.`
+  if (encryptionConfigured()) {
+    return `No API key for this model (${envVar} is not set on the server). Switch to Google Gemini in Settings → AI to use your own key.`
+  }
+  return `${envVar} is not configured. Add it to your .env file to enable AI features.`
 }

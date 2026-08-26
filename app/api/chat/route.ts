@@ -5,7 +5,7 @@ import { generateEmbedding } from "@/lib/embeddings"
 import { searchSimilarContent, SimilarContent, textSearchLinks } from "@/lib/vector-search"
 import { textSearchEmails } from "@/lib/email-search"
 import { getUserSettings } from "@/lib/user-settings"
-import { getUserAiKeys, resolveGeminiKey } from "@/lib/user-keys"
+import { getUserAiKeys, missingGeminiKeyMessage, resolveGeminiKey } from "@/lib/user-keys"
 
 interface ChatMessage {
   role: "user" | "assistant"
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   const geminiKey = resolveGeminiKey(aiKeys)
   if (!geminiKey) {
     return NextResponse.json(
-      { error: "Chat needs a Gemini API key. Add yours in Settings → AI.", code: "AI_NOT_CONFIGURED" },
+      { error: missingGeminiKeyMessage("Chat"), code: "AI_NOT_CONFIGURED" },
       { status: 503 }
     )
   }
