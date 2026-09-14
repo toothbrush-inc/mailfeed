@@ -10,7 +10,7 @@ export function Sidebar() {
   const { stats } = useStats()
 
   return (
-    <aside className="hidden w-64 shrink-0 border-r bg-white dark:bg-zinc-950 md:block">
+    <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-64 shrink-0 self-start overflow-y-auto border-r bg-white dark:bg-zinc-950 md:block">
       <nav className="flex flex-col gap-1 p-4">
         <Link
           href="/feed"

@@ -20,6 +20,11 @@ services:
     build:
       context: .
       target: runner
+      # Baked into the browser bundle at build time; the same .env value is
+      # read at runtime (env_file), so the two agree. Changing it needs
+      # `docker compose up --build -d`.
+      args:
+        NEXT_PUBLIC_ENABLE_ANALYSIS: "${NEXT_PUBLIC_ENABLE_ANALYSIS:-false}"
     container_name: mailfeed-app
     ports:
       - "3000:3000"
@@ -38,6 +43,8 @@ services:
     build:
       context: .
       target: worker
+      args:
+        NEXT_PUBLIC_ENABLE_ANALYSIS: "${NEXT_PUBLIC_ENABLE_ANALYSIS:-false}"
     container_name: mailfeed-worker
     env_file:
       - .env

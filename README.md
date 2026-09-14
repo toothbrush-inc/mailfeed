@@ -123,7 +123,9 @@ To add or change a variable (e.g. adding `GEMINI_API_KEY` later):
 1. Edit `.env` in the project root
 2. Restart the container: `docker compose up -d app`
 
-No rebuild needed — the container reads `.env` at startup.
+No rebuild needed — the container reads `.env` at startup. The one exception
+is `NEXT_PUBLIC_ENABLE_ANALYSIS`: the web build bakes it into the browser
+bundle, so changing it needs `docker compose up --build -d`.
 
 ## Development
 
