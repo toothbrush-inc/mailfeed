@@ -62,7 +62,8 @@ export async function processNestedLinks(
     finalDomain: string | null
     domain: string | null
   },
-  settings: ResolvedSettings
+  settings: ResolvedSettings,
+  options?: { triggerAi?: boolean }
 ): Promise<ProcessNestedLinksResult> {
   const result: ProcessNestedLinksResult = {
     created: 0,
@@ -205,8 +206,9 @@ export async function processNestedLinks(
 
       result.fetched++
 
-      // Trigger auto-analysis for nested link
-      triggerAutoAnalysisAndEmbedding(childLink.id, parentLink.userId)
+      if (options?.triggerAi !== false) {
+        triggerAutoAnalysisAndEmbedding(childLink.id, parentLink.userId)
+      }
     } catch (fetchError) {
       result.errors.push(`Failed to process nested link ${url}: ${fetchError}`)
       await prisma.link.update({

@@ -18,7 +18,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:encryption": "npx tsx scripts/test-encryption.ts",
+    "test:isolation": "npx tsx scripts/test-tenant-isolation.ts",
+    "worker": "npx tsx scripts/worker.ts",
+    "worker:once": "npx tsx scripts/worker.ts --once"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -51,7 +55,8 @@
     "react-highlight-words": "^0.21.0",
     "recharts": "^3.6.0",
     "swr": "^2.3.8",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "tsx": "^4.23.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

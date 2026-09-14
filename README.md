@@ -71,8 +71,11 @@ This installs Docker if needed, clones the repo, walks you through entering your
 git clone https://github.com/toothbrush-inc/mailfeed.git
 cd mailfeed
 cp .env.example .env        # Add your Google credentials
-docker compose up --build -d # Start the app + database
+docker compose up --build -d # Start the app + database + hourly worker
 ```
+
+The app container runs `prisma migrate deploy` on startup, so schema
+migrations (including per-user email uniqueness) apply automatically.
 
 Open [http://localhost:3000](http://localhost:3000).
 
@@ -84,7 +87,7 @@ cd mailfeed
 npm install
 cp .env.example .env        # Add your credentials + DATABASE_URL
 docker compose up -d postgres # Start just the database
-npx prisma db push          # Apply schema
+npx prisma migrate deploy   # Apply schema
 npm run dev                 # Start dev server
 ```
 
@@ -126,10 +129,11 @@ No rebuild needed — the container reads `.env` at startup.
 
 ```bash
 npm run dev          # Start development server
+npm run worker       # Hourly Gmail sync + Gemini Batch (optional)
 npm run build        # Production build
 npm run lint         # Run ESLint
 npx prisma studio    # Database GUI
-npx prisma db push   # Apply schema changes
+npx prisma migrate deploy  # Apply schema changes
 ```
 
 ## API

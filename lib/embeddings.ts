@@ -152,19 +152,71 @@ export function parseEmbeddingFromPgVector(pgVector: string): number[] {
   return cleaned.split(",").map(Number)
 }
 
+export function prepareEmailForEmbedding(email: {
+  subject?: string | null
+  rawContent?: string | null
+  snippet?: string | null
+}): string | null {
+  const parts: string[] = []
+  if (email.subject) parts.push(email.subject)
+  const content = email.rawContent || email.snippet
+  if (content) {
+    parts.push(content.length > MAX_CONTENT_LENGTH ? content.slice(0, MAX_CONTENT_LENGTH) : content)
+  }
+  if (parts.length === 0) return null
+  return parts.join("\n\n")
+}
+
+/** Returns true only when a row for this user was updated. */
+export async function persistLinkEmbedding(
+  linkId: string,
+  userId: string,
+  embedding: number[]
+): Promise<boolean> {
+  const embeddingStr = formatEmbeddingForPgVector(embedding)
+  const updated = await prisma.$executeRaw`
+    UPDATE "Link"
+    SET embedding = ${embeddingStr}::vector,
+        "embeddingStatus" = 'COMPLETED',
+        "embeddedAt" = NOW(),
+        "embeddingError" = NULL
+    WHERE id = ${linkId} AND "userId" = ${userId}
+  `
+  return Number(updated) === 1
+}
+
+/** Returns true only when a row for this user was updated. */
+export async function persistEmailEmbedding(
+  emailId: string,
+  userId: string,
+  embedding: number[]
+): Promise<boolean> {
+  const embeddingStr = formatEmbeddingForPgVector(embedding)
+  const updated = await prisma.$executeRaw`
+    UPDATE "Email"
+    SET embedding = ${embeddingStr}::vector,
+        "embeddingStatus" = 'COMPLETED',
+        "embeddedAt" = NOW(),
+        "embeddingError" = NULL
+    WHERE id = ${emailId} AND "userId" = ${userId}
+  `
+  return Number(updated) === 1
+}
+
 /**
  * Generates and stores an embedding for a single link.
  * Updates the Link record in the database.
  */
 export async function generateAndStoreEmbedding(
   linkId: string,
+  userId: string,
   settings: ResolvedSettings,
   taskType: EmbeddingTaskType = "RETRIEVAL_DOCUMENT",
   aiKeys?: AiKeys
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const link = await prisma.link.findUnique({
-      where: { id: linkId },
+    const link = await prisma.link.findFirst({
+      where: { id: linkId, userId },
       select: {
         id: true,
         title: true,
@@ -180,8 +232,8 @@ export async function generateAndStoreEmbedding(
 
     const text = prepareTextForEmbedding(link)
     if (!text) {
-      await prisma.link.update({
-        where: { id: linkId },
+      await prisma.link.updateMany({
+        where: { id: linkId, userId },
         data: {
           embeddingStatus: "SKIPPED",
           embeddingError: "No content available for embedding",
@@ -190,29 +242,22 @@ export async function generateAndStoreEmbedding(
       return { success: false, error: "No content to embed" }
     }
 
-    await prisma.link.update({
-      where: { id: linkId },
+    await prisma.link.updateMany({
+      where: { id: linkId, userId },
       data: { embeddingStatus: "PROCESSING" },
     })
 
     try {
       const embedding = await generateEmbedding(text, taskType, settings, aiKeys)
-      const embeddingStr = formatEmbeddingForPgVector(embedding)
-
-      await prisma.$executeRaw`
-        UPDATE "Link"
-        SET embedding = ${embeddingStr}::vector,
-            "embeddingStatus" = 'COMPLETED',
-            "embeddedAt" = NOW(),
-            "embeddingError" = NULL
-        WHERE id = ${linkId}
-      `
-
+      const ok = await persistLinkEmbedding(linkId, userId, embedding)
+      if (!ok) {
+        return { success: false, error: "Link not found for user" }
+      }
       return { success: true }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error"
-      await prisma.link.update({
-        where: { id: linkId },
+      await prisma.link.updateMany({
+        where: { id: linkId, userId },
         data: {
           embeddingStatus: "FAILED",
           embeddingError: errorMessage,

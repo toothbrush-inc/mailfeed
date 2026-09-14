@@ -10,20 +10,39 @@ The sync system uses four modes, driven by date-based Gmail search operators (`a
 
 | Mode | Trigger | Behavior |
 |------|---------|----------|
-| `check-new` | Default sync button | Appends `after:` to query using `syncNewestEmailDate` |
+| `check-new` | Sync button, **hourly worker** | Appends `after:` to query using `syncNewestEmailDate` |
 | `load-more` | "Load Older" button | Appends `before:` to query using `syncOldestEmailDate` |
-| `initial` | First sync or after query change | No date filter, fetches from beginning |
+| `initial` | First sync (app or worker) or after query change | No date filter, fetches from beginning |
 | `full-resync` | Overflow menu | Same as `initial` (clears state, doesn't delete data) |
 
 ### User Model — Sync Fields
 
 ```
 User
-├── lastSyncAt           DateTime?   (when sync last completed)
-├── syncQuery            String?     (email query active when sync state was captured)
-├── syncNewestEmailDate  DateTime?   (receivedAt of most recent synced email)
-└── syncOldestEmailDate  DateTime?   (receivedAt of oldest synced email)
+├── lastSyncAt               DateTime?   (when sync last completed)
+├── syncQuery                String?     (email query active when sync state was captured)
+├── syncNewestEmailDate      DateTime?   (receivedAt of most recent synced email)
+├── syncOldestEmailDate      DateTime?   (receivedAt of oldest synced email)
+├── scheduledSyncStartedAt   DateTime?   (hourly worker lock)
+├── lastScheduledSyncAt      DateTime?
+└── lastScheduledSyncError   String?
 ```
+
+### Scheduled (hourly) sync
+
+The Docker `worker` service runs `scripts/worker.ts` with no browser session. It uses stored Gmail refresh tokens via `getGmailClient(userId)`:
+
+1. Every ~2 minutes, **reap** in-flight Gemini Batch jobs and write results with `{id, userId}`.
+2. Every hour, for each user with a Google refresh token and `settings.sync.scheduled` (default true): **check-new** (or **initial** if they have never synced), fetch new links, then submit analysis/embeddings.
+
+Interactive `POST /api/sync` still fire-and-forgets per-link AI. The worker passes `triggerAi: false` and batches AI afterward.
+
+- Gmail/fetch cannot use Gemini Batch (live HTTP).
+- Analysis and embeddings: **≤15 items** use the live APIs; more go to Gemini Batch **per user** (never mixed mailboxes). Apply always filters by the `GeminiBatch.userId` row.
+- If the email query changed (`syncQuery` mismatch), the worker skips that user until they re-sync in the app.
+- `invalid_grant` is recorded on `lastScheduledSyncError` and does not stop other users.
+
+`npm run worker` (loop) or `npm run worker:once` (single tick) for local runs.
 
 ### Date-Based Incremental Sync
 
@@ -509,8 +528,10 @@ When the email query is changed in settings:
 | `sync.linkConcurrency` | 5 | Links fetched in parallel during sync |
 | `sync.maxPagesInitial` | 5 | Pages fetched on first sync or full resync |
 | `sync.maxPagesLoadMore` | 5 | Pages fetched when loading older history |
+| `sync.scheduled` | true | Hourly worker includes this user |
+| `sync.maxPagesScheduled` | 5 | Pages the worker may fetch per tick (`check-new` or first `initial`) |
 
-`check-new` always fetches exactly 1 page (using `after:` filter to narrow results).
+Interactive `check-new` fetches exactly 1 page. The scheduled worker uses `maxPagesScheduled` so a backlog of more than 50 messages can catch up.
 
 ---
 
@@ -540,7 +561,7 @@ FetchAttempt
 
 | Route | File | Strategy |
 |-------|------|----------|
-| Sync | `app/api/sync/route.ts` | Fire-and-forget (`recordFetchAttempts(...).catch(...)`) to not slow batch processing |
+| Sync | `lib/sync-user.ts` | Fire-and-forget (`recordFetchAttempts(...).catch(...)`) to not slow batch processing |
 | Refetch | `app/api/links/[id]/refetch/route.ts` | `await recordFetchAttempts(...)` since it's a single user-initiated action |
 | Wayback manual | `app/api/links/[id]/wayback/route.ts` | `await recordSingleFetchAttempt(...)` with manual timing around `fetchFromWayback()` |
 
@@ -560,7 +581,10 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 
 | Stage | File | Function |
 |-------|------|----------|
-| Sync orchestration | `app/api/sync/route.ts` | `POST()`, `processLink()`, `processLinksInParallel()`, `handleInitialSync()` |
+| Sync orchestration | `lib/sync-user.ts` | `runSyncForUser()`, Gmail + link fetch (no HTTP session) |
+| Sync HTTP | `app/api/sync/route.ts` | Session wrapper around `runSyncForUser` |
+| Scheduled worker | `lib/scheduled-sync.ts`, `scripts/worker.ts` | Hourly check-new for all eligible users |
+| Gemini Batch | `lib/gemini-batch.ts` | Per-user submit/reap of analysis + embeddings |
 | Sync status | `app/api/sync/status/route.ts` | `GET()` — coverage dates, query mismatch detection |
 | Sync coverage | `lib/sync-coverage.ts` | `updateSyncCoverage()`, `formatGmailDate()` |
 | User settings | `lib/settings.ts`, `lib/user-settings.ts` | `resolveSettings()`, `getUserSettings()` |
@@ -572,7 +596,7 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 | Wayback fetcher | `lib/fetchers/wayback.ts`, `lib/wayback-fetcher.ts` | `fetchFromWayback()` |
 | AI HTML fallback | `lib/ai-html-parser.ts` | `parseHtmlWithAI()` |
 | Nested links | `lib/process-nested-links.ts` | `processNestedLinks()` |
-| AI analysis | `lib/gemini.ts` | `analyzeContent()` |
+| AI analysis | `lib/analysis.ts`, `lib/gemini-batch.ts` | `analyzeLink()`, per-user Gemini Batch apply |
 | Fetch attempt recording | `lib/fetch-attempts.ts` | `recordFetchAttempts()`, `recordSingleFetchAttempt()` |
 | Fetch attempts API | `app/api/links/[id]/attempts/route.ts` | List attempts (no rawHtml) |
 | Fetch attempt detail API | `app/api/links/[id]/attempts/[attemptId]/route.ts` | Single attempt (with rawHtml) |

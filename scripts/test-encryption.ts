@@ -5,7 +5,7 @@
  *   docker run -d --name mailfeed-crypto-test -e POSTGRES_PASSWORD=test \
  *     -e POSTGRES_DB=mailfeed_test -p 5599:5432 pgvector/pgvector:pg16
  *   DATABASE_URL=postgresql://postgres:test@localhost:5599/mailfeed_test \
- *     npx prisma db push --skip-generate
+ *     npx prisma migrate deploy
  *   DATABASE_URL=postgresql://postgres:test@localhost:5599/mailfeed_test \
  *     MAILFEED_KEK=$(openssl rand -base64 32) npx tsx scripts/test-encryption.ts
  *

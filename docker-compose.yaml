@@ -17,10 +17,28 @@ services:
       retries: 5
 
   app:
-    build: .
+    build:
+      context: .
+      target: runner
     container_name: mailfeed-app
     ports:
       - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mailfeed}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      AUTH_TRUST_HOST: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      target: worker
+    container_name: mailfeed-worker
     env_file:
       - .env
     environment:

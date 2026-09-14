@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     for (const link of linksToProcess) {
       result.processed++
 
-      const embeddingResult = await generateAndStoreEmbedding(link.id, settings, "RETRIEVAL_DOCUMENT", aiKeys)
+      const embeddingResult = await generateAndStoreEmbedding(link.id, session.user.id, settings, "RETRIEVAL_DOCUMENT", aiKeys)
 
       if (embeddingResult.success) {
         result.succeeded++

@@ -71,14 +71,19 @@ Mailboxes stay private because:
 - Gmail message ids are unique per user (`@@unique([userId, gmailId])`),
   not globally, so one account cannot collide with or skip another's sync.
 - Chat and vector search SQL already filter `Email`/`Link` by `userId`.
+- Scheduled Gemini Batch jobs are one-per-user. Apply uses
+  `WHERE id = $itemId AND "userId" = $batch.userId`, so Bob's job
+  cannot write Alice's rows even if an item id leaked into the payload.
 
 ## Verifying
 
 ```
 docker run -d --name mailfeed-crypto-test -e POSTGRES_PASSWORD=test \
   -e POSTGRES_DB=mailfeed_test -p 5599:5432 pgvector/pgvector:pg16
-DATABASE_URL=postgresql://postgres:test@localhost:5599/mailfeed_test npx prisma db push
+DATABASE_URL=postgresql://postgres:test@localhost:5599/mailfeed_test npx prisma migrate deploy
 DATABASE_URL=postgresql://postgres:test@localhost:5599/mailfeed_test \
-  MAILFEED_KEK=$(openssl rand -base64 32) npx tsx scripts/test-encryption.ts
+  MAILFEED_KEK=$(openssl rand -base64 32) npm run test:encryption
+DATABASE_URL=postgresql://postgres:test@localhost:5599/mailfeed_test \
+  npm run test:isolation
 docker rm -f mailfeed-crypto-test
 ```

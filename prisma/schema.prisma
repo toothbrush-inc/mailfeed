@@ -61,8 +61,14 @@ model User {
   syncQuery           String?    // Email query active when sync state was captured
   syncNewestEmailDate DateTime?  // receivedAt of most recent synced email
   syncOldestEmailDate DateTime?  // receivedAt of oldest synced email
+  // Hourly worker: lock + last outcome (not the interactive lastSyncAt)
+  scheduledSyncStartedAt DateTime?
+  lastScheduledSyncAt    DateTime?
+  lastScheduledSyncError String?  @db.Text
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  geminiBatches GeminiBatch[]
 }
 
 model VerificationToken {
@@ -270,4 +276,24 @@ model LinkReport {
   @@index([linkId])
   @@index([userId])
   @@index([createdAt])
+}
+
+// Per-user Gemini Batch API job. itemIds are Link or Email ids; apply always
+// filters by this row's userId so another mailbox cannot be written.
+model GeminiBatch {
+  id          String   @id @default(cuid())
+  userId      String
+  geminiName  String   @unique
+  kind        String   // ANALYZE_LINKS | EMBED_LINKS | EMBED_EMAILS
+  status      String   // PENDING | RUNNING | SUCCEEDED | FAILED | EXPIRED | CANCELLED
+  itemIds     String[]
+  model       String?
+  error       String?  @db.Text
+  submittedAt DateTime @default(now())
+  completedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status])
 }

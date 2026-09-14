@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     // Note: We process sequentially to avoid hitting rate limits too hard,
     // though analyzeLink handles individual errors gracefully.
     for (const link of linksToProcess) {
-      const analysisResult = await analyzeLink(link.id, settings, aiKeys)
+      const analysisResult = await analyzeLink(link.id, settings, aiKeys, session.user.id)
 
       if (analysisResult.success) {
         result.succeeded++

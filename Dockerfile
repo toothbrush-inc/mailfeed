@@ -22,6 +22,24 @@ RUN npx prisma generate
 # Build Next.js (standalone output)
 RUN npm run build
 
+# ---- Worker: hourly Gmail sync + Gemini Batch (same source tree, tsx) ----
+FROM node:24-bookworm-slim AS worker
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/baml_client ./baml_client
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/auth.ts ./auth.ts
+COPY --from=builder /app/auth.config.ts ./auth.config.ts
+
+CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx scripts/worker.ts"]
+
 # ---- Stage 3: Production runner ----
 FROM node:24-bookworm-slim AS runner
 WORKDIR /app
