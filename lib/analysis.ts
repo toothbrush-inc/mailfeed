@@ -9,14 +9,71 @@ export interface AnalysisResult {
     error?: string
 }
 
+export interface LinkAnalysisInput {
+    summary?: string | null
+    tags?: Array<string | { toString(): string }> | null
+    contentTags?: Array<string | { toString(): string }> | null
+    metadataTags?: Array<string | { toString(): string }> | null
+}
+
+export function fieldsFromLinkAnalysis(bamlResult: LinkAnalysisInput) {
+    const linkTags = bamlResult.tags?.map((tag) => String(tag)) || []
+    const contentTags = bamlResult.contentTags?.map((tag) => String(tag)) || []
+    const metadataTags = bamlResult.metadataTags?.map((tag) => String(tag)) || []
+    const aiCategory = contentTags[0] || null
+
+    const isPaywalled =
+        metadataTags.includes("PAYMENT_REQUIRED") ||
+        metadataTags.includes("SUBSCRIPTION_REQUIRED") ||
+        metadataTags.includes("LOGIN_REQUIRED")
+
+    let paywallType: string | null = null
+    if (metadataTags.includes("PAYMENT_REQUIRED")) {
+        paywallType = "hard"
+    } else if (metadataTags.includes("SUBSCRIPTION_REQUIRED")) {
+        paywallType = "soft"
+    } else if (metadataTags.includes("LOGIN_REQUIRED")) {
+        paywallType = "registration"
+    }
+
+    return {
+        fetchStatus: "COMPLETED" as const,
+        aiSummary: bamlResult.summary || null,
+        aiCategory,
+        linkTags,
+        contentTags,
+        metadataTags,
+        isPaywalled,
+        paywallType,
+        analyzedAt: new Date(),
+    }
+}
+
+/**
+ * Write analysis onto a link only if it belongs to userId.
+ * Returns false when the row is missing or owned by someone else.
+ */
+export async function persistLinkAnalysis(
+    linkId: string,
+    userId: string,
+    bamlResult: LinkAnalysisInput
+): Promise<boolean> {
+    const updated = await prisma.link.updateMany({
+        where: { id: linkId, userId },
+        data: fieldsFromLinkAnalysis(bamlResult),
+    })
+    return updated.count === 1
+}
+
 export async function analyzeLink(
     linkId: string,
     settings: ResolvedSettings,
-    aiKeys?: AiKeys
+    aiKeys: AiKeys | undefined,
+    userId: string
 ): Promise<AnalysisResult> {
     try {
-        const link = await prisma.link.findUnique({
-            where: { id: linkId },
+        const link = await prisma.link.findFirst({
+            where: { id: linkId, userId },
             select: {
                 id: true,
                 url: true,
@@ -31,13 +88,11 @@ export async function analyzeLink(
             return { success: false, error: "Link not found" }
         }
 
-        // Mark as ANALYZING
-        await prisma.link.update({
-            where: { id: linkId },
+        await prisma.link.updateMany({
+            where: { id: linkId, userId },
             data: { fetchStatus: "ANALYZING" },
         })
 
-        // Build BAML input
         const anchorText = link.title || link.url
         const rawHtml = link.rawHtml || link.contentText || undefined
 
@@ -45,45 +100,14 @@ export async function analyzeLink(
             const clientRegistry = buildClientRegistry(settings, aiKeys)
             const bamlResult = await b.IngestLink(link.url, anchorText, rawHtml, { clientRegistry })
 
-            const linkTags = bamlResult.tags?.map((tag) => String(tag)) || []
-            const contentTags = bamlResult.contentTags?.map((tag) => String(tag)) || []
-            const metadataTags = bamlResult.metadataTags?.map((tag) => String(tag)) || []
-            const aiCategory = contentTags[0] || null
-
-            const isPaywalled =
-                metadataTags.includes("PAYMENT_REQUIRED") ||
-                metadataTags.includes("SUBSCRIPTION_REQUIRED") ||
-                metadataTags.includes("LOGIN_REQUIRED")
-
-            let paywallType: string | null = null
-            if (metadataTags.includes("PAYMENT_REQUIRED")) {
-                paywallType = "hard"
-            } else if (metadataTags.includes("SUBSCRIPTION_REQUIRED")) {
-                paywallType = "soft"
-            } else if (metadataTags.includes("LOGIN_REQUIRED")) {
-                paywallType = "registration"
+            const ok = await persistLinkAnalysis(link.id, userId, bamlResult)
+            if (!ok) {
+                return { success: false, error: "Link not found for user" }
             }
-
-            await prisma.link.update({
-                where: { id: link.id },
-                data: {
-                    fetchStatus: "COMPLETED",
-                    aiSummary: bamlResult.summary || null,
-                    aiCategory,
-                    linkTags,
-                    contentTags,
-                    metadataTags,
-                    isPaywalled,
-                    paywallType,
-                    analyzedAt: new Date(),
-                },
-            })
-
             return { success: true }
         } catch (bamlError) {
-            // Revert status
-            await prisma.link.update({
-                where: { id: link.id },
+            await prisma.link.updateMany({
+                where: { id: link.id, userId },
                 data: { fetchStatus: "FETCHED" },
             })
             const error = bamlError instanceof Error ? bamlError.message : "Unknown BAML error"

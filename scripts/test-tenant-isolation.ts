@@ -12,8 +12,15 @@
  */
 import { prisma, basePrisma } from "../lib/prisma"
 import { findEmailIdsMatchingText, textSearchEmails } from "../lib/email-search"
-import { searchSimilarContent, textSearchLinks } from "../lib/vector-search"
-import { EMBEDDING_DIMENSIONS, formatEmbeddingForPgVector } from "../lib/embeddings"
+import {
+  searchSimilarContent,
+  searchSimilarLinks,
+  searchLinks,
+  textSearchLinks,
+} from "../lib/vector-search"
+import { EMBEDDING_DIMENSIONS, formatEmbeddingForPgVector, persistLinkEmbedding, persistEmailEmbedding } from "../lib/embeddings"
+import { persistLinkAnalysis } from "../lib/analysis"
+import { applyLinkAnalysisResults } from "../lib/gemini-batch"
 
 let failures = 0
 function check(name: string, ok: boolean, detail?: unknown) {
@@ -40,6 +47,7 @@ function unitEmbedding(fill = 0, spike = 1): number[] {
 }
 
 async function main() {
+  await basePrisma.geminiBatch.deleteMany({})
   await basePrisma.linkReport.deleteMany({})
   await basePrisma.fetchAttempt.deleteMany({})
   await basePrisma.link.deleteMany({})
@@ -218,16 +226,57 @@ async function main() {
       UPDATE "Link" SET embedding = ${embeddingStr}::vector, "embeddingStatus" = 'COMPLETED'
       WHERE id = ${bobLink.id}
     `
+    // Identical vectors for both users: isolation must come from userId, not
+    // from embedding uniqueness. Chat RAG uses searchSimilarContent.
+    const unscoped = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Email"
+      WHERE embedding IS NOT NULL
+        AND 1 - (embedding <=> ${embeddingStr}::vector) > 0.1
+    `
+    check(
+      "unscoped vector SQL would return both mailboxes (control)",
+      unscoped.some((r) => r.id === aliceEmail.id) && unscoped.some((r) => r.id === bobEmail.id)
+    )
+
     const bobHits = await searchSimilarContent(bob.id, embedding, 10, 0.1)
+    const bobHitIds = new Set(bobHits.map((h) => h.id))
+    const bobHitText = JSON.stringify(bobHits)
     check(
-      "vector search as Bob does not return Alice",
-      bobHits.length > 0 && bobHits.every((h) => h.id === bobEmail.id || h.id === bobLink.id)
+      "RAG searchSimilarContent as Bob does not return Alice's ids",
+      bobHits.length > 0 &&
+        bobHitIds.has(bobEmail.id) &&
+        bobHitIds.has(bobLink.id) &&
+        !bobHitIds.has(aliceEmail.id) &&
+        !bobHitIds.has(aliceLink.id)
     )
+    check(
+      "RAG searchSimilarContent as Bob does not leak Alice's text",
+      !bobHitText.includes("Alice secret") && !bobHitText.includes("zebra")
+    )
+
     const aliceHits = await searchSimilarContent(alice.id, embedding, 10, 0.1)
+    const aliceHitIds = new Set(aliceHits.map((h) => h.id))
     check(
-      "vector search as Alice does not return Bob",
-      aliceHits.length > 0 && aliceHits.every((h) => h.id === aliceEmail.id || h.id === aliceLink.id)
+      "RAG searchSimilarContent as Alice does not return Bob's ids",
+      aliceHits.length > 0 &&
+        aliceHitIds.has(aliceEmail.id) &&
+        aliceHitIds.has(aliceLink.id) &&
+        !aliceHitIds.has(bobEmail.id) &&
+        !aliceHitIds.has(bobLink.id)
     )
+
+    const bobLinkHits = await searchSimilarLinks(bob.id, embedding, 10, 0.1)
+    check(
+      "RAG searchSimilarLinks as Bob is only Bob's links",
+      bobLinkHits.length === 1 && bobLinkHits[0].id === bobLink.id
+    )
+    const bobSearchLinks = await searchLinks(bob.id, embedding, "zebra", 10, 0.1)
+    check(
+      "RAG searchLinks as Bob does not return Alice's link",
+      bobSearchLinks.length === 1 && bobSearchLinks[0].id === bobLink.id
+    )
+    const bobTextFallback = await searchLinks(bob.id, null, "zebra", 10)
+    check("RAG text fallback as Bob misses Alice's link", bobTextFallback.length === 0)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (message.includes("vector") || message.includes("type") || message.includes("embedding")) {
@@ -250,6 +299,63 @@ async function main() {
   // must not use this with a client-supplied id.
   const leaked = await prisma.email.findUnique({ where: { id: aliceEmail.id } })
   check("findUnique(id) still loads Alice (do not use in handlers)", leaked?.subject === "Alice secret subject")
+
+  // --- Gemini batch apply: userId on the write, not the item id, is the tenant ---
+  const bobWroteAlice = await persistLinkAnalysis(aliceLink.id, bob.id, {
+    summary: "bob should not write this",
+    contentTags: ["TECHNOLOGY"],
+  })
+  check("persistLinkAnalysis as Bob cannot write Alice's link", bobWroteAlice === false)
+  const aliceAfterBob = await prisma.link.findFirst({
+    where: { id: aliceLink.id, userId: alice.id },
+    select: { aiSummary: true },
+  })
+  check(
+    "Alice's summary unchanged after Bob persistLinkAnalysis",
+    aliceAfterBob?.aiSummary !== "bob should not write this"
+  )
+
+  const applyCross = await applyLinkAnalysisResults(bob.id, [
+    { id: aliceLink.id, analysis: { summary: "leaked zebra", contentTags: ["NEWS"] } },
+  ])
+  check(
+    "applyLinkAnalysisResults as Bob does not apply Alice's id",
+    applyCross.applied === 0 && applyCross.skipped === 1
+  )
+  const aliceAfterApply = await prisma.link.findFirst({
+    where: { id: aliceLink.id, userId: alice.id },
+    select: { aiSummary: true },
+  })
+  check("Alice's summary unchanged after Bob batch apply", aliceAfterApply?.aiSummary !== "leaked zebra")
+
+  const applyOwn = await applyLinkAnalysisResults(alice.id, [
+    { id: aliceLink.id, analysis: { summary: "alice summary", contentTags: ["SCIENCE"] } },
+  ])
+  check("applyLinkAnalysisResults as Alice writes her link", applyOwn.applied === 1)
+  const aliceNow = await prisma.link.findFirst({
+    where: { id: aliceLink.id, userId: alice.id },
+    select: { aiSummary: true, aiCategory: true },
+  })
+  check(
+    "Alice's analysis persisted for her userId",
+    aliceNow?.aiSummary === "alice summary" && aliceNow?.aiCategory === "SCIENCE"
+  )
+
+  try {
+    const bobEmbed = await persistLinkEmbedding(aliceLink.id, bob.id, unitEmbedding(0.2, 0.9))
+    check("persistLinkEmbedding as Bob cannot write Alice's vector", bobEmbed === false)
+    const bobEmailEmbed = await persistEmailEmbedding(aliceEmail.id, bob.id, unitEmbedding(0.3, 0.8))
+    check("persistEmailEmbedding as Bob cannot write Alice's email vector", bobEmailEmbed === false)
+    const aliceEmbed = await persistLinkEmbedding(aliceLink.id, alice.id, unitEmbedding(0.1, 0.7))
+    check("persistLinkEmbedding as Alice writes her vector", aliceEmbed === true)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.includes("vector") || message.includes("type") || message.includes("embedding")) {
+      console.log("  skip  embedding persist (pgvector not available)", message)
+    } else {
+      throw error
+    }
+  }
 
   console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECKS FAILED`)
   process.exit(failures === 0 ? 0 : 1)

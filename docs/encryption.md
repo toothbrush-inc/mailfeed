@@ -71,6 +71,9 @@ Mailboxes stay private because:
 - Gmail message ids are unique per user (`@@unique([userId, gmailId])`),
   not globally, so one account cannot collide with or skip another's sync.
 - Chat and vector search SQL already filter `Email`/`Link` by `userId`.
+- Scheduled Gemini Batch jobs are one-per-user. Apply uses
+  `WHERE id = $itemId AND "userId" = $batch.userId`, so Bob's job
+  cannot write Alice's rows even if an item id leaked into the payload.
 
 ## Verifying
 

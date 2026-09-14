@@ -29,7 +29,7 @@ export async function triggerAutoAnalysisAndEmbedding(
         if (analysisConfigured && FEATURE_FLAGS.enableAnalysis && settings.analysis.enabled && settings.analysis.autoRun) {
             console.log(`[AI Triggers] Triggering auto-analysis for link ${linkId}`)
             // Fire and forget, but log error if it fails
-            analyzeLink(linkId, settings, aiKeys).then((result) => {
+            analyzeLink(linkId, settings, aiKeys, userId).then((result) => {
                 if (!result.success) {
                     console.error(`[AI Triggers] Auto-analysis failed for ${linkId}:`, result.error)
                 }
@@ -42,7 +42,7 @@ export async function triggerAutoAnalysisAndEmbedding(
         if (geminiConfigured && settings.embeddings.enabled && settings.embeddings.autoRun) {
             console.log(`[AI Triggers] Triggering auto-embedding for link ${linkId}`)
             // Fire and forget
-            generateAndStoreEmbedding(linkId, settings, "RETRIEVAL_DOCUMENT", aiKeys).then((result) => {
+            generateAndStoreEmbedding(linkId, userId, settings, "RETRIEVAL_DOCUMENT", aiKeys).then((result) => {
                 if (!result.success) {
                     console.error(`[AI Triggers] Auto-embedding failed for ${linkId}:`, result.error)
                 }

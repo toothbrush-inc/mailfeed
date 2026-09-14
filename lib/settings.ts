@@ -29,6 +29,8 @@ export interface UserSettings {
     linkConcurrency?: number
     maxPagesLoadMore?: number
     maxPagesInitial?: number
+    scheduled?: boolean
+    maxPagesScheduled?: number
   }
 }
 
@@ -63,6 +65,8 @@ export interface ResolvedSettings {
     linkConcurrency: number
     maxPagesLoadMore: number
     maxPagesInitial: number
+    scheduled: boolean
+    maxPagesScheduled: number
   }
 }
 
@@ -74,7 +78,7 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
     embeddingDimensions: 768,
   },
   analysis: {
-    enabled: false,
+    enabled: true,
     autoRun: false,
   },
   embeddings: {
@@ -97,6 +101,8 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
     linkConcurrency: 5,
     maxPagesLoadMore: 5,
     maxPagesInitial: 5,
+    scheduled: true,
+    maxPagesScheduled: 5,
   },
 }
 
@@ -134,6 +140,8 @@ export function resolveSettings(raw: UserSettings | null | undefined): ResolvedS
       linkConcurrency: raw.sync?.linkConcurrency ?? DEFAULT_SETTINGS.sync.linkConcurrency,
       maxPagesLoadMore: raw.sync?.maxPagesLoadMore ?? DEFAULT_SETTINGS.sync.maxPagesLoadMore,
       maxPagesInitial: raw.sync?.maxPagesInitial ?? DEFAULT_SETTINGS.sync.maxPagesInitial,
+      scheduled: raw.sync?.scheduled ?? DEFAULT_SETTINGS.sync.scheduled,
+      maxPagesScheduled: raw.sync?.maxPagesScheduled ?? DEFAULT_SETTINGS.sync.maxPagesScheduled,
     },
   }
 }
