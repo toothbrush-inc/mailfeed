@@ -1,7 +1,7 @@
 {
   "name": "mailfeed",
   "version": "0.1.0",
-  "description": "A personal reading feed that extracts links from your emails, fetches article content, and provides AI-powered features.",
+  "description": "Your reading list, owned by you. Turn your emails into a personalized reading feed with full-text content, semantic search, and smart link extraction.",
   "author": "Toothbrush, Inc.",
   "license": "MIT",
   "repository": {

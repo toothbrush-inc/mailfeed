@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MailFeed - AI-Powered Reading Feed from Your Gmail",
+  title: "MailFeed: your reading list, owned by you",
   description:
-    "Turn your self-sent emails into a curated reading feed with AI-powered summaries, categorization, and semantic search.",
+    "Turn your emails into a personalized reading feed with full-text content, semantic search, and smart link extraction.",
 };
 
 export default function RootLayout({
