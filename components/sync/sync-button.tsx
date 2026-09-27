@@ -104,7 +104,7 @@ export function SyncButton() {
     return (
       <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 dark:border-amber-800 dark:bg-amber-950">
         <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-        <span className="text-xs text-amber-700 dark:text-amber-300">
+        <span className="hidden text-xs text-amber-700 sm:inline dark:text-amber-300">
           Google session expired
         </span>
         <Button onClick={handleReauth} size="sm" variant="outline" className="h-7 text-xs">
@@ -138,7 +138,9 @@ export function SyncButton() {
             className="rounded-r-none border-r-0"
           >
             <SyncIcon spinning={isLoading} />
-            <span className="ml-2">{primaryLabel}</span>
+            {/* Icon-only on phones; the label would crowd the header. */}
+            <span className="ml-2 hidden sm:inline">{primaryLabel}</span>
+            <span className="sr-only sm:hidden">{primaryLabel}</span>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

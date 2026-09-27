@@ -254,12 +254,13 @@ export default async function StatsPage() {
           ).map(({ label, count, color, indent }) => {
             const pct = totalLinks > 0 ? (count / totalLinks) * 100 : 0
             return (
-              <div key={label} className="flex items-center gap-3">
-                {indent && <div className="w-4 shrink-0" />}
-                <span className="text-sm text-muted-foreground w-36 shrink-0">{label}</span>
-                <span className="text-sm font-medium w-14 text-right shrink-0">{count.toLocaleString()}</span>
-                <span className="text-xs text-muted-foreground w-9 text-right shrink-0">{pct.toFixed(0)}%</span>
-                <div className="flex-1 h-2 rounded-full bg-zinc-200 dark:bg-zinc-800">
+              // Label/number columns narrow on phones so the bar keeps a usable width.
+              <div key={label} className="flex items-center gap-2 md:gap-3">
+                {indent && <div className="w-2 shrink-0 md:w-4" />}
+                <span className="text-sm text-muted-foreground w-24 shrink-0 truncate md:w-36">{label}</span>
+                <span className="text-sm font-medium w-10 text-right shrink-0 md:w-14">{count.toLocaleString()}</span>
+                <span className="text-xs text-muted-foreground w-8 text-right shrink-0 md:w-9">{pct.toFixed(0)}%</span>
+                <div className="flex-1 min-w-12 h-2 rounded-full bg-zinc-200 dark:bg-zinc-800">
                   <div className={`h-2 rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
                 </div>
               </div>

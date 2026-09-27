@@ -110,9 +110,10 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
-      {/* Chat panel */}
-      <div className="flex flex-col w-[400px] max-w-[calc(100vw-3rem)] h-[600px] max-h-[calc(100vh-6rem)] bg-background border rounded-xl shadow-2xl overflow-hidden">
+    // Phones: docked to the screen edges. md+: the anchored corner panel.
+    <div className="fixed inset-x-2 bottom-2 z-50 md:inset-x-auto md:bottom-6 md:right-6">
+      {/* Chat panel. dvh keeps the input above the mobile URL bar. */}
+      <div className="flex flex-col w-full h-[70dvh] max-h-[calc(100dvh-5rem)] md:w-[400px] md:h-[600px] md:max-h-[calc(100dvh-6rem)] bg-background border rounded-xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
           <div className="flex items-center gap-2">
