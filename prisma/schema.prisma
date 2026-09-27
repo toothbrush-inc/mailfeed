@@ -61,9 +61,10 @@ model User {
   syncQuery           String?    // Email query active when sync state was captured
   syncNewestEmailDate DateTime?  // receivedAt of most recent synced email
   syncOldestEmailDate DateTime?  // receivedAt of oldest synced email
-  // check-new hit its page cap before reaching mail it already had; the next
-  // check-new searches from here instead of syncNewestEmailDate
+  // Unsynced range left when check-new stopped at its page cap: mail after
+  // syncGapFrom and before syncGapUntil. check-new fills it before new mail.
   syncGapFrom         DateTime?
+  syncGapUntil        DateTime?
   // Hourly worker: lock + last outcome (not the interactive lastSyncAt)
   scheduledSyncStartedAt DateTime?
   lastScheduledSyncAt    DateTime?

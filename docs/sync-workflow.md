@@ -10,7 +10,7 @@ The sync system uses four modes, driven by date-based Gmail search operators (`a
 
 | Mode | Trigger | Behavior |
 |------|---------|----------|
-| `check-new` | Sync button, **hourly worker** | Appends `after:` to query using `syncGapFrom` if set, else `syncNewestEmailDate` |
+| `check-new` | Sync button, **hourly worker** | Fills any open gap (`after:syncGapFrom before:syncGapUntil`) first, then appends `after:` using `syncNewestEmailDate` |
 | `load-more` | "Load Older" button | Appends `before:` to query using `syncOldestEmailDate` |
 | `initial` | First sync (app or worker) or after query change | No date filter, fetches from beginning |
 | `full-resync` | Overflow menu | Same as `initial` (clears state, doesn't delete data) |
@@ -23,7 +23,8 @@ User
 ├── syncQuery                String?     (email query active when sync state was captured)
 ├── syncNewestEmailDate      DateTime?   (receivedAt of most recent synced email)
 ├── syncOldestEmailDate      DateTime?   (receivedAt of oldest synced email)
-├── syncGapFrom              DateTime?   (check-new resume point after a cut-off run)
+├── syncGapFrom              DateTime?   (unsynced gap left by a cut-off check-new: after this…)
+├── syncGapUntil             DateTime?   (…and before this)
 ├── scheduledSyncStartedAt   DateTime?   (hourly worker lock)
 ├── lastScheduledSyncAt      DateTime?
 └── lastScheduledSyncError   String?
@@ -33,7 +34,7 @@ User
 
 The Docker `worker` service runs `scripts/worker.ts` with no browser session. It uses stored Gmail refresh tokens via `getGmailClient(userId)`:
 
-1. Every ~2 minutes, **reap** in-flight Gemini Batch jobs and write results with `{id, userId}`. Up to 50 per tick, oldest first. A batch whose user no longer has a Gemini key, or that is still in flight 72h after submit, is marked failed/expired and its items go back to `FETCHED` (analysis) or embedding `FAILED` so the next sync resubmits them.
+1. Every ~2 minutes, **reap** in-flight Gemini Batch jobs and write results with `{id, userId}`. Up to 50 per tick, oldest first. Finished jobs are always applied, however late. A batch that 72h after submit is still running (then cancelled), still cannot be looked up, or has no Gemini key to look it up with, is marked `EXPIRED` and its items go back to `FETCHED` (analysis) or embedding `FAILED` so the next sync resubmits them. Before 72h a missing key or failed lookup just retries next tick.
 2. Every hour, for each user with a Google refresh token and `settings.sync.scheduled` (default true): **check-new** (or **initial** if they have never synced), fetch new links, then submit analysis/embeddings.
 
 Interactive `POST /api/sync` still fire-and-forgets per-link AI. The worker passes `triggerAi: false` and batches AI afterward.
@@ -51,7 +52,7 @@ Gmail's `after:` and `before:` operators use day granularity (YYYY/MM/DD). To ha
 
 Page budget: only pages with at least one new message count against `maxPages`. Pages of already-synced mail are skipped for free, up to 40 listed pages per run.
 
-**Backlog gap.** Gmail lists newest first, so a `check-new` that stops at its page cap stores the newest mail and moves `syncNewestEmailDate` past older unseen mail. When that happens `check-new` stores the date it searched from in `syncGapFrom`, and the next run searches from there again (the already-synced pages cost nothing). `syncGapFrom` is cleared once a run lists the whole window, and on initial/full-resync or a query change.
+**Backlog gap.** Gmail lists newest first, so a `check-new` that stops at its page cap stores the newest mail and moves `syncNewestEmailDate` past older unseen mail. It then records that range as `syncGapFrom` (where it searched from) to `syncGapUntil` (oldest email it stored). The next `check-new` searches only that range, bounded both sides, before looking for new mail; if it is cut off again it moves `syncGapUntil` back to its own oldest stored email, so each run re-lists at most about two days of synced mail. Leftover page budget after the gap closes goes to new mail. The gap is cleared on initial/full-resync or a query change.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐

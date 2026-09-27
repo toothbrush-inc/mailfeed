@@ -101,6 +101,7 @@ export async function PATCH(request: NextRequest) {
     updateData.syncNewestEmailDate = null
     updateData.syncOldestEmailDate = null
     updateData.syncGapFrom = null
+    updateData.syncGapUntil = null
   }
 
   await prisma.user.update({

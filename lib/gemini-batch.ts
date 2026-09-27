@@ -24,7 +24,8 @@ export const LIVE_AI_THRESHOLD = Number(process.env.MAILFEED_LIVE_AI_THRESHOLD) 
 const BATCH_CHUNK_SIZE = 100
 const MAX_HTML_CHARS = 24_000
 const IN_FLIGHT = ["PENDING", "RUNNING"]
-// Gemini expires batch jobs after 48h; past this we stop polling and requeue.
+// Gemini expires batch jobs after 48h. Past this, a batch that still is not
+// finished (or cannot be looked up) is expired locally and its items requeued.
 const BATCH_STALE_MS = 72 * 60 * 60 * 1000
 
 export type GeminiBatchKind = "ANALYZE_LINKS" | "EMBED_LINKS" | "EMBED_EMAILS"
@@ -473,25 +474,45 @@ async function failBatch(row: BatchRow, status: string, error: string) {
   })
 }
 
+async function expireBatch(row: BatchRow, reason: string) {
+  await failBatch(row, "EXPIRED", reason)
+  log.warn("Expired stale batch", { id: row.id, userId: row.userId, name: row.geminiName, reason })
+}
+
 async function reapOne(row: BatchRow): Promise<void> {
-  if (Date.now() - row.submittedAt.getTime() > BATCH_STALE_MS) {
-    await failBatch(row, "EXPIRED", "Batch not collected within 72h")
-    log.warn("Expired stale batch", { id: row.id, userId: row.userId, name: row.geminiName })
-    return
-  }
+  // Past this we stop waiting, but a finished job is still applied first.
+  const stale = Date.now() - row.submittedAt.getTime() > BATCH_STALE_MS
 
   const aiKeys = await getUserAiKeys(row.userId)
   const apiKey = resolveGeminiKey(aiKeys)
   if (!apiKey) {
-    await failBatch(row, "FAILED", "No Gemini key to collect batch")
+    if (stale) return expireBatch(row, "No Gemini key to collect batch within 72h")
     log.warn("No Gemini key to reap batch", { id: row.id, userId: row.userId })
     return
   }
 
-  const job = await genAI(apiKey).batches.get({ name: row.geminiName })
+  const ai = genAI(apiKey)
+  let job: Awaited<ReturnType<typeof ai.batches.get>>
+  try {
+    job = await ai.batches.get({ name: row.geminiName })
+  } catch (error) {
+    if (!stale) throw error
+    const msg = error instanceof Error ? error.message : String(error)
+    return expireBatch(row, `Batch lookup still failing after 72h: ${msg}`)
+  }
   const status = jobStatusFromState(job.state)
 
   if (status === "PENDING" || status === "RUNNING") {
+    if (stale) {
+      // Results would be dropped anyway; stop paying for the job.
+      await ai.batches.cancel({ name: row.geminiName }).catch((error) => {
+        log.warn("Cancel of stale batch failed", {
+          name: row.geminiName,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
+      return expireBatch(row, "Batch still running after 72h")
+    }
     if (status !== "PENDING") {
       await prisma.geminiBatch.update({ where: { id: row.id }, data: { status: "RUNNING" } })
     }
