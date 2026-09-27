@@ -4,6 +4,7 @@ import {
   Globe,
   Link2,
   Mail,
+  Newspaper,
   Settings,
   type LucideIcon,
 } from "lucide-react"
@@ -30,6 +31,7 @@ export const PRIMARY_NAV: NavItem[] = [
 
 export const SECONDARY_NAV: NavItem[] = [
   { href: "/stats", label: "Stats", icon: BarChart3 },
+  { href: "/digest", label: "Digest", icon: Newspaper },
   { href: "/reports", label: "Reports", icon: Flag },
   { href: "/settings", label: "Settings", icon: Settings },
 ]

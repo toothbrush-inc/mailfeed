@@ -4,6 +4,10 @@ import { buildClientRegistry } from "@/lib/baml-registry"
 import type { ResolvedSettings } from "@/lib/settings"
 import type { AiKeys } from "@/lib/user-keys"
 
+// Automatic analysis (sync, worker) skips a link once it has failed this many
+// times; the Digest page's "Analyze again" still runs it.
+export const MAX_AUTO_ANALYSIS_ATTEMPTS = 3
+
 export interface AnalysisResult {
     success: boolean
     error?: string
@@ -11,6 +15,7 @@ export interface AnalysisResult {
 
 export interface LinkAnalysisInput {
     summary?: string | null
+    keyPoints?: string[] | null
     tags?: Array<string | { toString(): string }> | null
     contentTags?: Array<string | { toString(): string }> | null
     metadataTags?: Array<string | { toString(): string }> | null
@@ -39,6 +44,7 @@ export function fieldsFromLinkAnalysis(bamlResult: LinkAnalysisInput) {
     return {
         fetchStatus: "COMPLETED" as const,
         aiSummary: bamlResult.summary || null,
+        aiKeyPoints: bamlResult.keyPoints?.filter((p) => p.trim()) || [],
         aiCategory,
         linkTags,
         contentTags,
@@ -46,7 +52,29 @@ export function fieldsFromLinkAnalysis(bamlResult: LinkAnalysisInput) {
         isPaywalled,
         paywallType,
         analyzedAt: new Date(),
+        analysisError: null,
+        analysisAttempts: 0,
     }
+}
+
+/**
+ * Put links back to FETCHED and record why analysis failed, so the Digest
+ * can show it and automatic retries stop after MAX_AUTO_ANALYSIS_ATTEMPTS.
+ */
+export async function recordAnalysisFailure(
+    userId: string,
+    linkIds: string[],
+    error: string
+): Promise<void> {
+    if (linkIds.length === 0) return
+    await prisma.link.updateMany({
+        where: { userId, id: { in: linkIds } },
+        data: {
+            fetchStatus: "FETCHED",
+            analysisError: error,
+            analysisAttempts: { increment: 1 },
+        },
+    })
 }
 
 /**
@@ -106,11 +134,8 @@ export async function analyzeLink(
             }
             return { success: true }
         } catch (bamlError) {
-            await prisma.link.updateMany({
-                where: { id: link.id, userId },
-                data: { fetchStatus: "FETCHED" },
-            })
             const error = bamlError instanceof Error ? bamlError.message : "Unknown BAML error"
+            await recordAnalysisFailure(userId, [link.id], error)
             console.error(`[Analysis] Failed to analyze link ${link.id}:`, error)
             return { success: false, error }
         }

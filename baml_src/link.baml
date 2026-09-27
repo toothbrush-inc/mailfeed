@@ -4,6 +4,7 @@ class LinkAnalysis {
   contentTags ContentTag[]
   metadataTags MetadataTags[]
   summary string @description("A short summary of the link's content.")
+  keyPoints string[] @description("3 to 5 key points or takeaways from the content, each one short sentence. Empty if there is no substantive content.")
 }
 
 class Link {
@@ -81,6 +82,7 @@ function IngestLink(url: string, anchorText: string, rawHtml: string?) -> LinkAn
     Ignore navigation, ads, scripts, and boilerplate HTML. Focus on the actual content.
 
     Provide a clear, concise summary of what this content is about.
+    List 3 to 5 key points a reader should take away. Only use what the content says; if you only have a teaser or a login page, return no key points.
     Classify the type of link (article, video, image, audio, etc.).
     Classify the content category (technology, business, news, etc.).
     Identify any access restrictions (paywall, login required, etc.).
@@ -131,6 +133,7 @@ function BulkIngestLinks(links: LinkInput[]) -> BulkLinkResult[] {
 
     For each link, provide:
     - A clear, concise summary of what the content is about
+    - 3 to 5 key points a reader should take away (none if you only have a teaser or a login page)
     - The type of link (article, video, image, audio, etc.)
     - The content category (technology, business, news, etc.)
     - Any access restrictions (paywall, login required, etc.)

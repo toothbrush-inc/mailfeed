@@ -3,7 +3,13 @@ import { prisma } from "@/lib/prisma"
 import { b } from "@/baml_client"
 import { buildClientRegistry } from "@/lib/baml-registry"
 import { BAML_CLIENTS, isAiConfigured } from "@/lib/ai-provider"
-import { analyzeLink, persistLinkAnalysis, type LinkAnalysisInput } from "@/lib/analysis"
+import {
+  analyzeLink,
+  persistLinkAnalysis,
+  recordAnalysisFailure,
+  MAX_AUTO_ANALYSIS_ATTEMPTS,
+  type LinkAnalysisInput,
+} from "@/lib/analysis"
 import {
   generateAndStoreEmbedding,
   generateEmbedding,
@@ -137,13 +143,13 @@ async function markEmbedStatus(
  */
 export async function applyLinkAnalysisResults(
   userId: string,
-  items: Array<{ id: string; analysis: LinkAnalysisInput | null }>
+  items: Array<{ id: string; analysis: LinkAnalysisInput | null; error?: string }>
 ): Promise<{ applied: number; skipped: number }> {
   let applied = 0
   let skipped = 0
   for (const item of items) {
     if (!item.analysis) {
-      await markAnalyzeStatus(userId, [item.id], "FETCHED")
+      await recordAnalysisFailure(userId, [item.id], item.error || "No analysis in batch response")
       skipped++
       continue
     }
@@ -356,6 +362,7 @@ export async function submitPendingAiForUser(userId: string): Promise<void> {
         userId,
         fetchStatus: "FETCHED",
         analyzedAt: null,
+        analysisAttempts: { lt: MAX_AUTO_ANALYSIS_ATTEMPTS },
         OR: [{ rawHtml: { not: null } }, { contentText: { not: null } }],
       },
       select: { id: true },
@@ -447,7 +454,7 @@ function jobStatusFromState(state?: JobState): string {
 
 async function revertFailed(userId: string, kind: GeminiBatchKind, itemIds: string[], error: string) {
   if (kind === "ANALYZE_LINKS") {
-    await markAnalyzeStatus(userId, itemIds, "FETCHED")
+    await recordAnalysisFailure(userId, itemIds, `Gemini batch failed: ${error}`)
   } else {
     await markEmbedStatus(userId, itemIds, kind, "FAILED", error)
   }
@@ -493,15 +500,16 @@ async function reapOne(row: {
       const responses = job.dest?.inlinedResponses || []
       const items = row.itemIds.map((id, i) => {
         const text = responseText(responses[i]?.response)
-        if (!text) return { id, analysis: null }
+        if (!text) {
+          const error = responses[i]?.error?.message || "Empty response from Gemini batch"
+          return { id, analysis: null, error }
+        }
         try {
           return { id, analysis: b.parse.IngestLink(text) as LinkAnalysisInput }
         } catch (error) {
-          log.warn("Failed to parse analysis response", {
-            itemId: id,
-            error: error instanceof Error ? error.message : String(error),
-          })
-          return { id, analysis: null }
+          const message = error instanceof Error ? error.message : String(error)
+          log.warn("Failed to parse analysis response", { itemId: id, error: message })
+          return { id, analysis: null, error: `Could not parse analysis: ${message}` }
         }
       })
       const result = await applyLinkAnalysisResults(row.userId, items)

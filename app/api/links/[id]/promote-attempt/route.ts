@@ -90,6 +90,8 @@ export async function POST(
         isHighlighted: false,
         highlightReason: null,
         analyzedAt: null,
+        analysisError: null,
+        analysisAttempts: 0,
         categories: { deleteMany: {} },
 
         // Set new content from parsed attempt

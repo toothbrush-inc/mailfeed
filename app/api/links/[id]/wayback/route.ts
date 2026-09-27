@@ -8,6 +8,7 @@ import { b } from "@/baml_client"
 import { getUserSettings } from "@/lib/user-settings"
 import { getUserAiKeys } from "@/lib/user-keys"
 import { buildClientRegistry } from "@/lib/baml-registry"
+import { recordAnalysisFailure } from "@/lib/analysis"
 
 export async function POST(
   request: NextRequest,
@@ -86,6 +87,8 @@ export async function POST(
       data: {
         fetchStatus: "FETCHED",
         fetchError: null,
+        analysisError: null,
+        analysisAttempts: 0,
         contentSource: "wayback",
         archivedUrl: waybackResult.archivedUrl,
         title: waybackResult.title || link.title,
@@ -146,7 +149,9 @@ export async function POST(
           data: {
             fetchStatus: "COMPLETED",
             aiSummary: analysis.summary,
+            aiKeyPoints: analysis.keyPoints?.filter((p) => p.trim()) || [],
             aiCategory: categoryName,
+            analysisError: null,
             linkTags,
             contentTags,
             metadataTags,
@@ -172,10 +177,11 @@ export async function POST(
       } catch (analysisError) {
         console.error("[/api/links/[id]/wayback] BAML analysis failed:", analysisError)
         // Still mark as fetched even if analysis fails
-        await prisma.link.update({
-          where: { id },
-          data: { fetchStatus: "FETCHED" },
-        })
+        await recordAnalysisFailure(
+          session.user.id,
+          [id],
+          analysisError instanceof Error ? analysisError.message : "Unknown BAML error"
+        )
       }
     }
 

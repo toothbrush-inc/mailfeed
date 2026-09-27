@@ -159,6 +159,10 @@ model Link {
   uniquenessScore Float?
   isHighlighted   Boolean  @default(false)
   highlightReason String?
+  // Last AI analysis failure; cleared when analysis succeeds. Automatic
+  // analysis stops after MAX_AUTO_ANALYSIS_ATTEMPTS (lib/analysis.ts).
+  analysisError    String?  @db.Text
+  analysisAttempts Int      @default(0)
 
   // Fetch status
   fetchStatus   FetchStatus @default(PENDING)

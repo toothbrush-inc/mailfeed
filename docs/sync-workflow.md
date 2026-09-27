@@ -362,59 +362,67 @@ When the email query is changed in settings:
 ## AI Analysis Decision Tree
 
 ```
-                    ┌───────────────────────┐
-                    │ Has textContent AND   │
-                    │ has title?            │
-                    └───────────┬───────────┘
+                    ┌───────────────────────────────┐
+                    │ Picked up for analysis?       │
+                    │ FETCHED, analyzedAt null,     │
+                    │ has rawHtml or contentText,   │
+                    │ analysisAttempts < 3          │
+                    └───────────┬───────────────────┘
                                 │
                           YES ◄─┴─► NO
                            │        │
-                           │    [Skip AI analysis,
-                           │     status stays FETCHED]
+                           │    [Skip; status stays FETCHED.
+                           │     "Analyze again" on /digest
+                           │     still runs it by hand]
                            ▼
                     ┌───────────────────────┐
                     │ Update: ANALYZING     │
                     └───────────┬───────────┘
                                 │
                                 ▼
-                    ┌───────────────────────┐
-                    │ analyzeContent()      │
-                    │ (Gemini API)          │
-                    └───────────┬───────────┘
+                    ┌───────────────────────────────┐
+                    │ BAML IngestLink               │
+                    │ (live analyzeLink(), or a     │
+                    │  per-user Gemini Batch)       │
+                    └───────────┬───────────────────┘
                                 │
-                          OK ◄──┴──► ERROR
-                           │          │
+                          OK ◄──┴──► ERROR (call, empty or
+                           │          │     unparsable response,
+                           │          │     whole batch failed)
                            │          ▼
-                           │    ┌───────────────────┐
-                           │    │ Revert to FETCHED │
-                           │    │ Log error         │
-                           │    └───────────────────┘
+                           │    ┌──────────────────────────────┐
+                           │    │ recordAnalysisFailure():     │
+                           │    │ - Revert to FETCHED          │
+                           │    │ - analysisError = message    │
+                           │    │ - analysisAttempts += 1      │
+                           │    └──────────────────────────────┘
                            ▼
                     ┌───────────────────────────────┐
-                    │ AI Output:                    │
+                    │ AI Output (LinkAnalysis):     │
                     │ - summary                     │
-                    │ - keyPoints[]                 │
-                    │ - category                    │
-                    │ - tags[]                      │
-                    │ - worthinessScore (0-1)       │
-                    │ - uniquenessScore (0-1)       │
-                    │ - isHighlighted (bool)        │
-                    │ - highlightReason             │
+                    │ - keyPoints[] (3-5)           │
+                    │ - tags[] (link type)          │
+                    │ - contentTags[] (category)    │
+                    │ - metadataTags[] (access)     │
                     └───────────────┬───────────────┘
                                     │
                                     ▼
                     ┌───────────────────────────────┐
-                    │ Upsert Category               │
-                    └───────────────┬───────────────┘
-                                    │
-                                    ▼
-                    ┌───────────────────────────────┐
+                    │ fieldsFromLinkAnalysis():     │
                     │ Update link: COMPLETED        │
-                    │ - Store all AI fields         │
-                    │ - Link to category            │
-                    │ - Set analyzedAt timestamp    │
+                    │ - aiSummary, aiKeyPoints      │
+                    │ - aiCategory = contentTags[0] │
+                    │ - isPaywalled / paywallType   │
+                    │   from metadataTags           │
+                    │ - analyzedAt = now            │
+                    │ - analysisError cleared,      │
+                    │   analysisAttempts = 0        │
                     └───────────────────────────────┘
 ```
+
+Refetch, Wayback, promote-attempt and X-article resolution write new content, so they also clear `analysisError` and reset `analysisAttempts` to 0.
+
+worthinessScore, uniquenessScore and isHighlighted are still in the schema, but the current analysis does not fill them in.
 
 ## Link Status State Machine
 
@@ -430,8 +438,9 @@ When the email query is changed in settings:
                           │                │               │
                           ▼                ▼               ▼
                     ┌──────────┐     ┌───────────────────────────┐
-                    │  FAILED  │     │ (stays FETCHED on         │
-                    └──────────┘     │  AI analysis failure)     │
+                    │  FAILED  │     │ back to FETCHED on AI     │
+                    └──────────┘     │ failure, with             │
+                          │         │ analysisError set         │
                           │         └───────────────────────────┘
                           │
                           ▼
@@ -596,7 +605,8 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 | Wayback fetcher | `lib/fetchers/wayback.ts`, `lib/wayback-fetcher.ts` | `fetchFromWayback()` |
 | AI HTML fallback | `lib/ai-html-parser.ts` | `parseHtmlWithAI()` |
 | Nested links | `lib/process-nested-links.ts` | `processNestedLinks()` |
-| AI analysis | `lib/analysis.ts`, `lib/gemini-batch.ts` | `analyzeLink()`, per-user Gemini Batch apply |
+| AI analysis | `lib/analysis.ts`, `lib/gemini-batch.ts` | `analyzeLink()`, `recordAnalysisFailure()`, per-user Gemini Batch apply |
+| Digest groups | `lib/link-buckets.ts`, `app/api/digest/route.ts` | `bucketWhere()`, `classifyFetchError()`: which links were analyzed and why the rest weren't |
 | Fetch attempt recording | `lib/fetch-attempts.ts` | `recordFetchAttempts()`, `recordSingleFetchAttempt()` |
 | Fetch attempts API | `app/api/links/[id]/attempts/route.ts` | List attempts (no rawHtml) |
 | Fetch attempt detail API | `app/api/links/[id]/attempts/[attemptId]/route.ts` | Single attempt (with rawHtml) |
