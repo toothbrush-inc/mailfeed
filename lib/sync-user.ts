@@ -343,6 +343,11 @@ async function processEmailPage(
   }
 }
 
+// Hard stop on Gmail list calls per run. Pages of already-synced mail are
+// skipped without counting against maxPages, so this bounds that walk.
+const MAX_LISTED_PAGES = 40
+
+/** Returns true when the run stopped with pages left (page cap hit). */
 async function fetchAndProcessPages(
   userId: string,
   query: string,
@@ -352,9 +357,10 @@ async function fetchAndProcessPages(
   settings: ResolvedSettings,
   syncResults: SyncResults,
   triggerAi: boolean
-) {
+): Promise<boolean> {
   let pageToken: string | undefined
   let currentPage = 0
+  let processedPages = 0
   const emailsPerPage = 50
 
   do {
@@ -388,11 +394,17 @@ async function fetchAndProcessPages(
       continue
     }
 
+    processedPages++
     syncResults.pagesProcessed++
     await processEmailPage(newMessageIds, gmail, userId, hiddenDomains, settings, syncResults, triggerAi)
-  } while (pageToken && currentPage < maxPages)
+  } while (pageToken && processedPages < maxPages && currentPage < MAX_LISTED_PAGES)
+
+  if (pageToken && currentPage >= MAX_LISTED_PAGES) {
+    syncLogger.warn(`Stopped after listing ${MAX_LISTED_PAGES} pages`, { mode: syncResults.mode })
+  }
 
   syncResults.hasMoreHistory = !!pageToken
+  return !!pageToken
 }
 
 async function finalizeResults(userId: string, syncResults: SyncResults) {
@@ -426,6 +438,7 @@ async function handleInitialSync(
       syncQuery: null,
       syncNewestEmailDate: null,
       syncOldestEmailDate: null,
+      syncGapFrom: null,
     },
   })
 
@@ -476,6 +489,7 @@ export async function runSyncForUser(
       hiddenDomains: true,
       syncQuery: true,
       syncNewestEmailDate: true,
+      syncGapFrom: true,
       syncOldestEmailDate: true,
     },
   })
@@ -496,19 +510,32 @@ export async function runSyncForUser(
       return syncResults
     }
 
-    const afterDate = new Date(user.syncNewestEmailDate)
+    const searchFrom = user.syncGapFrom ?? user.syncNewestEmailDate
+    const afterDate = new Date(searchFrom)
     afterDate.setDate(afterDate.getDate() - 1)
     const query = `${settings.email.query} after:${formatGmailDate(afterDate)}`
 
-    await fetchAndProcessPages(
+    const truncated = await fetchAndProcessPages(
       userId, query, options.maxPagesOverride ?? 1, gmail, hiddenDomains, settings, syncResults, triggerAi
     )
 
-    if (syncResults.emailsProcessed === 0) {
+    if (syncResults.emailsProcessed === 0 && !truncated) {
       syncResults.upToDate = true
     }
 
     await updateSyncCoverage(userId)
+    // Gmail lists newest first, so a cut-off run leaves older unseen mail
+    // behind the new syncNewestEmailDate. Keep searching from where this run
+    // started until a run lists the whole window.
+    await prisma.user.update({
+      where: { id: userId },
+      data: { syncGapFrom: truncated ? searchFrom : null },
+    })
+    if (truncated) {
+      syncLogger.info("check-new stopped at page cap; next run resumes from gap", {
+        gapFrom: searchFrom.toISOString(),
+      })
+    }
   } else if (mode === "load-more") {
     if (!user?.syncOldestEmailDate) {
       throw new Error("Run initial sync first")

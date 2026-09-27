@@ -10,7 +10,7 @@ The sync system uses four modes, driven by date-based Gmail search operators (`a
 
 | Mode | Trigger | Behavior |
 |------|---------|----------|
-| `check-new` | Sync button, **hourly worker** | Appends `after:` to query using `syncNewestEmailDate` |
+| `check-new` | Sync button, **hourly worker** | Appends `after:` to query using `syncGapFrom` if set, else `syncNewestEmailDate` |
 | `load-more` | "Load Older" button | Appends `before:` to query using `syncOldestEmailDate` |
 | `initial` | First sync (app or worker) or after query change | No date filter, fetches from beginning |
 | `full-resync` | Overflow menu | Same as `initial` (clears state, doesn't delete data) |
@@ -23,6 +23,7 @@ User
 ├── syncQuery                String?     (email query active when sync state was captured)
 ├── syncNewestEmailDate      DateTime?   (receivedAt of most recent synced email)
 ├── syncOldestEmailDate      DateTime?   (receivedAt of oldest synced email)
+├── syncGapFrom              DateTime?   (check-new resume point after a cut-off run)
 ├── scheduledSyncStartedAt   DateTime?   (hourly worker lock)
 ├── lastScheduledSyncAt      DateTime?
 └── lastScheduledSyncError   String?
@@ -47,6 +48,10 @@ Interactive `POST /api/sync` still fire-and-forgets per-link AI. The worker pass
 ### Date-Based Incremental Sync
 
 Gmail's `after:` and `before:` operators use day granularity (YYYY/MM/DD). To handle boundary overlap, `check-new` subtracts 1 day from `syncNewestEmailDate` for the `after:` filter, and `load-more` adds 1 day to `syncOldestEmailDate` for the `before:` filter. Existing `gmailId` deduplication is per user (`userId` + `gmailId`).
+
+Page budget: only pages with at least one new message count against `maxPages`. Pages of already-synced mail are skipped for free, up to 40 listed pages per run.
+
+**Backlog gap.** Gmail lists newest first, so a `check-new` that stops at its page cap stores the newest mail and moves `syncNewestEmailDate` past older unseen mail. When that happens `check-new` stores the date it searched from in `syncGapFrom`, and the next run searches from there again (the already-synced pages cost nothing). `syncGapFrom` is cleared once a run lists the whole window, and on initial/full-resync or a query change.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
