@@ -40,6 +40,14 @@ ENV NODE_ENV=production
 ARG NEXT_PUBLIC_ENABLE_ANALYSIS
 ENV NEXT_PUBLIC_ENABLE_ANALYSIS=$NEXT_PUBLIC_ENABLE_ANALYSIS
 
+# BAML's native HTTP client verifies TLS against the system CA store, which
+# the slim base image does not ship (Node bundles its own, so plain fetch
+# works without it). Without this every LLM call fails with "unable to get
+# local issuer certificate".
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/lib ./lib
 COPY --from=builder /app/scripts ./scripts
@@ -63,6 +71,11 @@ ENV NEXT_PUBLIC_ENABLE_ANALYSIS=$NEXT_PUBLIC_ENABLE_ANALYSIS
 
 RUN groupadd --system --gid 1001 nodejs \
  && useradd --system --uid 1001 --gid nodejs nextjs
+
+# System CA store for BAML's TLS client (see worker stage).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
 # Copy standalone build output
 COPY --from=builder /app/.next/standalone ./
