@@ -419,7 +419,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
           Debug
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
+      <DialogContent className="max-w-2xl max-h-[85dvh]">
         <DialogHeader>
           <DialogTitle>Link Debug</DialogTitle>
           <DialogDescription className="break-all">
@@ -430,13 +430,15 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
           {/* Section 1: Pipeline Status */}
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Pipeline Status</h4>
-            <div className="flex items-center gap-2">
+            {/* The step chain is wider than a phone; scroll it rather than
+                wrapping, so the connectors keep reading as one sequence. */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
               {steps.map((step, i) => (
-                <div key={step.label} className="flex items-center gap-2">
+                <div key={step.label} className="flex shrink-0 items-center gap-2">
                   {i > 0 && (
-                    <div className="w-6 h-px bg-border" />
+                    <div className="w-6 h-px bg-border shrink-0" />
                   )}
-                  <div className="flex items-center gap-1.5 rounded-md border px-3 py-1.5">
+                  <div className="flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5">
                     <StepIcon status={step.status} />
                     <span className="text-sm font-medium">{step.label}</span>
                   </div>
@@ -542,7 +544,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
           {/* Section 2: Details Grid */}
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Details</h4>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+            <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
               <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">Fetch Status</span>
                 <Badge variant="outline" className="text-xs font-mono">
@@ -554,7 +556,7 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                 <span className="font-mono text-xs">{link.contentSource || "\u2014"}</span>
               </div>
               {link.finalUrl && (
-                <div className="col-span-2 flex justify-between gap-2">
+                <div className="flex justify-between gap-2 sm:col-span-2">
                   <span className="text-muted-foreground shrink-0">Final URL</span>
                   <span className="text-xs text-right break-all">{link.finalUrl}</span>
                 </div>
@@ -566,9 +568,9 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                 </div>
               )}
               {link.fetchError && (
-                <div className="col-span-2 flex justify-between gap-2">
+                <div className="flex justify-between gap-2 sm:col-span-2">
                   <span className="text-muted-foreground">Fetch Error</span>
-                  <span className="text-xs text-red-500 text-right truncate max-w-[300px]" title={link.fetchError}>
+                  <span className="text-xs text-red-500 text-right truncate min-w-0 max-w-[60%]" title={link.fetchError}>
                     {link.fetchError}
                   </span>
                 </div>
@@ -590,9 +592,9 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                 <span className="font-mono text-xs">{link.embeddingStatus || "\u2014"}</span>
               </div>
               {link.embeddingError && (
-                <div className="col-span-2 flex justify-between gap-2">
+                <div className="flex justify-between gap-2 sm:col-span-2">
                   <span className="text-muted-foreground">Embedding Error</span>
-                  <span className="text-xs text-red-500 text-right truncate max-w-[300px]" title={link.embeddingError}>
+                  <span className="text-xs text-red-500 text-right truncate min-w-0 max-w-[60%]" title={link.embeddingError}>
                     {link.embeddingError}
                   </span>
                 </div>

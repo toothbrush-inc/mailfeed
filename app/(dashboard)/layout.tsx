@@ -27,7 +27,11 @@ export default async function DashboardLayout({
       <Header user={session.user} />
       <div className="flex">
         <Sidebar />
-        <main className="flex-1 p-6">{children}</main>
+        {/* min-w-0 stops long titles/URLs from forcing the flex row wider than
+            the viewport; pb-24 keeps content clear of the floating chat button. */}
+        <main className="min-w-0 flex-1 p-4 pb-24 md:p-6 md:pb-24">
+          {children}
+        </main>
       </div>
       <ChatButton />
     </div>

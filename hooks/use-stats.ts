@@ -2,7 +2,7 @@
 
 import useSWR from "swr"
 
-interface Stats {
+export interface Stats {
   links: number
   emails: number
   domains: number
