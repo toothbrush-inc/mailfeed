@@ -32,7 +32,7 @@ User
 
 The Docker `worker` service runs `scripts/worker.ts` with no browser session. It uses stored Gmail refresh tokens via `getGmailClient(userId)`:
 
-1. Every ~2 minutes, **reap** in-flight Gemini Batch jobs and write results with `{id, userId}`.
+1. Every ~2 minutes, **reap** in-flight Gemini Batch jobs and write results with `{id, userId}`. Up to 50 per tick, oldest first. A batch whose user no longer has a Gemini key, or that is still in flight 72h after submit, is marked failed/expired and its items go back to `FETCHED` (analysis) or embedding `FAILED` so the next sync resubmits them.
 2. Every hour, for each user with a Google refresh token and `settings.sync.scheduled` (default true): **check-new** (or **initial** if they have never synced), fetch new links, then submit analysis/embeddings.
 
 Interactive `POST /api/sync` still fire-and-forgets per-link AI. The worker passes `triggerAi: false` and batches AI afterward.

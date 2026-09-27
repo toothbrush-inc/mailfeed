@@ -24,6 +24,8 @@ export const LIVE_AI_THRESHOLD = Number(process.env.MAILFEED_LIVE_AI_THRESHOLD) 
 const BATCH_CHUNK_SIZE = 100
 const MAX_HTML_CHARS = 24_000
 const IN_FLIGHT = ["PENDING", "RUNNING"]
+// Gemini expires batch jobs after 48h; past this we stop polling and requeue.
+const BATCH_STALE_MS = 72 * 60 * 60 * 1000
 
 export type GeminiBatchKind = "ANALYZE_LINKS" | "EMBED_LINKS" | "EMBED_EMAILS"
 
@@ -453,16 +455,35 @@ async function revertFailed(userId: string, kind: GeminiBatchKind, itemIds: stri
   }
 }
 
-async function reapOne(row: {
+type BatchRow = {
   id: string
   userId: string
   geminiName: string
   kind: string
   itemIds: string[]
-}): Promise<void> {
+  submittedAt: Date
+}
+
+// Close out a batch locally and hand its items back to the next submit pass.
+async function failBatch(row: BatchRow, status: string, error: string) {
+  await revertFailed(row.userId, row.kind as GeminiBatchKind, row.itemIds, error)
+  await prisma.geminiBatch.update({
+    where: { id: row.id },
+    data: { status, error, completedAt: new Date() },
+  })
+}
+
+async function reapOne(row: BatchRow): Promise<void> {
+  if (Date.now() - row.submittedAt.getTime() > BATCH_STALE_MS) {
+    await failBatch(row, "EXPIRED", "Batch not collected within 72h")
+    log.warn("Expired stale batch", { id: row.id, userId: row.userId, name: row.geminiName })
+    return
+  }
+
   const aiKeys = await getUserAiKeys(row.userId)
   const apiKey = resolveGeminiKey(aiKeys)
   if (!apiKey) {
+    await failBatch(row, "FAILED", "No Gemini key to collect batch")
     log.warn("No Gemini key to reap batch", { id: row.id, userId: row.userId })
     return
   }
@@ -479,11 +500,7 @@ async function reapOne(row: {
 
   if (status !== "SUCCEEDED") {
     const err = job.error?.message || status
-    await revertFailed(row.userId, row.kind as GeminiBatchKind, row.itemIds, err)
-    await prisma.geminiBatch.update({
-      where: { id: row.id },
-      data: { status, error: err, completedAt: new Date() },
-    })
+    await failBatch(row, status, err)
     log.warn("Batch did not succeed", { name: row.geminiName, status, err })
     return
   }
@@ -525,11 +542,7 @@ async function reapOne(row: {
     })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    await revertFailed(row.userId, row.kind as GeminiBatchKind, row.itemIds, msg)
-    await prisma.geminiBatch.update({
-      where: { id: row.id },
-      data: { status: "FAILED", error: msg, completedAt: new Date() },
-    })
+    await failBatch(row, "FAILED", msg)
     log.error("Failed applying batch", error)
   }
 }
@@ -537,7 +550,8 @@ async function reapOne(row: {
 export async function reapPendingBatches(): Promise<number> {
   const rows = await prisma.geminiBatch.findMany({
     where: { status: { in: IN_FLIGHT } },
-    select: { id: true, userId: true, geminiName: true, kind: true, itemIds: true },
+    select: { id: true, userId: true, geminiName: true, kind: true, itemIds: true, submittedAt: true },
+    orderBy: { submittedAt: "asc" },
     take: 50,
   })
   for (const row of rows) {
