@@ -17,7 +17,8 @@ const BUCKET_INFO: Record<DigestBucket, { label: string; description: string }> 
   },
   paywalled: {
     label: "Paywalled",
-    description: "Behind a paywall or sign-in, so there was nothing to analyze.",
+    description:
+      "Behind a paywall or sign-in, or the page had too little readable text, so there was nothing to analyze.",
   },
   unreachable: {
     label: "Couldn't load",

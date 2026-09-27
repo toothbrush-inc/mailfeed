@@ -9,7 +9,11 @@ export interface FetchResult {
   imageUrl?: string
   wordCount?: number
   isPaywalled?: boolean
-  paywallType?: "hard" | "soft" | "registration"
+  // "insufficient_content": the page loaded but had too little readable
+  // text to analyze (JS-rendered, empty, or a teaser) — treated as a paywall
+  paywallType?: "hard" | "soft" | "registration" | "insufficient_content"
+  // The page was reached but Readability found (almost) no text
+  insufficientContent?: boolean
   error?: string
   finalUrl?: string
   wasRedirected?: boolean
@@ -59,6 +63,7 @@ export async function fetchWithFallbackChain(
 ): Promise<FetchWithSourceResult> {
   let lastError: string | undefined
   const attempts: FetchAttemptDetail[] = []
+  const failures: FetchResult[] = []
 
   for (let i = 0; i < chain.length; i++) {
     const fetcherId = chain[i]
@@ -87,6 +92,7 @@ export async function fetchWithFallbackChain(
         return { ...result, contentSource: fetcherId, attempts }
       }
       // If it failed but not fatally, try next fetcher
+      failures.push(result)
       lastError = result.error
       console.log(`[FallbackChain] ${fetcherId} failed for ${url}: ${result.error}, trying next...`)
     } catch (error) {
@@ -106,11 +112,26 @@ export async function fetchWithFallbackChain(
     }
   }
 
-  // All fetchers failed — return the result from the first fetcher with the last error
+  // All fetchers failed — return what the first fetcher saw of the page
+  // (redirects, paywall) with the last error. A page that loaded with too
+  // little text counts as a paywall of type "insufficient_content", unless a
+  // real paywall was detected.
+  const first = failures[0]
+  const insufficientContent = failures.some((f) => f.insufficientContent)
   return {
     success: false,
     error: lastError || "All fetchers failed",
     contentSource: chain[0] || "unknown",
     attempts,
+    finalUrl: first?.finalUrl,
+    wasRedirected: first?.wasRedirected,
+    rawHtml: first?.rawHtml,
+    isPaywalled: first?.isPaywalled || insufficientContent || undefined,
+    paywallType: first?.isPaywalled
+      ? first.paywallType
+      : insufficientContent
+        ? "insufficient_content"
+        : undefined,
+    insufficientContent: insufficientContent || undefined,
   }
 }

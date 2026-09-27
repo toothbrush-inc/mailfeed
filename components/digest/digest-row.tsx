@@ -18,6 +18,7 @@ const PAYWALL_LABELS: Record<string, string> = {
   hard: "Paid subscription",
   soft: "Metered paywall",
   registration: "Sign-in required",
+  insufficient_content: "Not enough content",
 }
 
 function formatDate(dateString: string): string {
@@ -154,6 +155,13 @@ export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDo
           {link.failure.error && (
             <span className="break-words text-muted-foreground">{link.failure.error}</span>
           )}
+        </p>
+      )}
+
+      {bucket === "paywalled" && link.paywallType === "insufficient_content" && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          The page loaded but had too little readable text to analyze. It may need JavaScript,
+          or only show a teaser.
         </p>
       )}
 

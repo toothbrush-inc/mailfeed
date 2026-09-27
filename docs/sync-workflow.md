@@ -289,11 +289,15 @@ POST /api/sync?mode=<mode>
                          YES ◄──┴──► NO
                           │          │
                           │          ▼
-                          │    ┌──────────────────────┐
-                          │    │ Update link:         │
-                          │    │ - FAILED or          │
-                          │    │ - PAYWALL_DETECTED   │
-                          │    └──────────────────────┘
+                          │    ┌──────────────────────────────┐
+                          │    │ Update link:                 │
+                          │    │ - PAYWALL_DETECTED if a      │
+                          │    │   paywall was detected, or   │
+                          │    │   the page had too little    │
+                          │    │   text (paywallType          │
+                          │    │   "insufficient_content")    │
+                          │    │ - otherwise FAILED           │
+                          │    └──────────────────────────────┘
                           │
                           ▼
                     ┌───────────────────────┐
@@ -307,6 +311,8 @@ POST /api/sync?mode=<mode>
                                 │
                                 ▼
 ```
+
+When every fetcher in the chain fails, `fetchWithFallbackChain()` returns the first fetcher's view of the page (`finalUrl`, `wasRedirected`, `rawHtml`, `isPaywalled`, `paywallType`) with the last fetcher's error. A fetcher sets `insufficientContent` when the page loaded but Readability found almost no text: the direct fetcher's `isPoorContent()` check (under 50 words, X/Twitter exempt), or "Could not parse article content". If no real paywall was detected, the chain then reports `isPaywalled: true` with `paywallType: "insufficient_content"`. The Digest shows these under Paywalled as "Not enough content". Migration `0007` moves existing `FAILED` links with those errors.
 
 ## Post-Sync Coverage Update
 

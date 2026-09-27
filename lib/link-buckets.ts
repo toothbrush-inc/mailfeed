@@ -87,6 +87,8 @@ export const FAILURE_LABELS: Record<FailureKind, string> = {
   not_found: "Page no longer exists",
   server_error: "Site returned a server error",
   timeout: "Timed out",
+  // New fetches put these under Paywalled ("insufficient_content"); this
+  // covers a wayback-only run that could not parse the archived copy.
   unreadable: "No readable text (needs JavaScript or is empty)",
   network: "Couldn't connect to the site",
   excluded: "Redirected to an excluded site",
