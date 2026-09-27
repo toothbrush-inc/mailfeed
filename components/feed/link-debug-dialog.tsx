@@ -38,6 +38,8 @@ interface LinkDebugDialogProps {
     fetchError: string | null
     fetchedAt: string | null
     analyzedAt: string | null
+    analysisError?: string | null
+    analysisAttempts?: number
     contentSource: string | null
     finalUrl: string | null
     finalDomain: string | null
@@ -102,7 +104,10 @@ function derivePipelineSteps(link: LinkDebugDialogProps["link"]): PipelineStep[]
 
   // Analysis status
   let analysisStatus: StepStatus = "pending"
-  if (link.analyzedAt) {
+  if (link.fetchStatus !== "ANALYZING" && link.analysisError) {
+    // The most recent analysis failed, even if an older result is still stored
+    analysisStatus = "failed"
+  } else if (link.analyzedAt) {
     analysisStatus = "success"
   } else if (link.fetchStatus === "ANALYZING") {
     analysisStatus = "pending"
@@ -501,20 +506,21 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                 </Button>
               </div>
               <div className="flex items-center gap-2">
-                {FEATURE_FLAGS.enableAnalysis && (steps.find(s => s.label === "Analyzed")?.status === "pending" || steps.find(s => s.label === "Analyzed")?.status === "failed") && steps.find(s => s.label === "Fetched")?.status === "success" && (
+                {/* Always offered once fetched, so analysis can be re-run while testing */}
+                {FEATURE_FLAGS.enableAnalysis && steps.find(s => s.label === "Fetched")?.status === "success" && (
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs"
                     onClick={handleAnalyze}
-                    disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding}
+                    disabled={refetchingFetcher !== null || isAnalyzing || isEmbedding || link.fetchStatus === "ANALYZING"}
                   >
                     {isAnalyzing ? (
                       <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                     ) : (
                       <Sparkles className="mr-1 h-3 w-3" />
                     )}
-                    {steps.find(s => s.label === "Analyzed")?.status === "failed" ? "Re-analyze" : "Analyze"}
+                    {link.analyzedAt || link.analysisError ? "Re-analyze" : "Analyze"}
                   </Button>
                 )}
                 {(steps.find(s => s.label === "Embedded")?.status === "pending" || steps.find(s => s.label === "Embedded")?.status === "failed") && steps.find(s => s.label === "Fetched")?.status === "success" && (
@@ -585,6 +591,18 @@ export function LinkDebugDialog({ linkId, linkUrl, link, onPromoteAttempt, onAct
                     <span className="text-muted-foreground">Tags</span>
                     <span className="text-xs">{tagCount > 0 ? `${tagCount} tags` : "\u2014"}</span>
                   </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Analysis Failures</span>
+                    <span className="text-xs">{link.analysisAttempts || 0}</span>
+                  </div>
+                  {link.analysisError && (
+                    <div className="flex justify-between gap-2 sm:col-span-2">
+                      <span className="text-muted-foreground">Analysis Error</span>
+                      <span className="text-xs text-red-500 text-right truncate min-w-0 max-w-[60%]" title={link.analysisError}>
+                        {link.analysisError}
+                      </span>
+                    </div>
+                  )}
                 </>
               )}
               <div className="flex justify-between gap-2">

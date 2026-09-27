@@ -182,6 +182,8 @@ export async function GET(request: NextRequest) {
             fetchError: true,
             fetchedAt: true,
             analyzedAt: true,
+            analysisError: true,
+            analysisAttempts: true,
             isHighlighted: true,
             highlightReason: true,
             isRead: true,

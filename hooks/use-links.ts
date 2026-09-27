@@ -36,6 +36,8 @@ interface Link {
   fetchError: string | null
   fetchedAt: string | null
   analyzedAt: string | null
+  analysisError: string | null
+  analysisAttempts: number
   isRead: boolean
   readAt: string | null
   embeddingStatus: string | null
@@ -75,6 +77,8 @@ interface Link {
     fetchError: string | null
     fetchedAt: string | null
     analyzedAt: string | null
+    analysisError: string | null
+    analysisAttempts: number
     isHighlighted: boolean
     highlightReason: string | null
     isRead: boolean
