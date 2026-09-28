@@ -81,7 +81,7 @@ async function processLink(
   linkId: string,
   url: string,
   userId: string,
-  emailId: string,
+  emailId: string | null,
   hiddenDomains: Set<string>,
   settings: ResolvedSettings,
   triggerAi: boolean
@@ -178,6 +178,7 @@ async function processLink(
       where: { id: linkId },
       data: {
         fetchStatus: "FETCHED",
+        fetchError: null,
         title: content.title,
         description: content.excerpt,
         imageUrl: content.imageUrl,
@@ -234,7 +235,7 @@ async function processLink(
 }
 
 async function processLinksInParallel(
-  links: Array<{ id: string; url: string; emailId: string }>,
+  links: Array<{ id: string; url: string; emailId: string | null }>,
   userId: string,
   hiddenDomains: Set<string>,
   settings: ResolvedSettings,
@@ -341,6 +342,71 @@ async function processEmailPage(
       if (lr.error) syncResults.errors.push(lr.error)
     }
   }
+}
+
+// A link is only fetched while its email syncs, so one left in PENDING or
+// FETCHING by a crash or restart is never fetched again unless retried here.
+const INTERRUPTED_FETCH_AFTER_MS = 24 * 60 * 60 * 1000
+const INTERRUPTED_FETCH_MARKER = "Fetch was interrupted; retrying"
+const MAX_FETCH_RETRIES_PER_RUN = 50
+
+/**
+ * Retry links whose fetch was interrupted. Each link gets one retry: it is
+ * marked first, and a marked link found stuck again is set to FAILED. Links
+ * that finished fetching (FAILED, PAYWALL_DETECTED, FETCHED, ...) are never
+ * touched, so bad or paywalled links are not fetched again.
+ */
+export async function retryInterruptedFetches(
+  userId: string,
+  options: { triggerAi?: boolean } = {}
+): Promise<number> {
+  const settings = await getUserSettings(userId)
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { hiddenDomains: true } })
+  const hiddenDomains = new Set(user?.hiddenDomains || [])
+
+  const stuck = await prisma.link.findMany({
+    where: {
+      userId,
+      fetchStatus: { in: ["PENDING", "FETCHING"] },
+      updatedAt: { lt: new Date(Date.now() - INTERRUPTED_FETCH_AFTER_MS) },
+      // Hidden-domain links are parked in PENDING on purpose
+      ...(hiddenDomains.size > 0 && {
+        OR: [{ domain: null }, { domain: { notIn: [...hiddenDomains] } }],
+      }),
+    },
+    select: { id: true, url: true, emailId: true, parentLinkId: true, fetchError: true },
+    orderBy: { createdAt: "desc" },
+    take: MAX_FETCH_RETRIES_PER_RUN,
+  })
+
+  const giveUp: string[] = []
+  const retry: Array<{ id: string; url: string; emailId: string | null }> = []
+  for (const link of stuck) {
+    // Nested links only add context to their parent, so they are not retried
+    if (link.parentLinkId || link.fetchError === INTERRUPTED_FETCH_MARKER) giveUp.push(link.id)
+    else retry.push(link)
+  }
+
+  if (giveUp.length > 0) {
+    await prisma.link.updateMany({
+      where: { userId, id: { in: giveUp } },
+      data: { fetchStatus: "FAILED", fetchError: "Fetch was interrupted" },
+    })
+  }
+  if (retry.length > 0) {
+    await prisma.link.updateMany({
+      where: { userId, id: { in: retry.map((l) => l.id) } },
+      data: { fetchError: INTERRUPTED_FETCH_MARKER },
+    })
+    await processLinksInParallel(
+      retry, userId, hiddenDomains, settings, settings.sync.linkConcurrency, options.triggerAi !== false
+    )
+  }
+
+  if (stuck.length > 0) {
+    syncLogger.warn("Recovered interrupted fetches", { userId, retried: retry.length, failed: giveUp.length })
+  }
+  return retry.length
 }
 
 async function fetchAndProcessPages(

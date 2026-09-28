@@ -34,6 +34,10 @@ The Docker `worker` service runs `scripts/worker.ts` with no browser session. It
 
 1. Every ~2 minutes, **reap** in-flight Gemini Batch jobs and write results with `{id, userId}`. Up to 50 per tick, oldest first. Finished jobs are always applied, however late. A batch that 72h after submit is still running (then cancelled), still cannot be looked up, or has no Gemini key to look it up with, is marked `EXPIRED` and its items go back to `FETCHED` (analysis) or embedding `FAILED` so the next sync resubmits them. Before 72h a missing key or failed lookup just retries next tick.
 2. Every hour, for each user with a Google refresh token and `settings.sync.scheduled` (default true): **check-new** (or **initial** if they have never synced), fetch new links, then submit analysis/embeddings.
+   Before submitting, it recovers links left behind by a crash or restart (not updated for 24h):
+   - `PENDING`/`FETCHING` top-level links are fetched again, up to 50 per run. Each gets **one** retry: `fetchError` is set to a marker first, and a marked link found stuck again is set to `FAILED` ("Fetch was interrupted"). Nested links are set to `FAILED` without a retry. Hidden-domain links, which are parked in `PENDING`, are skipped.
+   - `ANALYZING` links not in an in-flight Gemini batch go back to `FETCHED` through `recordAnalysisFailure`, which counts as an attempt, so `MAX_AUTO_ANALYSIS_ATTEMPTS` (3) still applies.
+   - Links whose fetch finished (`FAILED`, `PAYWALL_DETECTED`, `FETCHED`, `COMPLETED`) are never fetched again by the worker.
 
 Interactive `POST /api/sync` still fire-and-forgets per-link AI. The worker passes `triggerAi: false` and batches AI afterward.
 
