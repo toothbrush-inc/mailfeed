@@ -21,6 +21,7 @@ export function FeedContainer() {
   const domain = searchParams.get("domain")
   const highlighted = searchParams.get("highlighted") === "true"
   const readFilter = searchParams.get("read") as "all" | "read" | "unread" | null
+  const liked = searchParams.get("liked") === "true"
   const analysisFilter = searchParams.get("analysis") as "all" | "analyzed" | "not_analyzed" | null
   const search = searchParams.get("search")
   const linkId = searchParams.get("link")
@@ -33,6 +34,7 @@ export function FeedContainer() {
     domain,
     highlighted,
     read: readFilter || "all",
+    liked,
     analysis: analysisFilter || "all",
     search,
     link: linkId,
@@ -107,6 +109,8 @@ export function FeedContainer() {
               ? "This link isn't in the feed. It may be on a hidden domain or have been removed."
               : search
               ? `No links matching "${search}". Try a different search term.`
+              : liked
+              ? "No liked links match these filters yet."
               : analysisFilter === "analyzed"
               ? "No analyzed links match these filters yet."
               : analysisFilter === "not_analyzed"

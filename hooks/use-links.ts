@@ -40,6 +40,8 @@ interface Link {
   analysisAttempts: number
   isRead: boolean
   readAt: string | null
+  isLiked: boolean
+  likedAt: string | null
   embeddingStatus: string | null
   embeddedAt: string | null
   embeddingError: string | null
@@ -82,6 +84,7 @@ interface Link {
     isHighlighted: boolean
     highlightReason: string | null
     isRead: boolean
+    isLiked: boolean
     readingTimeMin: number | null
     imageUrl: string | null
     isPaywalled: boolean
@@ -114,6 +117,7 @@ interface UseLinksOptions {
   highlighted?: boolean
   status?: string | null
   read?: "all" | "read" | "unread"
+  liked?: boolean
   analysis?: "all" | "analyzed" | "not_analyzed"
   search?: string | null
   link?: string | null
@@ -133,6 +137,7 @@ export function useLinks(options: UseLinksOptions = {}) {
   if (options.highlighted) params.set("highlighted", "true")
   if (options.status) params.set("status", options.status)
   if (options.read && options.read !== "all") params.set("read", options.read)
+  if (options.liked) params.set("liked", "true")
   if (options.analysis && options.analysis !== "all") params.set("analysis", options.analysis)
   if (options.search) params.set("search", options.search)
   if (options.link) params.set("link", options.link)

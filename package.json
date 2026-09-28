@@ -21,6 +21,7 @@
     "lint": "eslint",
     "test:encryption": "npx tsx scripts/test-encryption.ts",
     "test:isolation": "npx tsx scripts/test-tenant-isolation.ts",
+    "test:likes": "npx tsx scripts/test-likes.ts",
     "test:reaper": "npx tsx scripts/test-batch-reaper.ts",
     "test:recovery": "npx tsx scripts/test-stuck-recovery.ts",
     "worker": "npx tsx scripts/worker.ts",

@@ -15,6 +15,7 @@ import {
   Twitter,
   Flag,
   CheckCircle,
+  Heart,
 } from "lucide-react"
 import {
   Dialog,
@@ -54,6 +55,7 @@ interface NestedLinkItemProps {
     isHighlighted: boolean
     highlightReason: string | null
     isRead: boolean
+    isLiked: boolean
     readingTimeMin: number | null
     imageUrl: string | null
     isPaywalled: boolean
@@ -73,6 +75,8 @@ interface NestedLinkItemProps {
 export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
   const [isTogglingRead, setIsTogglingRead] = useState(false)
   const [isRead, setIsRead] = useState(link.isRead)
+  const [isLiked, setIsLiked] = useState(link.isLiked)
+  const [isTogglingLike, setIsTogglingLike] = useState(false)
   const [isResolvingXArticle, setIsResolvingXArticle] = useState(false)
   const [xArticleUsername, setXArticleUsername] = useState("")
   const [xArticleError, setXArticleError] = useState<string | null>(null)
@@ -104,6 +108,25 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
       console.error("Failed to toggle read status:", error)
     } finally {
       setIsTogglingRead(false)
+    }
+  }
+
+  // Optimistic like toggle; never touches read state
+  const handleToggleLike = async () => {
+    const next = !isLiked
+    setIsLiked(next)
+    setIsTogglingLike(true)
+    try {
+      const response = await fetch(`/api/links/${link.id}/like`, {
+        method: next ? "POST" : "DELETE",
+      })
+      if (!response.ok) throw new Error("Failed to update like")
+      onUpdate?.()
+    } catch (error) {
+      setIsLiked(!next)
+      console.error("Failed to toggle like:", error)
+    } finally {
+      setIsTogglingLike(false)
     }
   }
 
@@ -403,6 +426,19 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
                 <Archive className="mr-1 h-3 w-3" />
               )}
               {isRead ? "Mark as unread" : "Mark as read"}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={handleToggleLike}
+              disabled={isTogglingLike}
+              aria-pressed={isLiked}
+              aria-label={isLiked ? "Unlike" : "Like"}
+              title={isLiked ? "Unlike" : "Like"}
+            >
+              <Heart className={cn("h-3 w-3", isLiked && "fill-current text-rose-500")} />
             </Button>
 
             {/* Report Broken Link button */}

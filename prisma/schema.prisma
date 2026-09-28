@@ -176,6 +176,10 @@ model Link {
   isRead Boolean   @default(false)
   readAt DateTime?
 
+  // Liked by the user (explicit action only; independent of read state)
+  isLiked Boolean   @default(false)
+  likedAt DateTime?
+
   // Embedding for RAG (vector column managed via raw SQL)
   embeddingStatus String?   @default("PENDING")  // PENDING, PROCESSING, COMPLETED, FAILED, SKIPPED
   embeddedAt      DateTime?
@@ -207,6 +211,7 @@ model Link {
   @@index([aiCategory])
   @@index([isHighlighted])
   @@index([isRead])
+  @@index([userId, isLiked])
   @@index([createdAt])
   @@index([worthinessScore])
   @@index([finalUrlHash])

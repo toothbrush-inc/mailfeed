@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 import { useDomains } from "@/hooks/use-domains"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Filter, X, ChevronDown, Loader2, ArrowUpDown } from "lucide-react"
+import { Filter, X, ChevronDown, Loader2, ArrowUpDown, Heart } from "lucide-react"
 import { FEATURE_FLAGS } from "@/lib/flags"
 
 // Link type tags from BAML LinkTag enum
@@ -83,6 +83,7 @@ export function LinkTagFilter() {
   const currentTag = searchParams.get("tag")
   const currentDomain = searchParams.get("domain")
   const currentRead = searchParams.get("read") || "all"
+  const currentLiked = searchParams.get("liked") === "true"
   const currentAnalysis = searchParams.get("analysis") || "all"
   const currentSort = searchParams.get("sort") || "date_desc"
 
@@ -186,6 +187,20 @@ export function LinkTagFilter() {
             {status.label}
           </button>
         ))}
+        {/* Liked toggle (combines with the read filter) */}
+        <button
+          onClick={() => router.push(buildUrl({ liked: currentLiked ? null : "true" }))}
+          aria-pressed={currentLiked}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+            currentLiked
+              ? "bg-blue-600 text-white dark:bg-blue-500"
+              : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+          )}
+        >
+          <Heart className={cn("h-3 w-3", currentLiked && "fill-current")} />
+          Liked
+        </button>
       </div>
 
       {/* Divider */}

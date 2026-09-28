@@ -37,6 +37,7 @@ export interface DigestLink {
   analysisAttempts: number
   archivedUrl: string | null
   isRead: boolean
+  isLiked: boolean
   createdAt: string
   updatedAt: string
   email: { gmailId: string; subject: string | null; receivedAt: string } | null
