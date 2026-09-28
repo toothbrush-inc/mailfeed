@@ -1,5 +1,6 @@
 import { JSDOM } from "jsdom"
 import { Readability } from "@mozilla/readability"
+import { safeFetch } from "./safe-fetch"
 
 export interface WaybackAvailability {
   available: boolean
@@ -51,7 +52,7 @@ export async function checkWaybackAvailability(url: string): Promise<WaybackAvai
     const apiUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(cleanUrl)}`
     console.log(`[Wayback] Checking availability: ${cleanUrl}`)
 
-    const response = await fetch(apiUrl, {
+    const response = await safeFetch(apiUrl, {
       headers: {
         "User-Agent": USER_AGENT,
         Accept: "application/json",
@@ -105,7 +106,7 @@ export async function fetchFromWayback(url: string): Promise<WaybackResult> {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 30000)
 
-    const response = await fetch(availability.archivedUrl, {
+    const response = await safeFetch(availability.archivedUrl, {
       headers: {
         "User-Agent": USER_AGENT,
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",

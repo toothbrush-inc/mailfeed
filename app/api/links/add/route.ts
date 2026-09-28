@@ -3,6 +3,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { hashUrl, extractDomain } from "@/lib/link-extractor"
 import { isExcludedUrl } from "@/lib/constants/domains"
+import { checkFetchUrlResolved } from "@/lib/safe-fetch"
 import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher"
 import { processNestedLinks } from "@/lib/process-nested-links"
 import { triggerAutoAnalysisAndEmbedding } from "@/lib/ai-triggers"
@@ -27,12 +28,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "URL is required" }, { status: 400 })
   }
 
-  // Validate URL
-  let parsedUrl: URL
-  try {
-    parsedUrl = new URL(url)
-  } catch {
-    return NextResponse.json({ error: "Invalid URL" }, { status: 400 })
+  // Validate URL: http(s) only, and not a private/internal address (the
+  // fetch checks every redirect hop again)
+  const urlError = await checkFetchUrlResolved(url)
+  if (urlError) {
+    return NextResponse.json({ error: urlError }, { status: 400 })
   }
 
   // Check if URL is excluded
