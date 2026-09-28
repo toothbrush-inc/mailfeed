@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
   const highlighted = searchParams.get("highlighted")
   const status = searchParams.get("status")
   const read = searchParams.get("read")
+  const liked = searchParams.get("liked")
   const analysis = searchParams.get("analysis")
   const search = searchParams.get("search")
   const linkId = searchParams.get("link")
@@ -123,6 +124,10 @@ export async function GET(request: NextRequest) {
     where.isRead = false
   }
 
+  if (liked === "true") {
+    where.isLiked = true
+  }
+
   // Full-text search across multiple fields
   if (search && search.trim()) {
     const searchTerm = search.trim()
@@ -205,6 +210,7 @@ export async function GET(request: NextRequest) {
             isHighlighted: true,
             highlightReason: true,
             isRead: true,
+            isLiked: true,
             readingTimeMin: true,
             imageUrl: true,
             isPaywalled: true,

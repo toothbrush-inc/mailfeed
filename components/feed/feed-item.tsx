@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Mail, ExternalLink, Clock, AlertTriangle, Loader2, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle, ArchiveRestore } from "lucide-react"
+import { Mail, ExternalLink, Clock, AlertTriangle, Loader2, Calendar, Eye, EyeOff, Link2, Archive, Twitter, BookOpen, ChevronDown, ChevronUp, Flag, CheckCircle, ArchiveRestore, Heart } from "lucide-react"
 import { FEATURE_FLAGS } from "@/lib/flags"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
@@ -63,6 +63,7 @@ interface FeedItemProps {
     analyzedAt: string | null
     isRead: boolean
     readAt: string | null
+    isLiked: boolean
     embeddingStatus: string | null
     embeddedAt: string | null
     embeddingError: string | null
@@ -96,6 +97,7 @@ interface FeedItemProps {
       isHighlighted: boolean
       highlightReason: string | null
       isRead: boolean
+      isLiked: boolean
       readingTimeMin: number | null
       imageUrl: string | null
       isPaywalled: boolean
@@ -138,6 +140,8 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
   const [archiveError, setArchiveError] = useState<string | null>(null)
   const [isTogglingRead, setIsTogglingRead] = useState(false)
   const [isRead, setIsRead] = useState(link.isRead)
+  const [isLiked, setIsLiked] = useState(link.isLiked)
+  const [isTogglingLike, setIsTogglingLike] = useState(false)
   const [isHidingDomain, setIsHidingDomain] = useState(false)
   const [isResolvingXArticle, setIsResolvingXArticle] = useState(false)
   const [xArticleUsername, setXArticleUsername] = useState("")
@@ -213,6 +217,25 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
       console.error("Failed to toggle read status:", error)
     } finally {
       setIsTogglingRead(false)
+    }
+  }
+
+  // Optimistic like toggle; never touches read state
+  const handleToggleLike = async () => {
+    const next = !isLiked
+    setIsLiked(next)
+    setIsTogglingLike(true)
+    try {
+      const response = await fetch(`/api/links/${link.id}/like`, {
+        method: next ? "POST" : "DELETE",
+      })
+      if (!response.ok) throw new Error("Failed to update like")
+      onAnalyzeComplete?.()
+    } catch (error) {
+      setIsLiked(!next)
+      console.error("Failed to toggle like:", error)
+    } finally {
+      setIsTogglingLike(false)
     }
   }
 
@@ -745,6 +768,19 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
 
         {/* Action buttons */}
         <div className="flex flex-wrap items-center justify-end gap-2 w-full">
+          {/* Like toggle (does not change read state) */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleToggleLike}
+            disabled={isTogglingLike}
+            aria-pressed={isLiked}
+            aria-label={isLiked ? "Unlike" : "Like"}
+            title={isLiked ? "Unlike" : "Like"}
+          >
+            <Heart className={cn("h-4 w-4", isLiked && "fill-current text-rose-500")} />
+          </Button>
+
           {/* Read content button */}
           {hasArticleContent && (
             <Button

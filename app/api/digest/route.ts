@@ -74,6 +74,7 @@ export async function GET(request: NextRequest) {
         analysisAttempts: true,
         archivedUrl: true,
         isRead: true,
+        isLiked: true,
         createdAt: true,
         updatedAt: true,
         email: {

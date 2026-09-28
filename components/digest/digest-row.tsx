@@ -5,7 +5,7 @@ import Link from "next/link"
 import { FEATURE_FLAGS } from "@/lib/flags"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Archive, ExternalLink, Eye, Loader2, Newspaper, RefreshCw, Sparkles } from "lucide-react"
+import { Archive, ExternalLink, Eye, Heart, Loader2, Newspaper, RefreshCw, Sparkles } from "lucide-react"
 import { WorthScore } from "@/components/feed/worth-score"
 import type { DigestLink, DigestSharedLink } from "@/hooks/use-digest"
 import type { DigestBucket } from "@/lib/link-buckets"
@@ -105,6 +105,8 @@ interface DigestRowProps {
 export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDomain }: DigestRowProps) {
   const [pending, setPending] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [isLiked, setIsLiked] = useState(link.isLiked)
+  const [isTogglingLike, setIsTogglingLike] = useState(false)
 
   const href = link.finalUrl || link.url
   // Fetched and queued for analysis, so it can be analyzed right away
@@ -130,6 +132,23 @@ export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDo
       setActionError(error instanceof Error ? error.message : "That didn't work")
     } finally {
       setPending(null)
+    }
+  }
+
+  // Optimistic like toggle; never touches read state
+  const toggleLike = async () => {
+    const next = !isLiked
+    setIsLiked(next)
+    setIsTogglingLike(true)
+    try {
+      const res = await fetch(`/api/links/${link.id}/like`, { method: next ? "POST" : "DELETE" })
+      if (!res.ok) throw new Error("Couldn't update like")
+      onChanged()
+    } catch (error) {
+      setIsLiked(!next)
+      setActionError(error instanceof Error ? error.message : "Couldn't update like")
+    } finally {
+      setIsTogglingLike(false)
     }
   }
 
@@ -320,6 +339,18 @@ export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDo
           )}
         {bucket === "hidden" &&
           actionButton("unhide", "Unhide domain", <Eye className="mr-1.5 h-3.5 w-3.5" />, unhide)}
+        {/* Like toggle (does not change read state) */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleLike}
+          disabled={isTogglingLike}
+          aria-pressed={isLiked}
+          aria-label={isLiked ? "Unlike" : "Like"}
+          title={isLiked ? "Unlike" : "Like"}
+        >
+          <Heart className={isLiked ? "h-3.5 w-3.5 fill-current text-rose-500" : "h-3.5 w-3.5"} />
+        </Button>
         {/* Hidden-domain links aren't in the feed */}
         {bucket !== "hidden" && (
           <Button variant="ghost" size="sm" asChild>
