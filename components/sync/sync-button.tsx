@@ -119,7 +119,8 @@ export function SyncButton() {
     <div className="flex flex-col gap-1.5">
       {/* Query change warning */}
       {queryMismatch && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-950">
+        // Too tall for the phone header; there the button shows a warning icon instead
+        <div className="hidden items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 md:flex dark:border-amber-800 dark:bg-amber-950">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
           <p className="text-xs text-amber-700 dark:text-amber-300">
             Email query changed. Click <strong>Resync</strong> to sync with the new query.
@@ -138,6 +139,12 @@ export function SyncButton() {
             className="rounded-r-none border-r-0"
           >
             <SyncIcon spinning={isLoading} />
+            {queryMismatch && (
+              <AlertTriangle
+                className="ml-1 h-3.5 w-3.5 text-amber-600 md:hidden dark:text-amber-400"
+                aria-label="Email query changed; resync needed"
+              />
+            )}
             {/* Icon-only on phones; the label would crowd the header. */}
             <span className="ml-2 hidden sm:inline">{primaryLabel}</span>
             <span className="sr-only sm:hidden">{primaryLabel}</span>
@@ -193,18 +200,19 @@ export function SyncButton() {
 
         {/* Last sync result feedback */}
         {!isLoading && result?.upToDate && (
-          <span className="text-xs text-green-600">Up to date</span>
+          <span className="hidden text-xs text-green-600 sm:inline">Up to date</span>
         )}
         {!isLoading && result?.emailsProcessed != null && result.emailsProcessed > 0 && (
-          <span className="text-xs text-muted-foreground">
+          <span className="hidden text-xs text-muted-foreground sm:inline">
             +{result.emailsProcessed} emails, {result.linksFetched ?? 0} links
           </span>
         )}
       </div>
 
-      {/* Stats line */}
+      {/* Stats line. Hidden on phones, where it wrapped past the 64px header;
+          the dropdown still shows last checked and synced-back-to. */}
       {emailCount > 0 && (
-        <div className="text-xs text-muted-foreground">
+        <div className="hidden text-xs text-muted-foreground md:block">
           {emailCount} emails
           {oldestDate && newestDate && (
             <> &middot; {formatCoverageDate(oldestDate)} &ndash; {formatCoverageDate(newestDate)}</>
@@ -216,7 +224,9 @@ export function SyncButton() {
       )}
 
       {error && !requiresReauth && (
-        <span className="text-xs text-red-500">{error}</span>
+        <span className="max-w-[9rem] truncate text-xs text-red-500 md:max-w-none" title={error}>
+          {error}
+        </span>
       )}
     </div>
   )
