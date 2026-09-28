@@ -13,6 +13,7 @@ import {
   markInsufficientContent,
   analyzableWordCount,
   MIN_ANALYZABLE_WORDS,
+  worthFieldsFromAnalysis,
 } from "@/lib/analysis"
 
 export async function POST(
@@ -163,6 +164,7 @@ export async function POST(
             linkTags,
             contentTags,
             metadataTags,
+            ...worthFieldsFromAnalysis(analysis),
             analyzedAt: new Date(),
             categories: {
               deleteMany: {},

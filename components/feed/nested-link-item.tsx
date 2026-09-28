@@ -333,7 +333,7 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
           )}
 
           {/* Highlight reason */}
-          {FEATURE_FLAGS.enableAnalysis && link.highlightReason && (
+          {FEATURE_FLAGS.enableAnalysis && link.isHighlighted && link.highlightReason && (
             <p className="text-xs italic text-amber-600 dark:text-amber-400">
               &ldquo;{link.highlightReason}&rdquo;
             </p>

@@ -21,6 +21,7 @@ import {
 import { SocialEmbed, isEmbeddable } from "./social-embed"
 import { LinkDebugDialog } from "./link-debug-dialog"
 import { NestedLinkItem } from "./nested-link-item"
+import { WorthScore } from "./worth-score"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Highlighter from "react-highlight-words"
@@ -384,6 +385,12 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
                   </span>
                 </>
               )}
+              {FEATURE_FLAGS.enableAnalysis && (link.worthinessScore ?? 0) >= 1 && (
+                <>
+                  <span>·</span>
+                  <WorthScore score={link.worthinessScore} reason={link.highlightReason} />
+                </>
+              )}
               {emailDate && (
                 <>
                   <span>·</span>
@@ -569,7 +576,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
           </div>
         )}
 
-        {FEATURE_FLAGS.enableAnalysis && link.highlightReason && (
+        {FEATURE_FLAGS.enableAnalysis && link.isHighlighted && link.highlightReason && (
           <p className="text-sm italic text-amber-600 dark:text-amber-400">
             &ldquo;{link.highlightReason}&rdquo;
           </p>

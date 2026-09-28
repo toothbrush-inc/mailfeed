@@ -14,6 +14,8 @@ export interface DigestSharedLink {
   aiKeyPoints: string[]
   contentTags: string[]
   readingTimeMin: number | null
+  worthinessScore: number | null
+  highlightReason: string | null
   fetchStatus: string
   paywallType: string | null
 }
@@ -29,6 +31,8 @@ export interface DigestLink {
   aiKeyPoints: string[]
   contentTags: string[]
   readingTimeMin: number | null
+  worthinessScore: number | null
+  highlightReason: string | null
   isPaywalled: boolean
   paywallType: string | null
   fetchStatus: string

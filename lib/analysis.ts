@@ -61,6 +61,7 @@ export async function markInsufficientContent(userId: string, linkIds: string[])
             linkTags: [],
             contentTags: [],
             metadataTags: [],
+            ...NO_WORTH_SCORE,
             analyzedAt: null,
             analysisError: null,
         },
@@ -73,6 +74,31 @@ export interface LinkAnalysisInput {
     tags?: Array<string | { toString(): string }> | null
     contentTags?: Array<string | { toString(): string }> | null
     metadataTags?: Array<string | { toString(): string }> | null
+    worthReading?: number | null
+    worthReason?: string | null
+}
+
+/** Score fields for a link with no (or cleared) analysis. */
+export const NO_WORTH_SCORE = {
+    worthinessScore: null,
+    isHighlighted: false,
+    highlightReason: null,
+}
+
+/**
+ * The "worth reading" score (1-5) as stored on Link. Out-of-range values are
+ * clamped; anything that isn't a number leaves the link unscored. A 5 marks
+ * the link as highlighted.
+ */
+export function worthFieldsFromAnalysis(bamlResult: Pick<LinkAnalysisInput, "worthReading" | "worthReason">) {
+    const raw = bamlResult.worthReading
+    if (typeof raw !== "number" || !Number.isFinite(raw)) return { ...NO_WORTH_SCORE }
+    const score = Math.min(5, Math.max(1, Math.round(raw)))
+    return {
+        worthinessScore: score,
+        isHighlighted: score >= 5,
+        highlightReason: bamlResult.worthReason?.trim() || null,
+    }
 }
 
 export function fieldsFromLinkAnalysis(bamlResult: LinkAnalysisInput) {
@@ -103,6 +129,7 @@ export function fieldsFromLinkAnalysis(bamlResult: LinkAnalysisInput) {
         linkTags,
         contentTags,
         metadataTags,
+        ...worthFieldsFromAnalysis(bamlResult),
         isPaywalled,
         paywallType,
         analyzedAt: new Date(),

@@ -46,6 +46,9 @@ export async function GET(request: NextRequest) {
     case "reading_time_desc":
       orderBy = [{ readingTimeMin: "desc" }, { email: { receivedAt: "desc" } }]
       break
+    case "worth":
+      orderBy = [{ worthinessScore: { sort: "desc", nulls: "last" } }, { email: { receivedAt: "desc" } }, { createdAt: "desc" }]
+      break
     case "date_desc":
     default:
       orderBy = [{ email: { receivedAt: "desc" } }, { createdAt: "desc" }]

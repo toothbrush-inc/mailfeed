@@ -6,6 +6,7 @@ import { FEATURE_FLAGS } from "@/lib/flags"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Archive, ExternalLink, Eye, Loader2, Newspaper, RefreshCw, Sparkles } from "lucide-react"
+import { WorthScore } from "@/components/feed/worth-score"
 import type { DigestLink, DigestSharedLink } from "@/hooks/use-digest"
 import type { DigestBucket } from "@/lib/link-buckets"
 
@@ -45,9 +46,19 @@ function sharedStatusLabel(shared: DigestSharedLink): string {
 }
 
 /** Summary, key points and tags from one analysis. */
-function AnalysisBlock({ analysis }: { analysis: Pick<DigestLink, "aiSummary" | "aiKeyPoints" | "contentTags"> }) {
+function AnalysisBlock({
+  analysis,
+}: {
+  analysis: Pick<DigestLink, "aiSummary" | "aiKeyPoints" | "contentTags" | "worthinessScore" | "highlightReason">
+}) {
   return (
     <>
+      {(analysis.worthinessScore ?? 0) >= 1 && (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+          <WorthScore score={analysis.worthinessScore} reason={analysis.highlightReason} className="shrink-0" />
+          {analysis.highlightReason && <span>{analysis.highlightReason}</span>}
+        </p>
+      )}
       {analysis.aiSummary ? (
         <p>{analysis.aiSummary}</p>
       ) : (
