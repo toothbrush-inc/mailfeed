@@ -21,7 +21,10 @@ import {
   retryTransientFetchFailures,
   findTransientFetchRetries,
 } from "../lib/sync-user"
-import { classifyFetchError } from "../lib/link-buckets"
+import { classifyFetchError, isRetryableFetchError } from "../lib/link-buckets"
+import { hashUrl } from "../lib/link-extractor"
+import { createServer } from "node:http"
+import type { AddressInfo } from "node:net"
 import { recoverInterruptedAnalysis } from "../lib/gemini-batch"
 
 let failures = 0
@@ -132,47 +135,108 @@ async function main() {
 
   // --- Temporary fetch failures ---
   check("429 is classified as rate_limited", classifyFetchError("HTTP 429 Too Many Requests") === "rate_limited")
+  check("dead domain is not retryable", !isRetryableFetchError("getaddrinfo ENOTFOUND dead.example"))
+  check("bad certificate is not retryable", !isRetryableFetchError("fetch failed: certificate has expired"))
+  check("503 is retryable", isRetryableFetchError("HTTP 503"))
 
-  async function failedWith(error: string, fetchHoursAgo: number[], url?: string) {
-    const link = await makeLink("FAILED", { url, fetchError: error, hoursOld: Math.min(...fetchHoursAgo) })
-    for (const [i, h] of fetchHoursAgo.entries()) {
+  // A local article page, so a retry can succeed
+  const words = Array.from({ length: 400 }, (_, i) => `word${i}`).join(" ")
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { "Content-Type": "text/html" })
+    res.end(`<html><head><title>Local article</title></head><body><article><h1>Local article</h1><p>${words}</p><p>${words}</p></article></body></html>`)
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const articleUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/article`
+
+  async function failedWith(
+    error: string,
+    opts: {
+      url?: string
+      hoursOld?: number
+      attemptHoursAgo?: number
+      retries?: number
+      lastRetryHoursAgo?: number
+      finalDomain?: string
+      finalUrlHash?: string
+    } = {}
+  ) {
+    const n = ++seq
+    const link = await prisma.link.create({
+      data: {
+        userId: user.id,
+        emailId: email.id,
+        url: opts.url ?? `http://127.0.0.1:9/t${n}`,
+        urlHash: `recovery-${n}`,
+        domain: "recovery.example",
+        finalDomain: opts.finalDomain,
+        finalUrlHash: opts.finalUrlHash,
+        fetchStatus: "FAILED",
+        fetchError: error,
+        fetchRetryCount: opts.retries ?? 0,
+        lastFetchRetryAt:
+          opts.lastRetryHoursAgo === undefined ? null : new Date(Date.now() - opts.lastRetryHoursAgo * 3600_000),
+      },
+    })
+    if (opts.attemptHoursAgo !== undefined) {
       await prisma.fetchAttempt.create({
         data: {
           linkId: link.id,
-          operationId: `${link.id}-op${i}`,
+          operationId: `${link.id}-op`,
           fetcherId: "direct",
           trigger: "sync",
           sequence: 1,
           success: false,
           error,
           durationMs: 1,
-          createdAt: new Date(Date.now() - h * 60 * 60 * 1000),
+          createdAt: new Date(Date.now() - opts.attemptHoursAgo * 3600_000),
         },
       })
     }
+    const hoursOld = opts.hoursOld ?? 2
+    await basePrisma.$executeRaw`UPDATE "Link" SET "updatedAt" = now() - make_interval(hours => ${hoursOld}) WHERE id = ${link.id}`
     return link
   }
-  const fetchOps = async (id: string) =>
-    new Set((await prisma.fetchAttempt.findMany({ where: { linkId: id } })).map((a) => a.operationId)).size
+  const retries = async (id: string) => (await get(id))?.fetchRetryCount
 
-  const t503 = await failedWith("HTTP 503", [2], "http://127.0.0.1:9/t503")
-  const t429 = await failedWith("HTTP 429", [2], "http://127.0.0.1:9/t429")
-  const t404 = await failedWith("HTTP 404", [2])
-  const tTooSoon = await failedWith("HTTP 503", [3, 5])
-  const tSpent = await failedWith("HTTP 503", [30, 40, 50, 60])
-  const tOld = await failedWith("HTTP 503", [5 * 24])
+  const t503 = await failedWith("HTTP 503", { attemptHoursAgo: 2 })
+  const t429 = await failedWith("HTTP 429", { attemptHoursAgo: 2 })
+  const tNoAttempt = await failedWith("HTTP 503")
+  const t404 = await failedWith("HTTP 404", { attemptHoursAgo: 2 })
+  const tDns = await failedWith("getaddrinfo ENOTFOUND dead.example", { attemptHoursAgo: 2 })
+  const tTooSoon = await failedWith("HTTP 503", { retries: 1, lastRetryHoursAgo: 3 })
+  const tSpent = await failedWith("HTTP 503", { retries: 3, lastRetryHoursAgo: 30 })
+  const tOld = await failedWith("HTTP 503", { hoursOld: 5 * 24, attemptHoursAgo: 5 * 24 })
+  // Gave up after an interrupted fetch, but an older attempt says 503
+  const tGaveUp = await failedWith("Fetch was interrupted", { attemptHoursAgo: 30 })
+  const tHidden = await failedWith("HTTP 503", { finalDomain: "hidden.example" })
+  // Two links that redirect to the same page: A still fails, B now loads
+  const dupA = await failedWith("HTTP 503", { finalUrlHash: hashUrl(articleUrl) })
+  const dupB = await failedWith("HTTP 503", { url: articleUrl })
 
   const transient = await retryTransientFetchFailures(user.id, { triggerAi: false })
-  check("worker retries the 503 and the 429 only", transient === 2, transient)
-  check("retried 503 fetched again", (await fetchOps(t503.id)) === 2)
-  check("retried 429 fetched again", (await fetchOps(t429.id)) === 2)
-  check("404 not retried", (await fetchOps(t404.id)) === 1)
-  check("second failure not retried before 6h", (await fetchOps(tTooSoon.id)) === 2)
-  check("link fetched 4 times not retried", (await fetchOps(tSpent.id)) === 4)
-  check("5-day-old failure not retried by the worker", (await fetchOps(tOld.id)) === 1)
+  check("worker retries the 503s, the 429 and both duplicates", transient === 5, transient)
+  check("503 retry counted", (await retries(t503.id)) === 1)
+  check("429 retry counted", (await retries(t429.id)) === 1)
+  check("retry counted even with no recorded attempt", (await retries(tNoAttempt.id)) === 1)
+  check("404 not retried", (await retries(t404.id)) === 0)
+  check("dead domain not retried", (await retries(tDns.id)) === 0)
+  check("second retry waits 6h", (await retries(tTooSoon.id)) === 1)
+  check("link retried 3 times not retried again", (await retries(tSpent.id)) === 3)
+  check("5-day-old failure not retried by the worker", (await retries(tOld.id)) === 0)
+  check("given-up interrupted fetch not retried", (await retries(tGaveUp.id)) === 0)
+  check("hidden final domain not retried", (await retries(tHidden.id)) === 0)
 
-  const backfillDue = (await findTransientFetchRetries(user.id, { recentOnly: false, limit: Infinity })).map((l) => l.id)
+  const b = await get(dupB.id)
+  check("duplicate that now loads is kept, not deleted", b?.fetchStatus === "FETCHED", b?.fetchStatus ?? "deleted")
+  const a = await get(dupA.id)
+  check("still-failing duplicate is kept", a?.fetchStatus === "FAILED", a?.fetchStatus ?? "deleted")
+
+  const transientAgain = await retryTransientFetchFailures(user.id, { triggerAi: false })
+  check("immediate second pass retries nothing", transientAgain === 0, transientAgain)
+
+  const backfillDue = (await findTransientFetchRetries(user.id, ["hidden.example"], { recentOnly: false, limit: Infinity })).map((l) => l.id)
   check("backfill picks up the 5-day-old failure only", backfillDue.length === 1 && backfillDue[0] === tOld.id, backfillDue)
+  server.close()
 
   // --- Analysis recovery ---
   const stuckAnalyzing = await makeLink("ANALYZING")

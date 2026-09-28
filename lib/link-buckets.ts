@@ -33,7 +33,7 @@ function hiddenDomainWhere(hiddenDomains: string[]): Prisma.LinkWhereInput {
   }
 }
 
-function visibleDomainWhere(hiddenDomains: string[]): Prisma.LinkWhereInput {
+export function visibleDomainWhere(hiddenDomains: string[]): Prisma.LinkWhereInput {
   if (hiddenDomains.length === 0) return {}
   return {
     AND: [
@@ -180,6 +180,17 @@ export const RETRYABLE_FAILURES: ReadonlySet<FailureKind> = new Set([
   "network",
   "rate_limited",
 ])
+
+/**
+ * Whether a fetch error is worth an automatic retry. "network" also covers a
+ * domain that no longer resolves and a bad TLS certificate; those don't fix
+ * themselves, so they are left out.
+ */
+export function isRetryableFetchError(error: string | null | undefined): boolean {
+  if (!RETRYABLE_FAILURES.has(classifyFetchError(error))) return false
+  const text = (error || "").toLowerCase()
+  return !["enotfound", "getaddrinfo", "certificate"].some((s) => text.includes(s))
+}
 
 export interface AttemptSummary {
   operationId: string

@@ -10,7 +10,7 @@ import { fetchWithFallbackChain } from "@/lib/fetchers"
 import { generateOperationId, recordFetchAttempts } from "@/lib/fetch-attempts"
 import { triggerAutoAnalysisAndEmbedding } from "@/lib/ai-triggers"
 import { formatGmailDate, updateSyncCoverage } from "@/lib/sync-coverage"
-import { classifyFetchError, primaryFetchError, RETRYABLE_FAILURES } from "@/lib/link-buckets"
+import { isRetryableFetchError, primaryFetchError, visibleDomainWhere } from "@/lib/link-buckets"
 import "@/lib/fetchers/direct"
 import "@/lib/fetchers/wayback"
 import type { ResolvedSettings } from "@/lib/settings"
@@ -159,11 +159,14 @@ async function processLink(
 
     const finalUrlHash = content.finalUrl ? hashUrl(content.finalUrl) : null
     if (finalUrlHash) {
+      // Only defer to a duplicate that has content. A failed or in-progress
+      // one (e.g. being retried in the same batch) must not delete this one.
       const existingByFinalUrl = await prisma.link.findFirst({
         where: {
           userId,
           finalUrlHash,
           id: { not: linkId },
+          fetchStatus: { in: ["FETCHED", "ANALYZING", "COMPLETED"] },
         },
       })
 
@@ -349,6 +352,7 @@ async function processEmailPage(
 // FETCHING by a crash or restart is never fetched again unless retried here.
 const INTERRUPTED_FETCH_AFTER_MS = 24 * 60 * 60 * 1000
 const INTERRUPTED_FETCH_MARKER = "Fetch was interrupted; retrying"
+const INTERRUPTED_FETCH_GAVE_UP = "Fetch was interrupted"
 const MAX_FETCH_RETRIES_PER_RUN = 50
 
 /**
@@ -372,9 +376,7 @@ export async function retryInterruptedFetches(
       fetchStatus: { in: ["PENDING", "FETCHING"] },
       updatedAt: { lt: new Date(Date.now() - INTERRUPTED_FETCH_AFTER_MS) },
       // Hidden-domain links are parked in PENDING on purpose
-      ...(hiddenDomains.size > 0 && {
-        OR: [{ domain: null }, { domain: { notIn: [...hiddenDomains] } }],
-      }),
+      ...visibleDomainWhere([...hiddenDomains]),
     },
     select: { id: true, url: true, emailId: true, parentLinkId: true, fetchError: true },
     orderBy: { createdAt: "desc" },
@@ -392,7 +394,7 @@ export async function retryInterruptedFetches(
   if (giveUp.length > 0) {
     await prisma.link.updateMany({
       where: { userId, id: { in: giveUp } },
-      data: { fetchStatus: "FAILED", fetchError: "Fetch was interrupted" },
+      data: { fetchStatus: "FAILED", fetchError: INTERRUPTED_FETCH_GAVE_UP },
     })
   }
   if (retry.length > 0) {
@@ -412,16 +414,21 @@ export async function retryInterruptedFetches(
 }
 
 // Wait before each automatic retry of a temporary fetch failure, indexed by
-// how many times the link has been fetched. Its length is the retry limit.
+// fetchRetryCount. Its length is the retry limit.
 const TRANSIENT_RETRY_DELAYS_MS = [1, 6, 24].map((h) => h * 60 * 60 * 1000)
-// Last retry is due 31h after the first fetch; this covers it with slack.
+// Last retry is due 31h after the first failure; this covers it with slack.
 const TRANSIENT_RETRY_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
+// Candidates loaded per pass before the per-link checks
+const TRANSIENT_RETRY_SCAN = 500
 
 /**
  * Retry top-level links whose last fetch failed in a way that often clears up
  * (timeout, 5xx, network error, 429): up to 3 more fetches, 1h, 6h and 24h
- * apart, counting every past fetch of the link. Blocked, gone, unreadable and
- * paywalled links are never retried.
+ * apart. Blocked, gone, unreadable, paywalled and hidden links are never
+ * retried, nor are links given up on after an interrupted fetch.
+ *
+ * Retries are counted on the link (fetchRetryCount) before fetching, so one
+ * that crashes or records no attempt still counts toward the limit.
  *
  * The worker only looks at links that failed in the last 3 days. The
  * backfill script passes recentOnly: false to include older failures.
@@ -430,22 +437,29 @@ export async function retryTransientFetchFailures(
   userId: string,
   options: { triggerAi?: boolean; recentOnly?: boolean; limit?: number } = {}
 ): Promise<number> {
-  const due = await findTransientFetchRetries(userId, options)
-  if (due.length === 0) return 0
-
   const settings = await getUserSettings(userId)
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { hiddenDomains: true } })
+  const hiddenDomains = user?.hiddenDomains || []
+
+  const due = await findTransientFetchRetries(userId, hiddenDomains, options)
+  if (due.length === 0) return 0
+
+  await prisma.link.updateMany({
+    where: { userId, id: { in: due.map((l) => l.id) } },
+    data: { fetchRetryCount: { increment: 1 }, lastFetchRetryAt: new Date() },
+  })
   await processLinksInParallel(
-    due, userId, new Set(user?.hiddenDomains || []), settings, settings.sync.linkConcurrency,
+    due, userId, new Set(hiddenDomains), settings, settings.sync.linkConcurrency,
     options.triggerAi !== false
   )
   syncLogger.info("Retried temporary fetch failures", { userId, count: due.length })
   return due.length
 }
 
-/** Links retryTransientFetchFailures would fetch now. */
+/** Links retryTransientFetchFailures would fetch now, oldest failure first. */
 export async function findTransientFetchRetries(
   userId: string,
+  hiddenDomains: string[],
   options: { recentOnly?: boolean; limit?: number } = {}
 ): Promise<Array<{ id: string; url: string; emailId: string | null }>> {
   const { recentOnly = true, limit = MAX_FETCH_RETRIES_PER_RUN } = options
@@ -456,36 +470,36 @@ export async function findTransientFetchRetries(
       userId,
       fetchStatus: "FAILED",
       parentLinkId: null,
+      fetchRetryCount: { lt: TRANSIENT_RETRY_DELAYS_MS.length },
+      fetchError: { notIn: [INTERRUPTED_FETCH_GAVE_UP, INTERRUPTED_FETCH_MARKER] },
       updatedAt: {
         lt: new Date(now - TRANSIENT_RETRY_DELAYS_MS[0]),
         ...(recentOnly && { gt: new Date(now - TRANSIENT_RETRY_WINDOW_MS) }),
       },
+      ...visibleDomainWhere(hiddenDomains),
     },
     select: {
       id: true,
       url: true,
       emailId: true,
       fetchError: true,
+      fetchRetryCount: true,
+      lastFetchRetryAt: true,
       updatedAt: true,
       fetchAttempts: {
         orderBy: { createdAt: "desc" },
-        select: { operationId: true, fetcherName: true, fetcherId: true, sequence: true, success: true, error: true, createdAt: true },
+        select: { operationId: true, fetcherName: true, fetcherId: true, sequence: true, success: true, error: true },
       },
     },
-    orderBy: { updatedAt: "desc" },
+    orderBy: { updatedAt: "asc" },
+    ...(recentOnly && { take: TRANSIENT_RETRY_SCAN }),
   })
 
   const due: Array<{ id: string; url: string; emailId: string | null }> = []
   for (const link of failed) {
-    const kind = classifyFetchError(primaryFetchError(link.fetchError, link.fetchAttempts).error)
-    if (!RETRYABLE_FAILURES.has(kind)) continue
-    // Links failed before attempts were recorded count as fetched once
-    const fetches = Math.max(1, new Set(link.fetchAttempts.map((a) => a.operationId)).size)
-    if (fetches > TRANSIENT_RETRY_DELAYS_MS.length) continue
-    const sinceLastFetch = now - (link.fetchAttempts[0]?.createdAt ?? link.updatedAt).getTime()
-    if (sinceLastFetch < TRANSIENT_RETRY_DELAYS_MS[fetches - 1]) continue
-    // A retry that throws records no attempt; the window still ends it
-    if (recentOnly && sinceLastFetch > TRANSIENT_RETRY_WINDOW_MS) continue
+    if (!isRetryableFetchError(primaryFetchError(link.fetchError, link.fetchAttempts).error)) continue
+    const lastTry = link.lastFetchRetryAt ?? link.updatedAt
+    if (now - lastTry.getTime() < TRANSIENT_RETRY_DELAYS_MS[link.fetchRetryCount]) continue
     due.push({ id: link.id, url: link.url, emailId: link.emailId })
     if (due.length >= limit) break
   }
