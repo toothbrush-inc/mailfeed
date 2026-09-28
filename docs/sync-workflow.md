@@ -198,6 +198,8 @@ POST /api/sync?mode=<mode>
                     │ HTTP Fetch with headers      │
                     │ (User-Agent spoofing)        │
                     │ Follow redirects             │
+                    │ safeFetch: private addresses │
+                    │ refused on every hop         │
                     └──────────────┬───────────────┘
                                    │
                          SUCCESS ◄─┴─► FAILURE
@@ -234,6 +236,16 @@ POST /api/sync?mode=<mode>
                                    ▼
                          [Return ParseResult]
 ```
+
+### Private-network block
+
+Every server-side fetch of a URL from a user or an email goes through `safeFetch()` in `lib/safe-fetch.ts`: the direct fetch, oEmbed, Wayback (API and snapshot), t.co/short-link resolution in `lib/nested-link-extractor.ts`, and X article resolution. It only allows `http:`/`https:` and refuses loopback, private (10/8, 172.16/12, 192.168/16), link-local (169.254/16 incl. cloud metadata, fe80::/10), CGNAT (100.64/10), 0.0.0.0/8, unique-local (fc00::/7), multicast, broadcast/reserved and documentation ranges, and IPv6 forms that embed those IPv4 addresses (`::ffff:127.0.0.1`, NAT64, 6to4).
+
+The check runs in an undici `Agent` when each connection is opened, so it covers every redirect hop (redirects are still followed and `response.url` is the final URL, so `finalUrl`/`wasRedirected` are unchanged). IP-literal hosts are checked directly; hostnames are checked in the connection's DNS lookup, on the addresses the socket actually connects to, so DNS rebinding can't slip past. A name with any blocked address is refused.
+
+A refused fetch fails with `Blocked: address is on a private network (...)` and no page content. `fetchWithFallbackChain()` stops there instead of asking the next fetcher (Wayback). The Digest labels it "Points to a private network address" (`private_address` in `classifyFetchError()`), and the worker does not retry it. `POST /api/links/add` rejects such URLs up front with a 400.
+
+`MAILFEED_ALLOW_PRIVATE_FETCH=true` turns the block off, for local development and tests only.
 
 ## Post-Fetch Processing Decision Tree
 
@@ -633,6 +645,7 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 | Link extraction | `lib/link-extractor.ts` | `extractLinks()`, `hashUrl()`, `extractDomain()` |
 | Fallback chain | `lib/fetchers/index.ts` | `fetchWithFallbackChain()` |
 | Direct fetcher | `lib/fetchers/direct.ts`, `lib/content-fetcher.ts` | `fetchAndParseContent()`, `isPoorContent()` |
+| Private-network block | `lib/safe-fetch.ts` | `safeFetch()`, `isBlockedAddress()`, `checkFetchUrlResolved()` |
 | Wayback fetcher | `lib/fetchers/wayback.ts`, `lib/wayback-fetcher.ts` | `fetchFromWayback()` |
 | AI HTML fallback | `lib/ai-html-parser.ts` | `parseHtmlWithAI()` |
 | Nested links | `lib/process-nested-links.ts` | `processNestedLinks()` |

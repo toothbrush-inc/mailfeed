@@ -125,6 +125,7 @@ export type FailureKind =
   | "unreadable"
   | "network"
   | "excluded"
+  | "private_address"
   | "other"
 
 export const FAILURE_LABELS: Record<FailureKind, string> = {
@@ -138,6 +139,8 @@ export const FAILURE_LABELS: Record<FailureKind, string> = {
   unreadable: "No readable text (needs JavaScript or is empty)",
   network: "Couldn't connect to the site",
   excluded: "Redirected to an excluded site",
+  // lib/safe-fetch.ts refused a local/internal address; never retried
+  private_address: "Points to a private network address",
   other: "Couldn't load",
 }
 
@@ -153,6 +156,7 @@ export function classifyFetchError(error: string | null | undefined): FailureKin
     if (code >= 500) return "server_error"
   }
   const text = error.toLowerCase()
+  if (text.includes("address is on a private network")) return "private_address"
   if (text.includes("timed out") || text.includes("timeout") || text.includes("abort")) return "timeout"
   if (text.includes("poor content") || text.includes("could not parse")) return "unreadable"
   if (text.includes("excluded")) return "excluded"
