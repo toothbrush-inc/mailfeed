@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { getUserSettings } from "@/lib/user-settings"
+import { ANALYZED_WHERE, NOT_ANALYZED_WHERE } from "@/lib/link-buckets"
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
@@ -24,7 +25,9 @@ export async function GET(request: NextRequest) {
   const highlighted = searchParams.get("highlighted")
   const status = searchParams.get("status")
   const read = searchParams.get("read")
+  const analysis = searchParams.get("analysis")
   const search = searchParams.get("search")
+  const linkId = searchParams.get("link")
   const sort = searchParams.get("sort") || settings.feed.defaultSort
   const page = parseInt(searchParams.get("page") || "1")
   const limit = parseInt(searchParams.get("limit") || String(settings.feed.pageSize))
@@ -62,6 +65,11 @@ export async function GET(request: NextRequest) {
     parentLinkId: null, // Only show top-level links, not nested/child links
   }
 
+  // A single link, e.g. "Open in feed" from the Digest
+  if (linkId) {
+    where.id = linkId
+  }
+
   if (category) {
     where.aiCategory = category
   }
@@ -97,6 +105,13 @@ export async function GET(request: NextRequest) {
 
   if (status) {
     where.fetchStatus = status
+  }
+
+  // Same rule as the Digest's "Analyzed" group
+  if (analysis === "analyzed") {
+    andConditions.push(ANALYZED_WHERE)
+  } else if (analysis === "not_analyzed") {
+    andConditions.push(NOT_ANALYZED_WHERE)
   }
 
   if (read === "read") {
@@ -182,6 +197,8 @@ export async function GET(request: NextRequest) {
             fetchError: true,
             fetchedAt: true,
             analyzedAt: true,
+            analysisError: true,
+            analysisAttempts: true,
             isHighlighted: true,
             highlightReason: true,
             isRead: true,

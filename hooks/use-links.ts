@@ -36,6 +36,8 @@ interface Link {
   fetchError: string | null
   fetchedAt: string | null
   analyzedAt: string | null
+  analysisError: string | null
+  analysisAttempts: number
   isRead: boolean
   readAt: string | null
   embeddingStatus: string | null
@@ -75,6 +77,8 @@ interface Link {
     fetchError: string | null
     fetchedAt: string | null
     analyzedAt: string | null
+    analysisError: string | null
+    analysisAttempts: number
     isHighlighted: boolean
     highlightReason: string | null
     isRead: boolean
@@ -110,7 +114,9 @@ interface UseLinksOptions {
   highlighted?: boolean
   status?: string | null
   read?: "all" | "read" | "unread"
+  analysis?: "all" | "analyzed" | "not_analyzed"
   search?: string | null
+  link?: string | null
   sort?: string | null
   page?: number
   limit?: number
@@ -127,7 +133,9 @@ export function useLinks(options: UseLinksOptions = {}) {
   if (options.highlighted) params.set("highlighted", "true")
   if (options.status) params.set("status", options.status)
   if (options.read && options.read !== "all") params.set("read", options.read)
+  if (options.analysis && options.analysis !== "all") params.set("analysis", options.analysis)
   if (options.search) params.set("search", options.search)
+  if (options.link) params.set("link", options.link)
   if (options.sort && options.sort !== "date_desc") params.set("sort", options.sort)
   if (options.page) params.set("page", options.page.toString())
   if (options.limit) params.set("limit", options.limit.toString())

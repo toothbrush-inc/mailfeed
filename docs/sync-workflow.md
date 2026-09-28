@@ -289,11 +289,15 @@ POST /api/sync?mode=<mode>
                          YES ◄──┴──► NO
                           │          │
                           │          ▼
-                          │    ┌──────────────────────┐
-                          │    │ Update link:         │
-                          │    │ - FAILED or          │
-                          │    │ - PAYWALL_DETECTED   │
-                          │    └──────────────────────┘
+                          │    ┌──────────────────────────────┐
+                          │    │ Update link:                 │
+                          │    │ - PAYWALL_DETECTED if a      │
+                          │    │   paywall was detected, or   │
+                          │    │   the page had too little    │
+                          │    │   text (paywallType          │
+                          │    │   "insufficient_content")    │
+                          │    │ - otherwise FAILED           │
+                          │    └──────────────────────────────┘
                           │
                           ▼
                     ┌───────────────────────┐
@@ -307,6 +311,8 @@ POST /api/sync?mode=<mode>
                                 │
                                 ▼
 ```
+
+When every fetcher in the chain fails, `fetchWithFallbackChain()` returns the first fetcher's view of the page (`finalUrl`, `wasRedirected`, `rawHtml`, `isPaywalled`, `paywallType`) with the last fetcher's error. A fetcher sets `insufficientContent` when the page loaded but Readability found almost no text: the direct fetcher's `isPoorContent()` check (under 50 words, X/Twitter exempt), or "Could not parse article content". If no real paywall was detected, the chain then reports `isPaywalled: true` with `paywallType: "insufficient_content"`. The Digest shows these under Paywalled as "Not enough content". Migration `0007` moves existing `FAILED` links with those errors.
 
 ## Post-Sync Coverage Update
 
@@ -362,59 +368,84 @@ When the email query is changed in settings:
 ## AI Analysis Decision Tree
 
 ```
-                    ┌───────────────────────┐
-                    │ Has textContent AND   │
-                    │ has title?            │
-                    └───────────┬───────────┘
+                    ┌───────────────────────────────┐
+                    │ Picked up for analysis?       │
+                    │ FETCHED, analyzedAt null,     │
+                    │ has rawHtml or contentText,   │
+                    │ analysisAttempts < 3          │
+                    └───────────┬───────────────────┘
                                 │
                           YES ◄─┴─► NO
                            │        │
-                           │    [Skip AI analysis,
-                           │     status stays FETCHED]
+                           │    [Skip; status stays FETCHED.
+                           │     "Analyze again" on /digest
+                           │     still runs it by hand]
+                           ▼
+                    ┌───────────────────────────────┐
+                    │ analyzableWordCount() ≥ 25?   │
+                    │ (links, @handles, "via @x",   │
+                    │  tweet attribution excluded)  │
+                    └───────────┬───────────────────┘
+                                │
+                          YES ◄─┴─► NO
+                           │        │
+                           │    markInsufficientContent():
+                           │    PAYWALL_DETECTED,
+                           │    paywallType "insufficient_content",
+                           │    earlier AI fields cleared. No AI call.
                            ▼
                     ┌───────────────────────┐
                     │ Update: ANALYZING     │
                     └───────────┬───────────┘
                                 │
                                 ▼
-                    ┌───────────────────────┐
-                    │ analyzeContent()      │
-                    │ (Gemini API)          │
-                    └───────────┬───────────┘
+                    ┌───────────────────────────────┐
+                    │ BAML IngestLink               │
+                    │ (live analyzeLink(), or a     │
+                    │  per-user Gemini Batch)       │
+                    └───────────┬───────────────────┘
                                 │
-                          OK ◄──┴──► ERROR
-                           │          │
+                          OK ◄──┴──► ERROR (call, empty or
+                           │          │     unparsable response,
+                           │          │     whole batch failed)
                            │          ▼
-                           │    ┌───────────────────┐
-                           │    │ Revert to FETCHED │
-                           │    │ Log error         │
-                           │    └───────────────────┘
+                           │    ┌──────────────────────────────┐
+                           │    │ recordAnalysisFailure():     │
+                           │    │ - Revert to FETCHED          │
+                           │    │ - analysisError = message    │
+                           │    │ - analysisAttempts += 1      │
+                           │    └──────────────────────────────┘
                            ▼
                     ┌───────────────────────────────┐
-                    │ AI Output:                    │
+                    │ AI Output (LinkAnalysis):     │
                     │ - summary                     │
-                    │ - keyPoints[]                 │
-                    │ - category                    │
-                    │ - tags[]                      │
-                    │ - worthinessScore (0-1)       │
-                    │ - uniquenessScore (0-1)       │
-                    │ - isHighlighted (bool)        │
-                    │ - highlightReason             │
+                    │ - keyPoints[] (3-5)           │
+                    │ - tags[] (link type)          │
+                    │ - contentTags[] (category)    │
+                    │ - metadataTags[] (access)     │
                     └───────────────┬───────────────┘
                                     │
                                     ▼
                     ┌───────────────────────────────┐
-                    │ Upsert Category               │
-                    └───────────────┬───────────────┘
-                                    │
-                                    ▼
-                    ┌───────────────────────────────┐
+                    │ fieldsFromLinkAnalysis():     │
                     │ Update link: COMPLETED        │
-                    │ - Store all AI fields         │
-                    │ - Link to category            │
-                    │ - Set analyzedAt timestamp    │
+                    │ - aiSummary, aiKeyPoints      │
+                    │ - aiCategory = contentTags[0] │
+                    │ - isPaywalled / paywallType   │
+                    │   from metadataTags           │
+                    │ - analyzedAt = now            │
+                    │ - analysisError cleared,      │
+                    │   analysisAttempts = 0        │
                     └───────────────────────────────┘
 ```
+
+The word check runs on every path: `analyzeLink()` (auto, live, bulk), Gemini Batch submit, `POST /api/links/[id]/analyze` (returns 422 `INSUFFICIENT_CONTENT`) and the Wayback route. It mostly catches X/oEmbed posts, which skip the fetch-time 50-word check, and short sign-in/join pages. `scripts/reclassify-thin-content.ts` (dry run by default, `--apply` to write) applies it to links fetched or analyzed before the check existed.
+
+A "Not enough content" post whose nested link was analyzed (e.g. a tweet sharing an open article) counts as analyzed: `ANALYZED_WHERE` in `lib/link-buckets.ts`, used by the Digest and the feed's Analyzed filter. The Digest shows the shared article's summary on the post's row.
+
+Refetch, Wayback, promote-attempt and X-article resolution write new content, so they also clear `analysisError` and reset `analysisAttempts` to 0.
+
+worthinessScore, uniquenessScore and isHighlighted are still in the schema, but the current analysis does not fill them in.
 
 ## Link Status State Machine
 
@@ -430,8 +461,9 @@ When the email query is changed in settings:
                           │                │               │
                           ▼                ▼               ▼
                     ┌──────────┐     ┌───────────────────────────┐
-                    │  FAILED  │     │ (stays FETCHED on         │
-                    └──────────┘     │  AI analysis failure)     │
+                    │  FAILED  │     │ back to FETCHED on AI     │
+                    └──────────┘     │ failure, with             │
+                          │         │ analysisError set         │
                           │         └───────────────────────────┘
                           │
                           ▼
@@ -596,7 +628,8 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 | Wayback fetcher | `lib/fetchers/wayback.ts`, `lib/wayback-fetcher.ts` | `fetchFromWayback()` |
 | AI HTML fallback | `lib/ai-html-parser.ts` | `parseHtmlWithAI()` |
 | Nested links | `lib/process-nested-links.ts` | `processNestedLinks()` |
-| AI analysis | `lib/analysis.ts`, `lib/gemini-batch.ts` | `analyzeLink()`, per-user Gemini Batch apply |
+| AI analysis | `lib/analysis.ts`, `lib/gemini-batch.ts` | `analyzeLink()`, `recordAnalysisFailure()`, per-user Gemini Batch apply |
+| Digest groups | `lib/link-buckets.ts`, `app/api/digest/route.ts` | `bucketWhere()`, `classifyFetchError()`: which links were analyzed and why the rest weren't |
 | Fetch attempt recording | `lib/fetch-attempts.ts` | `recordFetchAttempts()`, `recordSingleFetchAttempt()` |
 | Fetch attempts API | `app/api/links/[id]/attempts/route.ts` | List attempts (no rawHtml) |
 | Fetch attempt detail API | `app/api/links/[id]/attempts/[attemptId]/route.ts` | Single attempt (with rawHtml) |

@@ -95,6 +95,8 @@ export async function POST(request: NextRequest) {
 
       if (analysisResult.success) {
         result.succeeded++
+      } else if (analysisResult.skipped) {
+        result.skipped++
       } else {
         result.failed++
         result.errors.push(`Link ${link.id}: ${analysisResult.error}`)

@@ -124,6 +124,8 @@ export async function POST(
           fetchStatus: "FETCHED",
           fetchedAt: new Date(),
           contentSource: "direct",
+          analysisError: null,
+          analysisAttempts: 0,
         })
       }
     } catch (error) {

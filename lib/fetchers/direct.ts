@@ -14,6 +14,7 @@ const directFetcher: ContentFetcher = {
       return {
         ...result,
         success: false,
+        insufficientContent: true,
         error: "Poor content quality (likely JS-rendered or empty)",
       }
     }

@@ -141,6 +141,8 @@ export async function POST(
       data: {
         fetchStatus: "FETCHED",
         fetchError: null,
+        analysisError: null,
+        analysisAttempts: 0,
         title: content.title,
         description: content.excerpt,
         imageUrl: content.imageUrl,

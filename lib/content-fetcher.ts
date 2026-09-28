@@ -14,7 +14,11 @@ interface FetchResult {
   imageUrl?: string
   wordCount?: number
   isPaywalled?: boolean
-  paywallType?: "hard" | "soft" | "registration"
+  // "insufficient_content": the page loaded but had too little readable
+  // text to analyze (JS-rendered, empty, or a teaser) — treated as a paywall
+  paywallType?: "hard" | "soft" | "registration" | "insufficient_content"
+  // The page was reached but Readability found (almost) no text
+  insufficientContent?: boolean
   error?: string
   // Redirect tracking
   finalUrl?: string
@@ -170,6 +174,7 @@ export async function fetchAndParseContent(url: string, options?: { timeoutMs?: 
         success: false,
         isPaywalled: newsMetadata?.isPaywalled || paywallCheck.isPaywalled,
         paywallType: paywallCheck.type,
+        insufficientContent: true,
         error: "Could not parse article content",
         finalUrl,
         wasRedirected,

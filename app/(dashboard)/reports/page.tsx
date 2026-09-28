@@ -179,7 +179,7 @@ export default function ReportsPage() {
                     </Badge>
                     {report.link.isPaywalled && (
                       <Badge variant="outline" className="text-amber-600 border-amber-600">
-                        {report.link.paywallType || "Paywall"}
+                        {report.link.paywallType?.replace(/_/g, " ") || "Paywall"}
                       </Badge>
                     )}
                   </div>

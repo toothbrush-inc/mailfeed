@@ -6,6 +6,14 @@ import { getUserSettings } from "@/lib/user-settings"
 import { getUserAiKeys } from "@/lib/user-keys"
 import { isAiConfigured, getMissingEnvVarMessage } from "@/lib/ai-provider"
 import { buildClientRegistry } from "@/lib/baml-registry"
+import {
+  fieldsFromLinkAnalysis,
+  recordAnalysisFailure,
+  markInsufficientContent,
+  analyzableWordCount,
+  analyzableText,
+  MIN_ANALYZABLE_WORDS,
+} from "@/lib/analysis"
 
 export async function POST(
   request: NextRequest,
@@ -50,6 +58,15 @@ export async function POST(
     return NextResponse.json({ error: "Link not found" }, { status: 404 })
   }
 
+  const words = analyzableWordCount(analyzableText(link))
+  if (words < MIN_ANALYZABLE_WORDS) {
+    await markInsufficientContent(session.user.id, [id])
+    return NextResponse.json(
+      { error: `Not enough content to analyze (${words} words)`, code: "INSUFFICIENT_CONTENT" },
+      { status: 422 }
+    )
+  }
+
   try {
     // Update status to ANALYZING
     await prisma.link.update({
@@ -74,43 +91,10 @@ export async function POST(
     console.log("[/api/links/[id]/analyze] BAML completed in", Date.now() - bamlStart, "ms")
     console.log("[/api/links/[id]/analyze] Result:", JSON.stringify(result, null, 2))
 
-    // Map all tag types to string arrays
-    const linkTags = result.tags?.map((tag) => String(tag)) || []
-    const contentTags = result.contentTags?.map((tag) => String(tag)) || []
-    const metadataTags = result.metadataTags?.map((tag) => String(tag)) || []
-
-    // Primary category is the first content tag
-    const aiCategory = contentTags[0] || null
-
-    // Check for paywall indicators from metadataTags
-    const isPaywalled =
-      metadataTags.includes("PAYMENT_REQUIRED") ||
-      metadataTags.includes("SUBSCRIPTION_REQUIRED") ||
-      metadataTags.includes("LOGIN_REQUIRED")
-
-    let paywallType: string | null = null
-    if (metadataTags.includes("PAYMENT_REQUIRED")) {
-      paywallType = "hard"
-    } else if (metadataTags.includes("SUBSCRIPTION_REQUIRED")) {
-      paywallType = "soft"
-    } else if (metadataTags.includes("LOGIN_REQUIRED")) {
-      paywallType = "registration"
-    }
-
     // Update the link with analysis results
     const updatedLink = await prisma.link.update({
       where: { id },
-      data: {
-        fetchStatus: "COMPLETED",
-        aiSummary: result.summary || null,
-        aiCategory,
-        linkTags,
-        contentTags,
-        metadataTags,
-        isPaywalled,
-        paywallType,
-        analyzedAt: new Date(),
-      },
+      data: fieldsFromLinkAnalysis(result),
       include: {
         email: {
           where: { userId: session.user.id },
@@ -130,6 +114,7 @@ export async function POST(
       link: updatedLink,
       bamlResult: {
         summary: result.summary,
+        keyPoints: result.keyPoints,
         tags: result.tags,
         contentTags: result.contentTags,
         metadataTags: result.metadataTags,
@@ -139,14 +124,12 @@ export async function POST(
   } catch (error) {
     console.error("[/api/links/[id]/analyze] Error:", error)
 
-    // Revert status on error
-    await prisma.link.update({
-      where: { id },
-      data: { fetchStatus: "FETCHED" },
-    })
+    // Revert status on error and keep the reason for the Digest
+    const message = error instanceof Error ? error.message : "Analysis failed"
+    await recordAnalysisFailure(session.user.id, [id], message)
 
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Analysis failed" },
+      { error: message },
       { status: 500 }
     )
   }
