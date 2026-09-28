@@ -7,7 +7,11 @@ import {
   analyzeLink,
   persistLinkAnalysis,
   recordAnalysisFailure,
+  markInsufficientContent,
+  analyzableWordCount,
+  analyzableText,
   MAX_AUTO_ANALYSIS_ATTEMPTS,
+  MIN_ANALYZABLE_WORDS,
   type LinkAnalysisInput,
 } from "@/lib/analysis"
 import {
@@ -258,7 +262,11 @@ async function submitAnalyzeBatch(
   const requests: InlinedRequest[] = []
   const orderedIds: string[] = []
 
-  for (const link of links) {
+  const thin = links.filter((l) => analyzableWordCount(analyzableText(l)) < MIN_ANALYZABLE_WORDS)
+  await markInsufficientContent(userId, thin.map((l) => l.id))
+  const thinIds = new Set(thin.map((l) => l.id))
+
+  for (const link of links.filter((l) => !thinIds.has(l.id))) {
     const html = (link.rawHtml || link.contentText || "").slice(0, MAX_HTML_CHARS) || undefined
     try {
       const httpReq = await b.request.IngestLink(link.url, link.title || link.url, html, {

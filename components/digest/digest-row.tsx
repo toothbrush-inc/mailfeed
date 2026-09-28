@@ -164,8 +164,8 @@ export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDo
 
       {bucket === "paywalled" && link.paywallType === "insufficient_content" && (
         <p className="mt-2 text-sm text-muted-foreground">
-          The page loaded but had too little readable text to analyze. It may need JavaScript,
-          or only show a teaser.
+          Too little text to analyze: a page that needs JavaScript, a teaser or sign-in page, or a
+          short post that only shares a link.
         </p>
       )}
 

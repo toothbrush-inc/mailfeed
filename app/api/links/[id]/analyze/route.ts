@@ -6,7 +6,14 @@ import { getUserSettings } from "@/lib/user-settings"
 import { getUserAiKeys } from "@/lib/user-keys"
 import { isAiConfigured, getMissingEnvVarMessage } from "@/lib/ai-provider"
 import { buildClientRegistry } from "@/lib/baml-registry"
-import { fieldsFromLinkAnalysis, recordAnalysisFailure } from "@/lib/analysis"
+import {
+  fieldsFromLinkAnalysis,
+  recordAnalysisFailure,
+  markInsufficientContent,
+  analyzableWordCount,
+  analyzableText,
+  MIN_ANALYZABLE_WORDS,
+} from "@/lib/analysis"
 
 export async function POST(
   request: NextRequest,
@@ -49,6 +56,15 @@ export async function POST(
 
   if (!link) {
     return NextResponse.json({ error: "Link not found" }, { status: 404 })
+  }
+
+  const words = analyzableWordCount(analyzableText(link))
+  if (words < MIN_ANALYZABLE_WORDS) {
+    await markInsufficientContent(session.user.id, [id])
+    return NextResponse.json(
+      { error: `Not enough content to analyze (${words} words)`, code: "INSUFFICIENT_CONTENT" },
+      { status: 422 }
+    )
   }
 
   try {

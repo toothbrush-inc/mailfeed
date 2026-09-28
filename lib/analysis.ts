@@ -8,9 +8,63 @@ import type { AiKeys } from "@/lib/user-keys"
 // times; the Digest page's "Analyze again" still runs it.
 export const MAX_AUTO_ANALYSIS_ATTEMPTS = 3
 
+// Below this many words of real text there is nothing worth summarizing,
+// e.g. a post that only shares a link ("Title https://t.co/… via @ft").
+// Non-X pages under 50 words are already rejected at fetch time
+// (isPoorContent); this mainly catches X/oEmbed posts, which are exempt there.
+export const MIN_ANALYZABLE_WORDS = 25
+
 export interface AnalysisResult {
     success: boolean
     error?: string
+    /** Not analyzed: too little text. The link is now "Not enough content". */
+    skipped?: boolean
+}
+
+/**
+ * Words of real text the analysis would see: links, @handles, "via @x" and
+ * the oEmbed attribution ("— Name (@handle) January 17, 2026") don't count.
+ */
+export function analyzableWordCount(text: string | null | undefined): number {
+    if (!text) return 0
+    const cleaned = text
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&[a-z#0-9]+;/gi, " ")
+        .replace(/[—–-]\s*[^—–\n]*\(@\w+\)\s*[A-Z][a-z]+ \d{1,2}, \d{4}/g, " ")
+        .replace(/https?:\/\/\S+/g, " ")
+        .replace(/\bpic\.twitter\.com\/\S+/g, " ")
+        .replace(/\bvia\s+@\w+/gi, " ")
+        .replace(/@\w+/g, " ")
+    return cleaned.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length
+}
+
+/** The text analysis will run on, for the word-count check. */
+export function analyzableText(link: { contentText?: string | null; rawHtml?: string | null }) {
+    return link.contentText || link.rawHtml || null
+}
+
+/**
+ * Mark a link "Not enough content" instead of analyzing it. Any earlier
+ * analysis is cleared, since it was made from the same too-thin text.
+ */
+export async function markInsufficientContent(userId: string, linkIds: string[]): Promise<void> {
+    if (linkIds.length === 0) return
+    await prisma.link.updateMany({
+        where: { userId, id: { in: linkIds } },
+        data: {
+            fetchStatus: "PAYWALL_DETECTED",
+            isPaywalled: true,
+            paywallType: "insufficient_content",
+            aiSummary: null,
+            aiKeyPoints: [],
+            aiCategory: null,
+            linkTags: [],
+            contentTags: [],
+            metadataTags: [],
+            analyzedAt: null,
+            analysisError: null,
+        },
+    })
 }
 
 export interface LinkAnalysisInput {
@@ -114,6 +168,12 @@ export async function analyzeLink(
 
         if (!link) {
             return { success: false, error: "Link not found" }
+        }
+
+        const words = analyzableWordCount(analyzableText(link))
+        if (words < MIN_ANALYZABLE_WORDS) {
+            await markInsufficientContent(userId, [link.id])
+            return { success: false, skipped: true, error: `Not enough content to analyze (${words} words)` }
         }
 
         await prisma.link.updateMany({
