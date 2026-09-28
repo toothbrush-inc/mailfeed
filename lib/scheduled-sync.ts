@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma"
-import { runSyncForUser, retryInterruptedFetches, AuthenticationError } from "@/lib/sync-user"
+import {
+  runSyncForUser,
+  retryInterruptedFetches,
+  retryTransientFetchFailures,
+  AuthenticationError,
+} from "@/lib/sync-user"
 import { submitPendingAiForUser, reapPendingBatches, recoverInterruptedAnalysis } from "@/lib/gemini-batch"
 import { getUserSettings } from "@/lib/user-settings"
 import { createLogger } from "@/lib/logger"
@@ -115,6 +120,7 @@ export async function syncOneUser(userId: string): Promise<void> {
     })
 
     await retryInterruptedFetches(userId, { triggerAi: false })
+    await retryTransientFetchFailures(userId, { triggerAi: false })
     await recoverInterruptedAnalysis(userId)
     await submitPendingAiForUser(userId)
     await releaseLock(userId)

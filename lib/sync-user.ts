@@ -10,6 +10,7 @@ import { fetchWithFallbackChain } from "@/lib/fetchers"
 import { generateOperationId, recordFetchAttempts } from "@/lib/fetch-attempts"
 import { triggerAutoAnalysisAndEmbedding } from "@/lib/ai-triggers"
 import { formatGmailDate, updateSyncCoverage } from "@/lib/sync-coverage"
+import { classifyFetchError, primaryFetchError, RETRYABLE_FAILURES } from "@/lib/link-buckets"
 import "@/lib/fetchers/direct"
 import "@/lib/fetchers/wayback"
 import type { ResolvedSettings } from "@/lib/settings"
@@ -354,7 +355,8 @@ const MAX_FETCH_RETRIES_PER_RUN = 50
  * Retry links whose fetch was interrupted. Each link gets one retry: it is
  * marked first, and a marked link found stuck again is set to FAILED. Links
  * that finished fetching (FAILED, PAYWALL_DETECTED, FETCHED, ...) are never
- * touched, so bad or paywalled links are not fetched again.
+ * touched, so bad or paywalled links are not fetched again. Returns how
+ * many links it handled (retried or failed).
  */
 export async function retryInterruptedFetches(
   userId: string,
@@ -406,7 +408,88 @@ export async function retryInterruptedFetches(
   if (stuck.length > 0) {
     syncLogger.warn("Recovered interrupted fetches", { userId, retried: retry.length, failed: giveUp.length })
   }
-  return retry.length
+  return stuck.length
+}
+
+// Wait before each automatic retry of a temporary fetch failure, indexed by
+// how many times the link has been fetched. Its length is the retry limit.
+const TRANSIENT_RETRY_DELAYS_MS = [1, 6, 24].map((h) => h * 60 * 60 * 1000)
+// Last retry is due 31h after the first fetch; this covers it with slack.
+const TRANSIENT_RETRY_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
+
+/**
+ * Retry top-level links whose last fetch failed in a way that often clears up
+ * (timeout, 5xx, network error, 429): up to 3 more fetches, 1h, 6h and 24h
+ * apart, counting every past fetch of the link. Blocked, gone, unreadable and
+ * paywalled links are never retried.
+ *
+ * The worker only looks at links that failed in the last 3 days. The
+ * backfill script passes recentOnly: false to include older failures.
+ */
+export async function retryTransientFetchFailures(
+  userId: string,
+  options: { triggerAi?: boolean; recentOnly?: boolean; limit?: number } = {}
+): Promise<number> {
+  const due = await findTransientFetchRetries(userId, options)
+  if (due.length === 0) return 0
+
+  const settings = await getUserSettings(userId)
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { hiddenDomains: true } })
+  await processLinksInParallel(
+    due, userId, new Set(user?.hiddenDomains || []), settings, settings.sync.linkConcurrency,
+    options.triggerAi !== false
+  )
+  syncLogger.info("Retried temporary fetch failures", { userId, count: due.length })
+  return due.length
+}
+
+/** Links retryTransientFetchFailures would fetch now. */
+export async function findTransientFetchRetries(
+  userId: string,
+  options: { recentOnly?: boolean; limit?: number } = {}
+): Promise<Array<{ id: string; url: string; emailId: string | null }>> {
+  const { recentOnly = true, limit = MAX_FETCH_RETRIES_PER_RUN } = options
+  const now = Date.now()
+
+  const failed = await prisma.link.findMany({
+    where: {
+      userId,
+      fetchStatus: "FAILED",
+      parentLinkId: null,
+      updatedAt: {
+        lt: new Date(now - TRANSIENT_RETRY_DELAYS_MS[0]),
+        ...(recentOnly && { gt: new Date(now - TRANSIENT_RETRY_WINDOW_MS) }),
+      },
+    },
+    select: {
+      id: true,
+      url: true,
+      emailId: true,
+      fetchError: true,
+      updatedAt: true,
+      fetchAttempts: {
+        orderBy: { createdAt: "desc" },
+        select: { operationId: true, fetcherName: true, fetcherId: true, sequence: true, success: true, error: true, createdAt: true },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  })
+
+  const due: Array<{ id: string; url: string; emailId: string | null }> = []
+  for (const link of failed) {
+    const kind = classifyFetchError(primaryFetchError(link.fetchError, link.fetchAttempts).error)
+    if (!RETRYABLE_FAILURES.has(kind)) continue
+    // Links failed before attempts were recorded count as fetched once
+    const fetches = Math.max(1, new Set(link.fetchAttempts.map((a) => a.operationId)).size)
+    if (fetches > TRANSIENT_RETRY_DELAYS_MS.length) continue
+    const sinceLastFetch = now - (link.fetchAttempts[0]?.createdAt ?? link.updatedAt).getTime()
+    if (sinceLastFetch < TRANSIENT_RETRY_DELAYS_MS[fetches - 1]) continue
+    // A retry that throws records no attempt; the window still ends it
+    if (recentOnly && sinceLastFetch > TRANSIENT_RETRY_WINDOW_MS) continue
+    due.push({ id: link.id, url: link.url, emailId: link.emailId })
+    if (due.length >= limit) break
+  }
+  return due
 }
 
 async function fetchAndProcessPages(

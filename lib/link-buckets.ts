@@ -118,6 +118,7 @@ export function bucketWhere(
 
 export type FailureKind =
   | "blocked"
+  | "rate_limited"
   | "not_found"
   | "server_error"
   | "timeout"
@@ -128,6 +129,7 @@ export type FailureKind =
 
 export const FAILURE_LABELS: Record<FailureKind, string> = {
   blocked: "Site blocked the request",
+  rate_limited: "Site rate-limited the request",
   not_found: "Page no longer exists",
   server_error: "Site returned a server error",
   timeout: "Timed out",
@@ -145,7 +147,8 @@ export function classifyFetchError(error: string | null | undefined): FailureKin
   const status = error.match(/\b(?:HTTP|returned) (\d{3})\b/)?.[1]
   if (status) {
     const code = Number(status)
-    if ([401, 403, 407, 429, 451].includes(code)) return "blocked"
+    if (code === 429) return "rate_limited"
+    if ([401, 403, 407, 451].includes(code)) return "blocked"
     if (code === 404 || code === 410) return "not_found"
     if (code >= 500) return "server_error"
   }
@@ -165,6 +168,18 @@ export function classifyFetchError(error: string | null | undefined): FailureKin
   }
   return "other"
 }
+
+/**
+ * Failures that often clear up on their own, so the worker retries them a few
+ * times. Everything else (blocked, gone, unreadable, paywalled) gets the same
+ * answer again and is only refetched by hand.
+ */
+export const RETRYABLE_FAILURES: ReadonlySet<FailureKind> = new Set([
+  "timeout",
+  "server_error",
+  "network",
+  "rate_limited",
+])
 
 export interface AttemptSummary {
   operationId: string
