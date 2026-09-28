@@ -646,6 +646,8 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
               <div
                 className={cn(
                   "prose prose-zinc dark:prose-invert max-w-none",
+                  // Break long URLs and code lines so they can't widen the page on phones
+                  "wrap-anywhere prose-pre:overflow-x-auto",
                   "prose-p:text-[15px] prose-p:leading-[1.7] prose-p:mb-3",
                   "prose-headings:font-bold prose-headings:tracking-tight",
                   "prose-h2:text-lg prose-h2:mt-6 prose-h2:mb-3",
@@ -660,7 +662,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
                 dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(link.contentHtml) }}
               />
             ) : link.contentText ? (
-              <div className="space-y-3 text-[15px] leading-[1.7] text-muted-foreground">
+              <div className="space-y-3 text-[15px] leading-[1.7] text-muted-foreground wrap-anywhere">
                 {link.contentText.split(/\n\n+/).filter(p => p.trim()).map((paragraph, index) => (
                   <p key={index}>{paragraph}</p>
                 ))}
@@ -670,6 +672,8 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
               <div
                 className={cn(
                   "prose prose-zinc dark:prose-invert max-w-none",
+                  // Break long URLs and code lines so they can't widen the page on phones
+                  "wrap-anywhere prose-pre:overflow-x-auto",
                   "prose-p:text-[15px] prose-p:leading-[1.7] prose-p:mb-3",
                   "prose-headings:font-bold prose-headings:tracking-tight",
                   "prose-h2:text-lg prose-h2:mt-6 prose-h2:mb-3",
