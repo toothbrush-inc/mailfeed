@@ -86,6 +86,20 @@ async function releaseLock(userId: string, error?: string) {
   })
 }
 
+/**
+ * Run fn while holding the user's scheduled-sync lock, so one-off scripts
+ * don't fetch the same links as a worker pass. False if the lock is held.
+ */
+export async function withSyncLock(userId: string, fn: () => Promise<void>): Promise<boolean> {
+  if (!(await acquireLock(userId))) return false
+  try {
+    await fn()
+  } finally {
+    await prisma.user.update({ where: { id: userId }, data: { scheduledSyncStartedAt: null } })
+  }
+  return true
+}
+
 export async function syncOneUser(userId: string): Promise<void> {
   const locked = await acquireLock(userId)
   if (!locked) {

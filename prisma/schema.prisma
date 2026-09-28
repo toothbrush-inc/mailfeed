@@ -181,6 +181,10 @@ model Link {
   embeddedAt      DateTime?
   embeddingError  String?
 
+  // Automatic retries of temporary fetch failures (worker)
+  fetchRetryCount  Int       @default(0)
+  lastFetchRetryAt DateTime?
+
   // Timestamps
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt

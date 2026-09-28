@@ -4,10 +4,11 @@
  *
  * - links left in PENDING/FETCHING/ANALYZING by an interrupted run
  * - failed links whose last failure was temporary (timeout, 5xx, network,
- *   429) and that have been fetched fewer than 4 times
+ *   429) and that have been retried fewer than 3 times
  *
- * Blocked, gone, unreadable and paywalled links are left alone. The dry run
- * also prints failed links by reason.
+ * Blocked, gone, unreadable, paywalled and hidden links are left alone. The
+ * dry run also prints failed links by reason. Each user is skipped while the
+ * worker holds their sync lock.
  *
  *   npx tsx scripts/retry-unfetched-links.ts           # dry run
  *   npx tsx scripts/retry-unfetched-links.ts --apply   # fetch, then submit AI
@@ -20,7 +21,13 @@ import {
   retryTransientFetchFailures,
 } from "@/lib/sync-user"
 import { recoverInterruptedAnalysis, submitPendingAiForUser } from "@/lib/gemini-batch"
-import { classifyFetchError, primaryFetchError, type FailureKind } from "@/lib/link-buckets"
+import { withSyncLock } from "@/lib/scheduled-sync"
+import {
+  classifyFetchError,
+  primaryFetchError,
+  visibleDomainWhere,
+  type FailureKind,
+} from "@/lib/link-buckets"
 
 const apply = process.argv.includes("--apply")
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -30,7 +37,7 @@ async function report(userId: string, totals: Record<string, number>) {
   const stale = { lt: new Date(Date.now() - DAY_MS) }
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { hiddenDomains: true } })
   const hidden = user?.hiddenDomains || []
-  const visible = hidden.length > 0 ? { OR: [{ domain: null }, { domain: { notIn: hidden } }] } : {}
+  const visible = visibleDomainWhere(hidden)
 
   add("interrupted fetch, top-level (retry)", await prisma.link.count({
     where: { userId, fetchStatus: { in: ["PENDING", "FETCHING"] }, updatedAt: stale, parentLinkId: null, ...visible },
@@ -43,7 +50,7 @@ async function report(userId: string, totals: Record<string, number>) {
   }))
 
   const failed = await prisma.link.findMany({
-    where: { userId, fetchStatus: "FAILED", parentLinkId: null },
+    where: { userId, fetchStatus: "FAILED", parentLinkId: null, ...visible },
     select: {
       fetchError: true,
       fetchAttempts: {
@@ -56,7 +63,7 @@ async function report(userId: string, totals: Record<string, number>) {
     const kind: FailureKind = classifyFetchError(primaryFetchError(link.fetchError, link.fetchAttempts).error)
     add(`failed, top-level: ${kind}`, 1)
   }
-  const due = await findTransientFetchRetries(userId, { recentOnly: false, limit: Infinity })
+  const due = await findTransientFetchRetries(userId, hidden, { recentOnly: false, limit: Infinity })
   add("failed, temporary and due for retry", due.length)
 }
 
@@ -83,7 +90,9 @@ async function main() {
 
   for (const { id } of users) {
     console.log(`\nBackfilling user ${id}`)
-    await backfill(id)
+    if (!(await withSyncLock(id, () => backfill(id)))) {
+      console.log("  skipped: a worker sync is running for this user; run again later")
+    }
   }
 
   const after: Record<string, number> = {}
