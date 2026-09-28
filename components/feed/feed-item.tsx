@@ -353,8 +353,9 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
       )}
     >
       <CardHeader className="space-y-2">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 space-y-1">
+        <div className="flex items-start justify-between gap-3 sm:gap-4">
+          {/* min-w-0 lets the text shrink so the thumbnail stays inside the card */}
+          <div className="min-w-0 flex-1 space-y-1">
             {FEATURE_FLAGS.enableAnalysis && link.isHighlighted && (
               <div className="flex items-center gap-1 text-sm font-medium text-amber-600 dark:text-amber-400">
                 <span>★</span>
@@ -381,8 +382,8 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
                 <ExternalLink className="ml-1.5 mb-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground inline-block align-middle" />
               </a>
             </h3>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+              <span className="min-w-0 break-all">
                 {searchTerm && displayDomain ? (
                   <Highlighter
                     searchWords={searchWords}
@@ -411,7 +412,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
               {link.readingTimeMin && (
                 <>
                   <span>·</span>
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1 whitespace-nowrap">
                     <Clock className="h-3 w-3" />
                     {link.readingTimeMin} min read
                   </span>
@@ -420,7 +421,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
               {emailDate && (
                 <>
                   <span>·</span>
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1 whitespace-nowrap">
                     <Calendar className="h-3 w-3" />
                     {emailDate}
                   </span>
@@ -432,7 +433,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
             <img
               src={link.imageUrl}
               alt=""
-              className="h-24 w-24 rounded-md object-cover"
+              className="h-16 w-16 shrink-0 rounded-md object-cover sm:h-24 sm:w-24"
             />
           )}
         </div>
@@ -645,6 +646,8 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
               <div
                 className={cn(
                   "prose prose-zinc dark:prose-invert max-w-none",
+                  // Break long URLs and code lines so they can't widen the page on phones
+                  "wrap-anywhere prose-pre:overflow-x-auto",
                   "prose-p:text-[15px] prose-p:leading-[1.7] prose-p:mb-3",
                   "prose-headings:font-bold prose-headings:tracking-tight",
                   "prose-h2:text-lg prose-h2:mt-6 prose-h2:mb-3",
@@ -659,7 +662,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
                 dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(link.contentHtml) }}
               />
             ) : link.contentText ? (
-              <div className="space-y-3 text-[15px] leading-[1.7] text-muted-foreground">
+              <div className="space-y-3 text-[15px] leading-[1.7] text-muted-foreground wrap-anywhere">
                 {link.contentText.split(/\n\n+/).filter(p => p.trim()).map((paragraph, index) => (
                   <p key={index}>{paragraph}</p>
                 ))}
@@ -669,6 +672,8 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
               <div
                 className={cn(
                   "prose prose-zinc dark:prose-invert max-w-none",
+                  // Break long URLs and code lines so they can't widen the page on phones
+                  "wrap-anywhere prose-pre:overflow-x-auto",
                   "prose-p:text-[15px] prose-p:leading-[1.7] prose-p:mb-3",
                   "prose-headings:font-bold prose-headings:tracking-tight",
                   "prose-h2:text-lg prose-h2:mt-6 prose-h2:mb-3",

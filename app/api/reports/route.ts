@@ -13,9 +13,17 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get("page") || "1")
   const limit = parseInt(searchParams.get("limit") || "20")
 
+  // Only the caller's own reports on their own links; there is no admin
+  // role, so a report is never visible to another mailbox.
+  const where = {
+    userId: session.user.id,
+    link: { userId: session.user.id },
+  }
+
   // Fetch reports with link and user details
   const [reports, total] = await Promise.all([
     prisma.linkReport.findMany({
+      where,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * limit,
       take: limit,
@@ -45,7 +53,7 @@ export async function GET(request: NextRequest) {
         },
       },
     }),
-    prisma.linkReport.count(),
+    prisma.linkReport.count({ where }),
   ])
 
   return NextResponse.json({
