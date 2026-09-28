@@ -5,6 +5,12 @@ class LinkAnalysis {
   metadataTags MetadataTags[]
   summary string @description("A short summary of the link's content.")
   keyPoints string[] @description("3 to 5 key points or takeaways from the content, each one short sentence. Empty if there is no substantive content.")
+  worthReading int? @description(#"
+    How worth a general curious reader's time this content is, from 1 to 5. Judge substance, originality, depth and practical value.
+    5 = exceptional, a must-read. 4 = good, clearly worth reading. 3 = decent. 2 = below average, shallow or mostly unoriginal. 1 = thin, promotional or low value.
+    Be calibrated and use the full range: most links should score 2 to 4, and 5 should be rare.
+  "#)
+  worthReason string? @description("One short sentence on why it is or isn't worth the reader's time.")
 }
 
 class Link {
@@ -87,6 +93,7 @@ function IngestLink(url: string, anchorText: string, rawHtml: string?) -> LinkAn
     Classify the content category (technology, business, news, etc.).
     Identify any access restrictions (paywall, login required, etc.).
     Extract any other interesting links from the HTML.
+    Rate how worth reading it is (1 to 5) and say why in one short sentence.
 
     URL: {{ url }}
     Anchor Text: {{ anchorText }}
@@ -138,6 +145,7 @@ function BulkIngestLinks(links: LinkInput[]) -> BulkLinkResult[] {
     - The content category (technology, business, news, etc.)
     - Any access restrictions (paywall, login required, etc.)
     - Any other interesting links extracted from the HTML
+    - How worth reading it is (1 to 5) and why, in one short sentence
 
     IMPORTANT: Return one result per input link, using the same id from the input.
 

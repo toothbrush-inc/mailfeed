@@ -431,6 +431,8 @@ When the email query is changed in settings:
                     │ - tags[] (link type)          │
                     │ - contentTags[] (category)    │
                     │ - metadataTags[] (access)     │
+                    │ - worthReading (1-5)          │
+                    │ - worthReason (one sentence)  │
                     └───────────────┬───────────────┘
                                     │
                                     ▼
@@ -441,6 +443,12 @@ When the email query is changed in settings:
                     │ - aiCategory = contentTags[0] │
                     │ - isPaywalled / paywallType   │
                     │   from metadataTags           │
+                    │ - worthinessScore = worth-    │
+                    │   Reading clamped to 1-5      │
+                    │   (null if missing)           │
+                    │ - highlightReason =           │
+                    │   worthReason                 │
+                    │ - isHighlighted = score == 5  │
                     │ - analyzedAt = now            │
                     │ - analysisError cleared,      │
                     │   analysisAttempts = 0        │
@@ -453,7 +461,7 @@ A "Not enough content" post whose nested link was analyzed (e.g. a tweet sharing
 
 Refetch, Wayback, promote-attempt and X-article resolution write new content, so they also clear `analysisError` and reset `analysisAttempts` to 0.
 
-worthinessScore, uniquenessScore and isHighlighted are still in the schema, but the current analysis does not fill them in.
+The "worth reading" score is `worthFieldsFromAnalysis()` in `lib/analysis.ts`, used by `fieldsFromLinkAnalysis()` (live, bulk, per-link analyze, Gemini Batch) and the Wayback route. Every re-analysis overwrites it. `markInsufficientContent()` and promote-attempt clear it (`worthinessScore` null, `isHighlighted` false, `highlightReason` null). The feed sorts by it with `GET /api/links?sort=worth` (nulls last, then newest). Links analyzed before the score existed stay unscored until re-analyzed. `uniquenessScore` is still in the schema but unused.
 
 ## Link Status State Machine
 
@@ -539,8 +547,8 @@ worthinessScore, uniquenessScore and isHighlighted are still in the schema, but 
 │       └─► Extract key points                                               │
 │            └─► Categorize content                                          │
 │                 └─► Generate tags                                           │
-│                      └─► Score worthiness & uniqueness                     │
-│                           └─► Determine highlight status                   │
+│                      └─► Score "worth reading" 1-5 with a reason           │
+│                           └─► Highlight when the score is 5                │
 └────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼

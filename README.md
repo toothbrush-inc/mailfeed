@@ -193,7 +193,7 @@ components/                # React components
 lib/                       # Core logic
 ├── gmail.ts               # Gmail API integration
 ├── content-fetcher.ts     # Article extraction
-├── gemini.ts              # AI analysis
+├── analysis.ts            # AI analysis (BAML, baml_src/link.baml)
 ├── embeddings.ts          # Vector embeddings
 └── vector-search.ts       # Similarity search
 ```
