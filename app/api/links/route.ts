@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status")
   const read = searchParams.get("read")
   const search = searchParams.get("search")
+  const linkId = searchParams.get("link")
   const sort = searchParams.get("sort") || settings.feed.defaultSort
   const page = parseInt(searchParams.get("page") || "1")
   const limit = parseInt(searchParams.get("limit") || String(settings.feed.pageSize))
@@ -60,6 +61,11 @@ export async function GET(request: NextRequest) {
   const where: any = {
     userId: session.user.id,
     parentLinkId: null, // Only show top-level links, not nested/child links
+  }
+
+  // A single link, e.g. "Open in feed" from the Digest
+  if (linkId) {
+    where.id = linkId
   }
 
   if (category) {

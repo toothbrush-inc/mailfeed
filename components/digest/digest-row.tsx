@@ -1,9 +1,11 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
+import { FEATURE_FLAGS } from "@/lib/flags"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Archive, ExternalLink, Eye, Loader2, RefreshCw, Sparkles } from "lucide-react"
+import { Archive, ExternalLink, Eye, Loader2, Newspaper, RefreshCw, Sparkles } from "lucide-react"
 import type { DigestLink } from "@/hooks/use-digest"
 import type { DigestBucket } from "@/lib/link-buckets"
 
@@ -44,6 +46,8 @@ export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDo
   const [actionError, setActionError] = useState<string | null>(null)
 
   const href = link.finalUrl || link.url
+  // Fetched and queued for analysis, so it can be analyzed right away
+  const readyToAnalyze = bucket === "waiting" && link.fetchStatus === "FETCHED"
   const domain = link.finalDomain || link.domain
   const date = link.email?.receivedAt ?? link.createdAt
 
@@ -200,26 +204,38 @@ export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDo
         </p>
       )}
 
-      {bucket !== "analyzed" && bucket !== "waiting" && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(bucket === "unreachable" || bucket === "paywalled") && (
-            <>
-              {actionButton("refetch", "Retry", <RefreshCw className="mr-1.5 h-3.5 w-3.5" />, () =>
-                runAction("refetch", "refetch")
-              )}
-              {actionButton("wayback", "Try Wayback", <Archive className="mr-1.5 h-3.5 w-3.5" />, () =>
-                runAction("wayback", "wayback")
-              )}
-            </>
-          )}
-          {bucket === "analysis_failed" &&
-            actionButton("analyze", "Analyze again", <Sparkles className="mr-1.5 h-3.5 w-3.5" />, () =>
-              runAction("analyze", "analyze")
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {(bucket === "unreachable" || bucket === "paywalled") && (
+          <>
+            {actionButton("refetch", "Retry", <RefreshCw className="mr-1.5 h-3.5 w-3.5" />, () =>
+              runAction("refetch", "refetch")
             )}
-          {bucket === "hidden" &&
-            actionButton("unhide", "Unhide domain", <Eye className="mr-1.5 h-3.5 w-3.5" />, unhide)}
-        </div>
-      )}
+            {actionButton("wayback", "Try Wayback", <Archive className="mr-1.5 h-3.5 w-3.5" />, () =>
+              runAction("wayback", "wayback")
+            )}
+          </>
+        )}
+        {bucket === "analysis_failed" &&
+          actionButton("analyze", "Analyze again", <Sparkles className="mr-1.5 h-3.5 w-3.5" />, () =>
+            runAction("analyze", "analyze")
+          )}
+        {readyToAnalyze &&
+          FEATURE_FLAGS.enableAnalysis &&
+          actionButton("analyze", "Analyze now", <Sparkles className="mr-1.5 h-3.5 w-3.5" />, () =>
+            runAction("analyze", "analyze")
+          )}
+        {bucket === "hidden" &&
+          actionButton("unhide", "Unhide domain", <Eye className="mr-1.5 h-3.5 w-3.5" />, unhide)}
+        {/* Hidden-domain links aren't in the feed */}
+        {bucket !== "hidden" && (
+          <Button variant="ghost" size="sm" asChild>
+            <Link href={`/feed?link=${link.id}`}>
+              <Newspaper className="mr-1.5 h-3.5 w-3.5" />
+              Open in feed
+            </Link>
+          </Button>
+        )}
+      </div>
 
       {actionError && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{actionError}</p>}
     </article>
