@@ -36,7 +36,12 @@ function sharedStatusLabel(shared: DigestSharedLink): string {
   if (shared.fetchStatus === "PAYWALL_DETECTED") {
     return PAYWALL_LABELS[shared.paywallType ?? ""] ?? "Paywall"
   }
-  return SHARED_STATUS_LABELS[shared.fetchStatus] ?? shared.fetchStatus
+  const status = SHARED_STATUS_LABELS[shared.fetchStatus] ?? shared.fetchStatus
+  // Fetched but flagged as paywalled: only a teaser is available
+  if (shared.paywallType && shared.fetchStatus !== "COMPLETED") {
+    return `${PAYWALL_LABELS[shared.paywallType] ?? "Paywall"} · ${status}`
+  }
+  return status
 }
 
 /** Summary, key points and tags from one analysis. */
