@@ -358,6 +358,32 @@ async function submitEmbedBatch(
   }
 }
 
+// Live analysis sets ANALYZING and has no batch row, so a process that dies
+// mid-call leaves the link there. Far longer than any live call or batch.
+const INTERRUPTED_AFTER_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Hand links left in ANALYZING by an interrupted live analysis back to the
+ * submit pass. Counts as a failed attempt, so MAX_AUTO_ANALYSIS_ATTEMPTS
+ * stops a link that keeps killing the process from looping.
+ */
+export async function recoverInterruptedAnalysis(userId: string): Promise<number> {
+  const busy = await inFlightItemIds(userId, "ANALYZE_LINKS")
+  const stuck = await prisma.link.findMany({
+    where: {
+      userId,
+      fetchStatus: "ANALYZING",
+      updatedAt: { lt: new Date(Date.now() - INTERRUPTED_AFTER_MS) },
+    },
+    select: { id: true },
+  })
+  const ids = stuck.map((l) => l.id).filter((id) => !busy.has(id))
+  if (ids.length === 0) return 0
+  await recordAnalysisFailure(userId, ids, "Analysis was interrupted")
+  log.warn("Requeued interrupted analysis", { userId, count: ids.length })
+  return ids.length
+}
+
 export async function submitPendingAiForUser(userId: string): Promise<void> {
   const [settings, aiKeys] = await Promise.all([
     getUserSettings(userId),

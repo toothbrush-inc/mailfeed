@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
-import { runSyncForUser, AuthenticationError } from "@/lib/sync-user"
-import { submitPendingAiForUser, reapPendingBatches } from "@/lib/gemini-batch"
+import { runSyncForUser, retryInterruptedFetches, AuthenticationError } from "@/lib/sync-user"
+import { submitPendingAiForUser, reapPendingBatches, recoverInterruptedAnalysis } from "@/lib/gemini-batch"
 import { getUserSettings } from "@/lib/user-settings"
 import { createLogger } from "@/lib/logger"
 
@@ -114,6 +114,8 @@ export async function syncOneUser(userId: string): Promise<void> {
       upToDate: result.upToDate,
     })
 
+    await retryInterruptedFetches(userId, { triggerAi: false })
+    await recoverInterruptedAnalysis(userId)
     await submitPendingAiForUser(userId)
     await releaseLock(userId)
   } catch (error) {
