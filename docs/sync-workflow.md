@@ -441,6 +441,8 @@ When the email query is changed in settings:
 
 The word check runs on every path: `analyzeLink()` (auto, live, bulk), Gemini Batch submit, `POST /api/links/[id]/analyze` (returns 422 `INSUFFICIENT_CONTENT`) and the Wayback route. It mostly catches X/oEmbed posts, which skip the fetch-time 50-word check, and short sign-in/join pages. `scripts/reclassify-thin-content.ts` (dry run by default, `--apply` to write) applies it to links fetched or analyzed before the check existed.
 
+A "Not enough content" post whose nested link was analyzed (e.g. a tweet sharing an open article) counts as analyzed: `ANALYZED_WHERE` in `lib/link-buckets.ts`, used by the Digest and the feed's Analyzed filter. The Digest shows the shared article's summary on the post's row.
+
 Refetch, Wayback, promote-attempt and X-article resolution write new content, so they also clear `analysisError` and reset `analysisAttempts` to 0.
 
 worthinessScore, uniquenessScore and isHighlighted are still in the schema, but the current analysis does not fill them in.

@@ -43,9 +43,53 @@ function visibleDomainWhere(hiddenDomains: string[]): Prisma.LinkWhereInput {
   }
 }
 
+// A post with too little text of its own (e.g. a tweet sharing an article)
+// whose nested article was analyzed: the article's analysis stands in for it.
+const SHARED_ARTICLE_ANALYZED: Prisma.LinkWhereInput = {
+  fetchStatus: "PAYWALL_DETECTED",
+  paywallType: "insufficient_content",
+  childLinks: { some: { fetchStatus: "COMPLETED" } },
+}
+
+/** Analyzed itself, or through the article it shares. */
+export const ANALYZED_WHERE: Prisma.LinkWhereInput = {
+  OR: [{ fetchStatus: "COMPLETED" }, SHARED_ARTICLE_ANALYZED],
+}
+
+/**
+ * The exact complement of ANALYZED_WHERE. Written out rather than as
+ * NOT(ANALYZED_WHERE), because NOT over the nullable paywallType would
+ * drop rows where it is null.
+ */
+export const NOT_ANALYZED_WHERE: Prisma.LinkWhereInput = {
+  AND: [
+    { fetchStatus: { not: "COMPLETED" } },
+    {
+      OR: [
+        { fetchStatus: { not: "PAYWALL_DETECTED" } },
+        { paywallType: null },
+        { paywallType: { not: "insufficient_content" } },
+        { childLinks: { none: { fetchStatus: "COMPLETED" } } },
+      ],
+    },
+  ],
+}
+
 const STATUS_WHERE: Record<Exclude<DigestBucket, "hidden">, Prisma.LinkWhereInput> = {
-  analyzed: { fetchStatus: "COMPLETED" },
-  paywalled: { fetchStatus: "PAYWALL_DETECTED" },
+  analyzed: ANALYZED_WHERE,
+  paywalled: {
+    AND: [
+      { fetchStatus: "PAYWALL_DETECTED" },
+      // Leave out posts counted as analyzed through their shared article
+      {
+        OR: [
+          { paywallType: null },
+          { paywallType: { not: "insufficient_content" } },
+          { childLinks: { none: { fetchStatus: "COMPLETED" } } },
+        ],
+      },
+    ],
+  },
   unreachable: { fetchStatus: "FAILED" },
   analysis_failed: { fetchStatus: "FETCHED", analysisError: { not: null } },
   waiting: {

@@ -6,7 +6,7 @@ import { FEATURE_FLAGS } from "@/lib/flags"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Archive, ExternalLink, Eye, Loader2, Newspaper, RefreshCw, Sparkles } from "lucide-react"
-import type { DigestLink } from "@/hooks/use-digest"
+import type { DigestLink, DigestSharedLink } from "@/hooks/use-digest"
 import type { DigestBucket } from "@/lib/link-buckets"
 
 const WAITING_LABELS: Record<string, string> = {
@@ -21,6 +21,51 @@ const PAYWALL_LABELS: Record<string, string> = {
   soft: "Metered paywall",
   registration: "Sign-in required",
   insufficient_content: "Not enough content",
+}
+
+const SHARED_STATUS_LABELS: Record<string, string> = {
+  COMPLETED: "Analyzed",
+  PENDING: "Not fetched yet",
+  FETCHING: "Fetching",
+  FETCHED: "Fetched, not analyzed yet",
+  ANALYZING: "Analyzing",
+  FAILED: "Couldn't load",
+}
+
+function sharedStatusLabel(shared: DigestSharedLink): string {
+  if (shared.fetchStatus === "PAYWALL_DETECTED") {
+    return PAYWALL_LABELS[shared.paywallType ?? ""] ?? "Paywall"
+  }
+  return SHARED_STATUS_LABELS[shared.fetchStatus] ?? shared.fetchStatus
+}
+
+/** Summary, key points and tags from one analysis. */
+function AnalysisBlock({ analysis }: { analysis: Pick<DigestLink, "aiSummary" | "aiKeyPoints" | "contentTags"> }) {
+  return (
+    <>
+      {analysis.aiSummary ? (
+        <p>{analysis.aiSummary}</p>
+      ) : (
+        <p className="text-muted-foreground">No summary was produced.</p>
+      )}
+      {analysis.aiKeyPoints.length > 0 && (
+        <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
+          {analysis.aiKeyPoints.map((point, i) => (
+            <li key={i}>{point}</li>
+          ))}
+        </ul>
+      )}
+      {analysis.contentTags.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {analysis.contentTags.map((tag) => (
+            <Badge key={tag} variant="secondary" className="text-[10px]">
+              {tag.replace(/_/g, " ").toLowerCase()}
+            </Badge>
+          ))}
+        </div>
+      )}
+    </>
+  )
 }
 
 function formatDate(dateString: string): string {
@@ -51,11 +96,15 @@ export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDo
   const domain = link.finalDomain || link.domain
   const date = link.email?.receivedAt ?? link.createdAt
 
-  const runAction = async (name: string, path: string) => {
+  // A post counted as analyzed through the article it shares
+  const analyzedViaShared = bucket === "analyzed" && link.fetchStatus !== "COMPLETED"
+  const analyzedShared = link.sharedLinks.filter((s) => s.fetchStatus === "COMPLETED")
+
+  const runAction = async (name: string, path: string, linkId: string = link.id) => {
     setPending(name)
     setActionError(null)
     try {
-      const res = await fetch(`/api/links/${link.id}/${path}`, { method: "POST" })
+      const res = await fetch(`/api/links/${linkId}/${path}`, { method: "POST" })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || data.success === false) {
         throw new Error(data.error || "That didn't work")
@@ -110,7 +159,7 @@ export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDo
             )}
           </p>
         </div>
-        {bucket === "analyzed" && link.isPaywalled && (
+        {bucket === "analyzed" && !analyzedViaShared && link.isPaywalled && (
           <Badge variant="outline" className="shrink-0 border-amber-500 text-amber-700 dark:text-amber-400">
             Teaser only
           </Badge>
@@ -127,31 +176,33 @@ export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDo
         )}
       </div>
 
-      {bucket === "analyzed" && (
+      {bucket === "analyzed" && !analyzedViaShared && (
         <div className="mt-2 space-y-2 text-sm">
-          {link.aiSummary ? (
-            <p>{link.aiSummary}</p>
-          ) : (
-            <p className="text-muted-foreground">No summary was produced.</p>
-          )}
-          {link.aiKeyPoints.length > 0 && (
-            <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
-              {link.aiKeyPoints.map((point, i) => (
-                <li key={i}>{point}</li>
-              ))}
-            </ul>
-          )}
-          {link.contentTags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {link.contentTags.map((tag) => (
-                <Badge key={tag} variant="secondary" className="text-[10px]">
-                  {tag.replace(/_/g, " ").toLowerCase()}
-                </Badge>
-              ))}
-            </div>
-          )}
+          <AnalysisBlock analysis={link} />
         </div>
       )}
+
+      {analyzedViaShared &&
+        analyzedShared.map((shared) => (
+          <div key={shared.id} className="mt-2 space-y-2 border-l-2 pl-3 text-sm">
+            <p className="text-xs text-muted-foreground">
+              Shared article:{" "}
+              <a
+                href={shared.finalUrl || shared.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-foreground hover:underline break-words"
+              >
+                {shared.title || shared.finalUrl || shared.url}
+              </a>
+              {" · "}
+              {[shared.finalDomain || shared.domain, shared.readingTimeMin ? `${shared.readingTimeMin} min read` : null]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+            <AnalysisBlock analysis={shared} />
+          </div>
+        ))}
 
       {bucket === "unreachable" && link.failure && (
         <p className="mt-2 text-sm">
@@ -167,6 +218,32 @@ export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDo
           Too little text to analyze: a page that needs JavaScript, a teaser or sign-in page, or a
           short post that only shares a link.
         </p>
+      )}
+
+      {bucket === "paywalled" && link.sharedLinks.length > 0 && (
+        <ul className="mt-2 space-y-1.5 text-sm">
+          {link.sharedLinks.map((shared) => (
+            <li key={shared.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-muted-foreground">Links to</span>
+              <a
+                href={shared.finalUrl || shared.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-w-0 break-all hover:underline"
+              >
+                {shared.finalDomain || shared.domain || shared.url}
+              </a>
+              <Badge variant="outline" className="text-[10px]">
+                {sharedStatusLabel(shared)}
+              </Badge>
+              {shared.fetchStatus === "FETCHED" &&
+                FEATURE_FLAGS.enableAnalysis &&
+                actionButton(`analyze-${shared.id}`, "Analyze", <Sparkles className="mr-1.5 h-3.5 w-3.5" />, () =>
+                  runAction(`analyze-${shared.id}`, "analyze", shared.id)
+                )}
+            </li>
+          ))}
+        </ul>
       )}
 
       {(bucket === "unreachable" || bucket === "paywalled") && link.tried.length > 1 && (

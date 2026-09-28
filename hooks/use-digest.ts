@@ -3,6 +3,21 @@
 import useSWR from "swr"
 import type { DigestBucket } from "@/lib/link-buckets"
 
+export interface DigestSharedLink {
+  id: string
+  url: string
+  finalUrl: string | null
+  domain: string | null
+  finalDomain: string | null
+  title: string | null
+  aiSummary: string | null
+  aiKeyPoints: string[]
+  contentTags: string[]
+  readingTimeMin: number | null
+  fetchStatus: string
+  paywallType: string | null
+}
+
 export interface DigestLink {
   id: string
   url: string
@@ -25,6 +40,8 @@ export interface DigestLink {
   createdAt: string
   updatedAt: string
   email: { gmailId: string; subject: string | null; receivedAt: string } | null
+  /** Links found inside this one (e.g. the article a post shares). */
+  sharedLinks: DigestSharedLink[]
   /** Why the fetch failed, for the "unreachable" group. */
   failure: { kind: string; label: string; error: string | null } | null
   /** Fetchers tried in the most recent run, in order. */

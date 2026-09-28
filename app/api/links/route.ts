@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { getUserSettings } from "@/lib/user-settings"
+import { ANALYZED_WHERE, NOT_ANALYZED_WHERE } from "@/lib/link-buckets"
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
@@ -106,11 +107,11 @@ export async function GET(request: NextRequest) {
     where.fetchStatus = status
   }
 
-  // Same rule as the Digest's "Analyzed" group (lib/link-buckets.ts)
+  // Same rule as the Digest's "Analyzed" group
   if (analysis === "analyzed") {
-    andConditions.push({ fetchStatus: "COMPLETED" })
+    andConditions.push(ANALYZED_WHERE)
   } else if (analysis === "not_analyzed") {
-    andConditions.push({ fetchStatus: { not: "COMPLETED" } })
+    andConditions.push(NOT_ANALYZED_WHERE)
   }
 
   if (read === "read") {

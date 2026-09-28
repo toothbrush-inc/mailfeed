@@ -40,6 +40,9 @@ export async function GET(request: NextRequest) {
 
   const where = bucketWhere(bucket, userId, hiddenDomains)
   const showFetchAttempts = bucket === "unreachable" || bucket === "paywalled"
+  // A post's shared articles stand in for its own analysis when it has too
+  // little text; show them on Analyzed and Paywalled rows
+  const showSharedLinks = bucket === "analyzed" || bucket === "paywalled"
 
   const [counts, links, total] = await Promise.all([
     Promise.all(
@@ -75,6 +78,27 @@ export async function GET(request: NextRequest) {
           where: { userId },
           select: { gmailId: true, subject: true, receivedAt: true },
         },
+        childLinks: showSharedLinks
+          ? {
+              where: { userId },
+              orderBy: { createdAt: "asc" },
+              take: 3,
+              select: {
+                id: true,
+                url: true,
+                finalUrl: true,
+                domain: true,
+                finalDomain: true,
+                title: true,
+                aiSummary: true,
+                aiKeyPoints: true,
+                contentTags: true,
+                readingTimeMin: true,
+                fetchStatus: true,
+                paywallType: true,
+              },
+            }
+          : false,
         fetchAttempts: showFetchAttempts
           ? {
               orderBy: { createdAt: "desc" },
@@ -95,7 +119,7 @@ export async function GET(request: NextRequest) {
   ])
 
   const now = Date.now()
-  const rows = links.map(({ fetchAttempts, ...link }) => {
+  const rows = links.map(({ fetchAttempts, childLinks, ...link }) => {
     let failure: { kind: string; label: string; error: string | null } | null = null
     let tried: Array<{ fetcher: string; error: string | null }> = []
     if (showFetchAttempts) {
@@ -109,6 +133,7 @@ export async function GET(request: NextRequest) {
     const inFlight = link.fetchStatus === "FETCHING" || link.fetchStatus === "ANALYZING"
     return {
       ...link,
+      sharedLinks: childLinks || [],
       failure,
       tried,
       stuck: inFlight && now - new Date(link.updatedAt).getTime() > STUCK_AFTER_MS,
