@@ -16,7 +16,12 @@
  * wayback fallback may still call archive.org.
  */
 import { prisma, basePrisma } from "../lib/prisma"
-import { retryInterruptedFetches } from "../lib/sync-user"
+import {
+  retryInterruptedFetches,
+  retryTransientFetchFailures,
+  findTransientFetchRetries,
+} from "../lib/sync-user"
+import { classifyFetchError } from "../lib/link-buckets"
 import { recoverInterruptedAnalysis } from "../lib/gemini-batch"
 
 let failures = 0
@@ -91,8 +96,8 @@ async function main() {
   const failed = await makeLink("FAILED", { fetchError: "HTTP 404" })
   const paywalled = await makeLink("PAYWALL_DETECTED")
 
-  const retried = await retryInterruptedFetches(user.id, { triggerAi: false })
-  check("retries exactly one link", retried === 1, retried)
+  const handled = await retryInterruptedFetches(user.id, { triggerAi: false })
+  check("handles the stuck top-level, retried and nested links", handled === 3, handled)
 
   const s1 = await get(stuckFetching.id)
   check("stuck FETCHING link was fetched again and finished", s1?.fetchStatus === "FAILED", s1?.fetchStatus)
@@ -123,7 +128,51 @@ async function main() {
   check("failed and paywalled links were not fetched", untouchedAttempts === 0, untouchedAttempts)
 
   const again = await retryInterruptedFetches(user.id, { triggerAi: false })
-  check("second run retries nothing", again === 0, again)
+  check("second run handles nothing", again === 0, again)
+
+  // --- Temporary fetch failures ---
+  check("429 is classified as rate_limited", classifyFetchError("HTTP 429 Too Many Requests") === "rate_limited")
+
+  async function failedWith(error: string, fetchHoursAgo: number[], url?: string) {
+    const link = await makeLink("FAILED", { url, fetchError: error, hoursOld: Math.min(...fetchHoursAgo) })
+    for (const [i, h] of fetchHoursAgo.entries()) {
+      await prisma.fetchAttempt.create({
+        data: {
+          linkId: link.id,
+          operationId: `${link.id}-op${i}`,
+          fetcherId: "direct",
+          trigger: "sync",
+          sequence: 1,
+          success: false,
+          error,
+          durationMs: 1,
+          createdAt: new Date(Date.now() - h * 60 * 60 * 1000),
+        },
+      })
+    }
+    return link
+  }
+  const fetchOps = async (id: string) =>
+    new Set((await prisma.fetchAttempt.findMany({ where: { linkId: id } })).map((a) => a.operationId)).size
+
+  const t503 = await failedWith("HTTP 503", [2], "http://127.0.0.1:9/t503")
+  const t429 = await failedWith("HTTP 429", [2], "http://127.0.0.1:9/t429")
+  const t404 = await failedWith("HTTP 404", [2])
+  const tTooSoon = await failedWith("HTTP 503", [3, 5])
+  const tSpent = await failedWith("HTTP 503", [30, 40, 50, 60])
+  const tOld = await failedWith("HTTP 503", [5 * 24])
+
+  const transient = await retryTransientFetchFailures(user.id, { triggerAi: false })
+  check("worker retries the 503 and the 429 only", transient === 2, transient)
+  check("retried 503 fetched again", (await fetchOps(t503.id)) === 2)
+  check("retried 429 fetched again", (await fetchOps(t429.id)) === 2)
+  check("404 not retried", (await fetchOps(t404.id)) === 1)
+  check("second failure not retried before 6h", (await fetchOps(tTooSoon.id)) === 2)
+  check("link fetched 4 times not retried", (await fetchOps(tSpent.id)) === 4)
+  check("5-day-old failure not retried by the worker", (await fetchOps(tOld.id)) === 1)
+
+  const backfillDue = (await findTransientFetchRetries(user.id, { recentOnly: false, limit: Infinity })).map((l) => l.id)
+  check("backfill picks up the 5-day-old failure only", backfillDue.length === 1 && backfillDue[0] === tOld.id, backfillDue)
 
   // --- Analysis recovery ---
   const stuckAnalyzing = await makeLink("ANALYZING")

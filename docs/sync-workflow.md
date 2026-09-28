@@ -37,7 +37,8 @@ The Docker `worker` service runs `scripts/worker.ts` with no browser session. It
    Before submitting, it recovers links left behind by a crash or restart (not updated for 24h):
    - `PENDING`/`FETCHING` top-level links are fetched again, up to 50 per run. Each gets **one** retry: `fetchError` is set to a marker first, and a marked link found stuck again is set to `FAILED` ("Fetch was interrupted"). Nested links are set to `FAILED` without a retry. Hidden-domain links, which are parked in `PENDING`, are skipped.
    - `ANALYZING` links not in an in-flight Gemini batch go back to `FETCHED` through `recordAnalysisFailure`, which counts as an attempt, so `MAX_AUTO_ANALYSIS_ATTEMPTS` (3) still applies.
-   - Links whose fetch finished (`FAILED`, `PAYWALL_DETECTED`, `FETCHED`, `COMPLETED`) are never fetched again by the worker.
+   - Top-level `FAILED` links whose last failure was **temporary** (timeout, 5xx, network error, or 429 rate limit; `RETRYABLE_FAILURES` in `lib/link-buckets.ts`) get up to 3 more fetches, 1h, 6h and 24h after the previous one. Past fetches are counted from `FetchAttempt` operations. The worker only looks at failures from the last 3 days. `scripts/retry-unfetched-links.ts` is a one-off backfill without that window or the per-run caps.
+   - Other finished links (`FAILED` as blocked/404/unreadable, `PAYWALL_DETECTED`, `FETCHED`, `COMPLETED`) are never fetched again by the worker.
 
 Interactive `POST /api/sync` still fire-and-forgets per-link AI. The worker passes `triggerAi: false` and batches AI afterward.
 
