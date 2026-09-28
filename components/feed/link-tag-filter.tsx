@@ -67,7 +67,8 @@ const ANALYSIS_STATUS = [
 // Sort options
 const SORT_OPTIONS = [
   { value: "date_desc", label: "Newest first" },
-  { value: "date_asc", label: "Oldest first" }
+  { value: "date_asc", label: "Oldest first" },
+  { value: "worth", label: "Best first" },
 ]
 
 // All tags combined for lookup

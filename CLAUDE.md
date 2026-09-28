@@ -54,7 +54,7 @@ lib/
 ├── gmail.ts               # Gmail API integration
 ├── link-extractor.ts      # URL extraction from HTML
 ├── content-fetcher.ts     # Page fetching with Readability
-├── gemini.ts              # Gemini AI analysis
+├── analysis.ts            # AI analysis (BAML, baml_src/link.baml)
 └── utils.ts               # cn() utility from shadcn
 ```
 
@@ -117,6 +117,6 @@ The sync workflow decision tree documents the complete email → link → AI pro
 | `lib/content-fetcher.ts` | Content fetching decision tree, paywall detection |
 | `lib/ai-html-parser.ts` | AI fallback path |
 | `lib/process-nested-links.ts` | Nested links processing |
-| `lib/gemini.ts` | AI analysis output fields |
+| `lib/analysis.ts`, `baml_src/link.baml` | AI analysis output fields |
 
 See `docs/sync-workflow.md` for the complete decision tree diagram.

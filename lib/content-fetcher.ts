@@ -2,6 +2,7 @@ import { Readability } from "@mozilla/readability"
 import { JSDOM } from "jsdom"
 import { shouldUseOEmbed, fetchOEmbed, extractTextFromOEmbed } from "./oembed-fetcher"
 import { isMajorNewsSite, extractNewsMetadata } from "./news-extractor"
+import { safeFetch } from "./safe-fetch"
 
 interface FetchResult {
   success: boolean
@@ -91,7 +92,7 @@ export async function fetchAndParseContent(url: string, options?: { timeoutMs?: 
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? 30000)
 
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       headers: {
         "User-Agent": USER_AGENT,
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",

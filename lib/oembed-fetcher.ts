@@ -1,4 +1,5 @@
 import { JSDOM } from "jsdom"
+import { safeFetch } from "./safe-fetch"
 
 export interface OEmbedResult {
   success: boolean
@@ -100,7 +101,7 @@ export async function fetchOEmbed(url: string): Promise<OEmbedResult> {
     const oembedUrl = `${endpoint}?url=${encodeURIComponent(url)}&format=json`
     console.log(`[oEmbed] Fetching: ${oembedUrl}`)
 
-    const response = await fetch(oembedUrl, {
+    const response = await safeFetch(oembedUrl, {
       headers: {
         Accept: "application/json",
       },

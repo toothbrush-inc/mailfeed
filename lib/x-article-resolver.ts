@@ -10,6 +10,8 @@
  *   https://x.com/username/status/2008184661902544896
  */
 
+import { safeFetch } from './safe-fetch'
+
 const X_ARTICLE_PATTERN = /^https?:\/\/(x\.com|twitter\.com)\/i\/article\/(\d+)/i
 
 export interface XArticleUrlInfo {
@@ -82,7 +84,7 @@ export async function resolveXArticleUrl(url: string): Promise<ResolvedXArticle>
 
   try {
     // Try to fetch with redirect following to get canonical URL
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       method: 'HEAD',
       redirect: 'follow',
       headers: {
@@ -105,7 +107,7 @@ export async function resolveXArticleUrl(url: string): Promise<ResolvedXArticle>
     }
 
     // If HEAD didn't work, try GET and look for og:url or canonical link
-    const getResponse = await fetch(url, {
+    const getResponse = await safeFetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
       },

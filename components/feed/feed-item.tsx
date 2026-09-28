@@ -21,9 +21,11 @@ import {
 import { SocialEmbed, isEmbeddable } from "./social-embed"
 import { LinkDebugDialog } from "./link-debug-dialog"
 import { NestedLinkItem } from "./nested-link-item"
+import { WorthScore } from "./worth-score"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Highlighter from "react-highlight-words"
+import { sanitizeFetchedHtml } from "@/lib/sanitize-html"
 
 interface FeedItemProps {
   link: {
@@ -129,41 +131,6 @@ function formatDate(dateString: string): string {
   }
 
   return date.toLocaleDateString("en-US", options)
-}
-
-// Sanitize HTML for inline display — strip elements that cause console errors or security issues
-function sanitizeContentHtml(html: string): string {
-  return html
-    .replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<iframe[^>]*\/>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/\s*on\w+=\s*["'][^"']*["']/gi, "")
-    // Add target="_blank" and rel="noopener noreferrer" to all links that don't already have them
-    .replace(/<a\s+([^>]*)>/gi, (match, attrs) => {
-      let newAttrs = attrs
-      const hasTargetBlank = /\btarget\s*=\s*["']_blank["']/i.test(newAttrs)
-      const hasRel = /\brel\s*=/i.test(newAttrs)
-      const hasNoopener = /\bnoopener\b/i.test(newAttrs)
-      
-      // Add target="_blank" if missing
-      if (!hasTargetBlank) {
-        newAttrs += ' target="_blank"'
-      }
-      
-      // Add or update rel attribute
-      if (!hasRel) {
-        newAttrs += ' rel="noopener noreferrer"'
-      } else if (!hasNoopener) {
-        // rel exists but doesn't have noopener, add it (preserve original quote style)
-        newAttrs = newAttrs.replace(/\brel\s*=\s*(["'])([^"']*)\1/i, (relMatch: string, quote: string, relValue: string) => {
-          const newRel = `${relValue} noopener noreferrer`.trim()
-          return `rel=${quote}${newRel}${quote}`
-        })
-      }
-      
-      return `<a ${newAttrs}>`
-    })
 }
 
 export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHideDomain }: FeedItemProps) {
@@ -441,6 +408,12 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
                   </span>
                 </>
               )}
+              {FEATURE_FLAGS.enableAnalysis && (link.worthinessScore ?? 0) >= 1 && (
+                <>
+                  <span>·</span>
+                  <WorthScore score={link.worthinessScore} reason={link.highlightReason} />
+                </>
+              )}
               {emailDate && (
                 <>
                   <span>·</span>
@@ -626,7 +599,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
           </div>
         )}
 
-        {FEATURE_FLAGS.enableAnalysis && link.highlightReason && (
+        {FEATURE_FLAGS.enableAnalysis && link.isHighlighted && link.highlightReason && (
           <p className="text-sm italic text-amber-600 dark:text-amber-400">
             &ldquo;{link.highlightReason}&rdquo;
           </p>
@@ -682,7 +655,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
                   "prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:underline",
                   "prose-img:rounded-lg prose-img:my-3",
                 )}
-                dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(link.contentHtml) }}
+                dangerouslySetInnerHTML={{ __html: sanitizeFetchedHtml(link.contentHtml) }}
               />
             ) : link.contentText ? (
               <div className="space-y-3 text-[15px] leading-[1.7] text-muted-foreground wrap-anywhere">
@@ -709,7 +682,7 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
                   "prose-img:rounded-lg prose-img:my-3",
                 )}
                 dangerouslySetInnerHTML={{
-                  __html: sanitizeContentHtml(link.email.rawContent)
+                  __html: sanitizeFetchedHtml(link.email.rawContent)
                     // Remove tracking pixels and hidden images
                     .replace(/<img[^>]*(?:width|height)\s*=\s*["']?[01]["']?[^>]*>/gi, "")
                 }}

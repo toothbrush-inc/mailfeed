@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { sanitizeFetchedHtml } from "@/lib/sanitize-html"
 
 interface SocialEmbedProps {
   html: string
@@ -10,6 +11,14 @@ interface SocialEmbedProps {
 
 // Domains that use oEmbed and can render embeds
 const EMBED_DOMAINS = ["twitter.com", "x.com", "instagram.com", "tiktok.com", "youtube.com"]
+
+// The host is the domain or a subdomain of it. A substring check would let
+// look-alikes such as instagram.com.example.net through.
+function isHost(host: string | null | undefined, domain: string): boolean {
+  if (!host) return false
+  const h = host.toLowerCase()
+  return h === domain || h.endsWith("." + domain)
+}
 
 declare global {
   interface Window {
@@ -47,8 +56,7 @@ export function isEmbeddable(domain: string | null, html: string | null, url?: s
     }
   }
 
-  const normalizedDomain = domain.replace("www.", "")
-  return EMBED_DOMAINS.some((d) => normalizedDomain.includes(d))
+  return EMBED_DOMAINS.some((d) => isHost(domain, d))
 }
 
 // Extract tweet ID from Twitter/X URL
@@ -65,17 +73,6 @@ function extractYouTubeId(url: string): string | null {
   return match ? match[1] : null
 }
 
-// Strip elements from HTML that cause issues when rendered inline
-// (relative resource URLs, iframes blocked by X-Frame-Options, etc.)
-function sanitizeEmbedHtml(html: string): string {
-  return html
-    .replace(/<iframe[^>]*>[\s\S]*?<\/iframe>/gi, "")
-    .replace(/<iframe[^>]*\/>/gi, "")
-    .replace(/<link[^>]*>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-}
-
 export function SocialEmbed({ html, url, domain }: SocialEmbedProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [isLoaded, setIsLoaded] = useState(false)
@@ -88,10 +85,8 @@ export function SocialEmbed({ html, url, domain }: SocialEmbedProps) {
     if (!containerRef.current) return
 
     hasLoadedRef.current = true
-    const normalizedDomain = domain?.replace("www.", "") || ""
-
     // Twitter/X embeds
-    if (normalizedDomain.includes("twitter.com") || normalizedDomain.includes("x.com")) {
+    if (isHost(domain, "twitter.com") || isHost(domain, "x.com")) {
       const tweetId = extractTweetId(url)
       if (tweetId) {
         loadTwitterEmbed(tweetId)
@@ -103,13 +98,13 @@ export function SocialEmbed({ html, url, domain }: SocialEmbedProps) {
     }
 
     // Instagram embeds
-    if (normalizedDomain.includes("instagram.com")) {
+    if (isHost(domain, "instagram.com")) {
       renderHtmlAndLoadScript("instagram")
       return
     }
 
     // YouTube — construct a proper embed iframe from the video ID
-    if (normalizedDomain.includes("youtube.com") || normalizedDomain.includes("youtu.be")) {
+    if (isHost(domain, "youtube.com") || isHost(domain, "youtu.be")) {
       const videoId = extractYouTubeId(url)
       if (videoId && containerRef.current) {
         containerRef.current.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" style="width:100%;aspect-ratio:16/9;border-radius:8px"></iframe>`
@@ -121,7 +116,7 @@ export function SocialEmbed({ html, url, domain }: SocialEmbedProps) {
     }
 
     // TikTok embeds
-    if (normalizedDomain.includes("tiktok.com")) {
+    if (isHost(domain, "tiktok.com")) {
       renderHtmlAndLoadScript("tiktok")
       return
     }
@@ -133,7 +128,7 @@ export function SocialEmbed({ html, url, domain }: SocialEmbedProps) {
 
   const renderHtml = () => {
     if (containerRef.current && html) {
-      containerRef.current.innerHTML = sanitizeEmbedHtml(html)
+      containerRef.current.innerHTML = sanitizeFetchedHtml(html)
     }
   }
 

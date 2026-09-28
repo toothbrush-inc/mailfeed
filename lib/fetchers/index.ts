@@ -1,3 +1,5 @@
+import { BLOCKED_FETCH_ERROR } from "@/lib/safe-fetch"
+
 export interface FetchResult {
   success: boolean
   title?: string
@@ -94,6 +96,8 @@ export async function fetchWithFallbackChain(
       // If it failed but not fatally, try next fetcher
       failures.push(result)
       lastError = result.error
+      // A private/internal address: no other fetcher should try it either
+      if (result.error?.startsWith(BLOCKED_FETCH_ERROR)) break
       console.log(`[FallbackChain] ${fetcherId} failed for ${url}: ${result.error}, trying next...`)
     } catch (error) {
       const durationMs = Date.now() - startTime

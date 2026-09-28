@@ -27,6 +27,9 @@ import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import { recoverInterruptedAnalysis } from "../lib/gemini-batch"
 
+// The test fetches local addresses, which lib/safe-fetch.ts blocks by default
+process.env.MAILFEED_ALLOW_PRIVATE_FETCH = "true"
+
 let failures = 0
 function check(name: string, ok: boolean, detail?: unknown) {
   if (ok) console.log(`  ok  ${name}`)

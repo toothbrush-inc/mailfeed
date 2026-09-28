@@ -1,5 +1,6 @@
 import { JSDOM } from "jsdom"
 import { shouldUseOEmbed } from "./oembed-fetcher"
+import { safeFetch } from "./safe-fetch"
 
 // Domains to exclude from nested link extraction (social media, tracking, etc.)
 const EXCLUDED_NESTED_DOMAINS = [
@@ -65,7 +66,7 @@ async function resolveShortUrl(url: string): Promise<string | null> {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
 
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       method: "HEAD",
       redirect: "follow",
       signal: controller.signal,
