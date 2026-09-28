@@ -142,8 +142,9 @@ export function DigestRow({ link, bucket, maxAutoAttempts, onChanged, onUnhideDo
 
   return (
     <article className="border-b py-4 last:border-b-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+      {/* On phones the status badge sits above the title so the title keeps the full width */}
+      <div className="flex flex-col-reverse items-start gap-1.5 sm:flex-row sm:justify-between sm:gap-3">
+        <div className="w-full min-w-0 flex-1">
           <a
             href={href}
             target="_blank"
