@@ -352,9 +352,10 @@ async function fetchAndProcessPages(
   settings: ResolvedSettings,
   syncResults: SyncResults,
   triggerAi: boolean
-) {
+): Promise<boolean> {
   let pageToken: string | undefined
   let currentPage = 0
+  let processedPages = 0
   const emailsPerPage = 50
 
   do {
@@ -388,11 +389,15 @@ async function fetchAndProcessPages(
       continue
     }
 
+    processedPages++
     syncResults.pagesProcessed++
     await processEmailPage(newMessageIds, gmail, userId, hiddenDomains, settings, syncResults, triggerAi)
-  } while (pageToken && currentPage < maxPages)
+    // Pages of already-synced mail don't count against maxPages, so a run
+    // resuming from an unmoved watermark skips them and reaches unseen mail.
+  } while (pageToken && processedPages < maxPages)
 
   syncResults.hasMoreHistory = !!pageToken
+  return !!pageToken
 }
 
 async function finalizeResults(userId: string, syncResults: SyncResults) {
@@ -500,15 +505,17 @@ export async function runSyncForUser(
     afterDate.setDate(afterDate.getDate() - 1)
     const query = `${settings.email.query} after:${formatGmailDate(afterDate)}`
 
-    await fetchAndProcessPages(
+    const truncated = await fetchAndProcessPages(
       userId, query, options.maxPagesOverride ?? 1, gmail, hiddenDomains, settings, syncResults, triggerAi
     )
 
-    if (syncResults.emailsProcessed === 0) {
+    if (syncResults.emailsProcessed === 0 && !truncated) {
       syncResults.upToDate = true
     }
 
-    await updateSyncCoverage(userId)
+    // Gmail lists newest first, so a cut-off run leaves older unseen mail
+    // behind. Only advance the watermark once a run reaches the end.
+    await updateSyncCoverage(userId, { advanceNewest: !truncated })
   } else if (mode === "load-more") {
     if (!user?.syncOldestEmailDate) {
       throw new Error("Run initial sync first")
@@ -523,7 +530,8 @@ export async function runSyncForUser(
       gmail, hiddenDomains, settings, syncResults, triggerAi
     )
 
-    await updateSyncCoverage(userId)
+    // Only adds older mail; must not move a held-back check-new watermark.
+    await updateSyncCoverage(userId, { advanceNewest: false })
   } else if (mode === "initial" || mode === "full-resync") {
     await handleInitialSync(
       userId, settings, gmail, hiddenDomains, syncResults, triggerAi,

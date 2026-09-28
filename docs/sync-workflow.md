@@ -10,7 +10,7 @@ The sync system uses four modes, driven by date-based Gmail search operators (`a
 
 | Mode | Trigger | Behavior |
 |------|---------|----------|
-| `check-new` | Sync button, **hourly worker** | Appends `after:` to query using `syncNewestEmailDate` |
+| `check-new` | Sync button, **hourly worker** | Appends `after:` to query using `syncNewestEmailDate`; the watermark only advances when a run reaches the end |
 | `load-more` | "Load Older" button | Appends `before:` to query using `syncOldestEmailDate` |
 | `initial` | First sync (app or worker) or after query change | No date filter, fetches from beginning |
 | `full-resync` | Overflow menu | Same as `initial` (clears state, doesn't delete data) |
@@ -48,6 +48,8 @@ Interactive `POST /api/sync` still fire-and-forgets per-link AI. The worker pass
 
 Gmail's `after:` and `before:` operators use day granularity (YYYY/MM/DD). To handle boundary overlap, `check-new` subtracts 1 day from `syncNewestEmailDate` for the `after:` filter, and `load-more` adds 1 day to `syncOldestEmailDate` for the `before:` filter. Existing `gmailId` deduplication is per user (`userId` + `gmailId`).
 
+**Page cap and backlog.** Only pages with at least one new message count against the page cap; pages of already-synced mail are listed and skipped. Gmail lists newest first, so a `check-new` that stops at its cap has stored the newest mail but not older unseen mail. It therefore leaves `syncNewestEmailDate` unchanged (`updateSyncCoverage(userId, { advanceNewest: false })`). The next run searches from the same date, skips the pages it already stored, and continues into the backlog. `load-more` never advances `syncNewestEmailDate`, so it cannot skip a held-back backlog either.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                    MODE-BASED SYNC DISPATCH                                  │
@@ -69,8 +71,9 @@ POST /api/sync?mode=<mode>
          │                          │ NO
          │                          ▼
          │                     Build: query + after:(newestDate - 1 day)
-         │                     Fetch 1 page
-         │                     If no new emails → { upToDate: true }
+         │                     Fetch 1 page with new mail (synced pages skipped)
+         │                     If no new emails and not cut off → { upToDate: true }
+         │                     Cut off? → keep syncNewestEmailDate (resume next run)
          │
          ├── load-more ──────► syncOldestEmailDate null? ──YES──► Error
          │                          │ NO
@@ -563,7 +566,7 @@ worthinessScore, uniquenessScore and isHighlighted are still in the schema, but 
 | `sync.scheduled` | true | Hourly worker includes this user |
 | `sync.maxPagesScheduled` | 5 | Pages the worker may fetch per tick (`check-new` or first `initial`) |
 
-Interactive `check-new` fetches exactly 1 page. The scheduled worker uses `maxPagesScheduled` so a backlog of more than 50 messages can catch up.
+Interactive `check-new` fetches 1 page of new mail. The scheduled worker uses `maxPagesScheduled` so a backlog of more than 50 messages can catch up.
 
 ---
 

@@ -11,8 +11,12 @@ export function formatGmailDate(date: Date): string {
 /**
  * Query the Email table for min/max receivedAt and count,
  * then update syncNewestEmailDate and syncOldestEmailDate on the User.
+ *
+ * Pass advanceNewest: false to keep syncNewestEmailDate where it is, e.g.
+ * after a check-new cut off at its page cap: moving it to the newest stored
+ * email would skip the older unseen mail the run did not reach.
  */
-export async function updateSyncCoverage(userId: string) {
+export async function updateSyncCoverage(userId: string, { advanceNewest = true } = {}) {
   const result = await prisma.email.aggregate({
     where: { userId },
     _min: { receivedAt: true },
@@ -27,7 +31,7 @@ export async function updateSyncCoverage(userId: string) {
   await prisma.user.update({
     where: { id: userId },
     data: {
-      syncNewestEmailDate: newestEmailDate,
+      ...(advanceNewest && { syncNewestEmailDate: newestEmailDate }),
       syncOldestEmailDate: oldestEmailDate,
     },
   })
