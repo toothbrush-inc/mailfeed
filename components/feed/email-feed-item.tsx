@@ -175,14 +175,14 @@ export function EmailFeedItem({ email, onIngestComplete }: EmailFeedItemProps) {
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 space-y-1">
+          <div className="min-w-0 flex-1 space-y-1">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Mail className="h-4 w-4" />
               <span>{receivedDate}</span>
               <span>·</span>
               <span>{localLinks.length} link{localLinks.length !== 1 ? "s" : ""}</span>
             </div>
-            <h3 className="text-lg font-semibold leading-tight">
+            <h3 className="text-lg font-semibold leading-tight break-words">
               <a
                 href={gmailUrl}
                 target="_blank"
