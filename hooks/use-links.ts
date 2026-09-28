@@ -114,6 +114,7 @@ interface UseLinksOptions {
   highlighted?: boolean
   status?: string | null
   read?: "all" | "read" | "unread"
+  analysis?: "all" | "analyzed" | "not_analyzed"
   search?: string | null
   link?: string | null
   sort?: string | null
@@ -132,6 +133,7 @@ export function useLinks(options: UseLinksOptions = {}) {
   if (options.highlighted) params.set("highlighted", "true")
   if (options.status) params.set("status", options.status)
   if (options.read && options.read !== "all") params.set("read", options.read)
+  if (options.analysis && options.analysis !== "all") params.set("analysis", options.analysis)
   if (options.search) params.set("search", options.search)
   if (options.link) params.set("link", options.link)
   if (options.sort && options.sort !== "date_desc") params.set("sort", options.sort)

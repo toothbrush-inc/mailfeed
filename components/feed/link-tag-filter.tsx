@@ -8,6 +8,7 @@ import { useDomains } from "@/hooks/use-domains"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Filter, X, ChevronDown, Loader2, ArrowUpDown } from "lucide-react"
+import { FEATURE_FLAGS } from "@/lib/flags"
 
 // Link type tags from BAML LinkTag enum
 const LINK_TAGS = [
@@ -56,6 +57,13 @@ const READ_STATUS = [
   { value: "read", label: "Read" },
 ]
 
+// Analysis status filter options ("analyzed" = COMPLETED, as on the Digest)
+const ANALYSIS_STATUS = [
+  { value: "all", label: "All" },
+  { value: "analyzed", label: "Analyzed" },
+  { value: "not_analyzed", label: "Not analyzed" },
+]
+
 // Sort options
 const SORT_OPTIONS = [
   { value: "date_desc", label: "Newest first" },
@@ -75,6 +83,7 @@ export function LinkTagFilter() {
   const currentTag = searchParams.get("tag")
   const currentDomain = searchParams.get("domain")
   const currentRead = searchParams.get("read") || "all"
+  const currentAnalysis = searchParams.get("analysis") || "all"
   const currentSort = searchParams.get("sort") || "date_desc"
 
   const { domains, isLoading: domainsLoading } = useDomains()
@@ -115,6 +124,10 @@ export function LinkTagFilter() {
 
   const handleReadChange = (value: string) => {
     router.push(buildUrl({ read: value === "all" ? null : value }))
+  }
+
+  const handleAnalysisChange = (value: string) => {
+    router.push(buildUrl({ analysis: value === "all" ? null : value }))
   }
 
   const handleSortChange = (value: string) => {
@@ -177,6 +190,30 @@ export function LinkTagFilter() {
 
       {/* Divider */}
       <div className="h-5 w-px bg-zinc-300 dark:bg-zinc-600" />
+
+      {/* Analysis status quick filters */}
+      {FEATURE_FLAGS.enableAnalysis && (
+        <>
+          <div className="flex items-center gap-1 mr-2">
+            {ANALYSIS_STATUS.map((status) => (
+              <button
+                key={status.value}
+                onClick={() => handleAnalysisChange(status.value)}
+                className={cn(
+                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                  currentAnalysis === status.value
+                    ? "bg-blue-600 text-white dark:bg-blue-500"
+                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                )}
+              >
+                {status.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="h-5 w-px bg-zinc-300 dark:bg-zinc-600" />
+        </>
+      )}
 
       {/* Active filters as removable badges */}
       {currentTag && (

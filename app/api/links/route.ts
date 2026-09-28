@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
   const highlighted = searchParams.get("highlighted")
   const status = searchParams.get("status")
   const read = searchParams.get("read")
+  const analysis = searchParams.get("analysis")
   const search = searchParams.get("search")
   const linkId = searchParams.get("link")
   const sort = searchParams.get("sort") || settings.feed.defaultSort
@@ -103,6 +104,13 @@ export async function GET(request: NextRequest) {
 
   if (status) {
     where.fetchStatus = status
+  }
+
+  // Same rule as the Digest's "Analyzed" group (lib/link-buckets.ts)
+  if (analysis === "analyzed") {
+    andConditions.push({ fetchStatus: "COMPLETED" })
+  } else if (analysis === "not_analyzed") {
+    andConditions.push({ fetchStatus: { not: "COMPLETED" } })
   }
 
   if (read === "read") {
