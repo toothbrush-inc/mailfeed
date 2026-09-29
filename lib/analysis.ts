@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { b } from "@/baml_client"
 import { buildClientRegistry } from "@/lib/baml-registry"
+import { withBamlUsage } from "@/lib/ai-usage"
 import type { ResolvedSettings } from "@/lib/settings"
 import type { AiKeys } from "@/lib/user-keys"
 
@@ -213,7 +214,9 @@ export async function analyzeLink(
 
         try {
             const clientRegistry = buildClientRegistry(settings, aiKeys)
-            const bamlResult = await b.IngestLink(link.url, anchorText, rawHtml, { clientRegistry })
+            const bamlResult = await withBamlUsage({ userId, kind: "ANALYZE_LINK", linkId: link.id }, (collector) =>
+                b.IngestLink(link.url, anchorText, rawHtml, { clientRegistry, collector })
+            )
 
             const ok = await persistLinkAnalysis(link.id, userId, bamlResult)
             if (!ok) {

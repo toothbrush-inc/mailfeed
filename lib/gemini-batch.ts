@@ -27,6 +27,7 @@ import { getUserAiKeys, resolveGeminiKey, type AiKeys } from "@/lib/user-keys"
 import { FEATURE_FLAGS } from "@/lib/flags"
 import type { ResolvedSettings } from "@/lib/settings"
 import { createLogger } from "@/lib/logger"
+import { recordAiUsage } from "@/lib/ai-usage"
 
 const log = createLogger("GeminiBatch")
 
@@ -503,6 +504,7 @@ type BatchRow = {
   geminiName: string
   kind: string
   itemIds: string[]
+  model: string | null
   submittedAt: Date
 }
 
@@ -586,6 +588,16 @@ async function reapOne(row: BatchRow): Promise<void> {
       })
       const result = await applyLinkAnalysisResults(row.userId, items)
       log.info("Applied analyze batch", { userId: row.userId, ...result })
+      await recordAiUsage(
+        row.itemIds.map((id, i) => ({
+          userId: row.userId,
+          kind: "ANALYZE_LINK" as const,
+          linkId: id,
+          model: responses[i]?.response?.modelVersion || row.model || "unknown",
+          usage: responses[i]?.response?.usageMetadata,
+          batch: true,
+        }))
+      )
     } else if (row.kind === "EMBED_LINKS" || row.kind === "EMBED_EMAILS") {
       const responses = job.dest?.inlinedEmbedContentResponses || []
       const items = row.itemIds.map((id, i) => ({
@@ -613,7 +625,7 @@ async function reapOne(row: BatchRow): Promise<void> {
 export async function reapPendingBatches(): Promise<number> {
   const rows = await prisma.geminiBatch.findMany({
     where: { status: { in: IN_FLIGHT } },
-    select: { id: true, userId: true, geminiName: true, kind: true, itemIds: true, submittedAt: true },
+    select: { id: true, userId: true, geminiName: true, kind: true, itemIds: true, model: true, submittedAt: true },
     orderBy: { submittedAt: "asc" },
     take: 50,
   })

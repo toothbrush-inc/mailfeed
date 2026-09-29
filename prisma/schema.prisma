@@ -69,6 +69,7 @@ model User {
   updatedAt     DateTime  @updatedAt
 
   geminiBatches GeminiBatch[]
+  aiUsage       AiUsage[]
 }
 
 model VerificationToken {
@@ -309,4 +310,25 @@ model GeminiBatch {
 
   @@index([userId, status])
   @@index([status])
+}
+
+// One row per billed AI call (or per item of a Gemini batch), with the
+// token counts the provider reported and the cost at the list price in
+// effect when it ran. Feeds "Your AI spend" in Settings.
+model AiUsage {
+  id             String   @id @default(cuid())
+  userId         String
+  kind           String   // ANALYZE_LINK | INGEST_EMAIL | CHAT
+  model          String
+  batch          Boolean  @default(false)
+  inputTokens    Int
+  outputTokens   Int      // includes thinking tokens, billed as output
+  thinkingTokens Int      @default(0)
+  costUsd        Float?   // null when the model has no known price
+  linkId         String?
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }

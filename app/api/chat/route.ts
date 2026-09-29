@@ -5,6 +5,7 @@ import { generateEmbedding } from "@/lib/embeddings"
 import { searchSimilarContent, SimilarContent, textSearchLinks } from "@/lib/vector-search"
 import { textSearchEmails } from "@/lib/email-search"
 import { getUserSettings } from "@/lib/user-settings"
+import { recordAiUsage } from "@/lib/ai-usage"
 import { getUserAiKeys, missingGeminiKeyMessage, resolveGeminiKey } from "@/lib/user-keys"
 
 interface ChatMessage {
@@ -175,6 +176,15 @@ ${context ? `Here is the relevant content from the user's data:\n\n${context}` :
       model: settings.ai.chatModel,
       contents: conversationContent,
     })
+
+    await recordAiUsage([
+      {
+        userId: session.user.id,
+        kind: "CHAT",
+        model: response.modelVersion || settings.ai.chatModel,
+        usage: response.usageMetadata,
+      },
+    ])
 
     const responseText = response.text || "I'm sorry, I couldn't generate a response."
 
