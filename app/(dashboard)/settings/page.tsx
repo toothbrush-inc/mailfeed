@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { EmbeddingSection } from "@/components/settings/embedding-section"
 import { AiSettings } from "@/components/settings/ai-settings"
+import { AiSpend } from "@/components/settings/ai-spend"
 import { EmailSettings } from "@/components/settings/email-settings"
 import { FetchingSettings } from "@/components/settings/fetching-settings"
 import { AnalyzeSection } from "@/components/settings/analyze-section"
@@ -75,6 +76,7 @@ export default async function SettingsPage() {
       <SyncSettings />
       <FeedSettings />
       <AiSettings />
+      <AiSpend />
       <EmbeddingSection />
     </div>
   )

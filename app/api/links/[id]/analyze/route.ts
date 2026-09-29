@@ -6,6 +6,7 @@ import { getUserSettings } from "@/lib/user-settings"
 import { getUserAiKeys } from "@/lib/user-keys"
 import { isAiConfigured, getMissingEnvVarMessage } from "@/lib/ai-provider"
 import { buildClientRegistry } from "@/lib/baml-registry"
+import { withBamlUsage } from "@/lib/ai-usage"
 import {
   fieldsFromLinkAnalysis,
   recordAnalysisFailure,
@@ -81,11 +82,8 @@ export async function POST(
     // Prefer rawHtml (stored from content fetch) over email rawContent
     const htmlContent = link.rawHtml || link.contentText || link.email?.rawContent || undefined
     const clientRegistry = buildClientRegistry(settings, aiKeys)
-    const result = await b.IngestLink(
-      link.url,
-      link.title || link.url,
-      htmlContent,
-      { clientRegistry }
+    const result = await withBamlUsage({ userId: session.user.id, kind: "ANALYZE_LINK", linkId: id }, (collector) =>
+      b.IngestLink(link.url, link.title || link.url, htmlContent, { clientRegistry, collector })
     )
 
     console.log("[/api/links/[id]/analyze] BAML completed in", Date.now() - bamlStart, "ms")

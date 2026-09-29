@@ -22,6 +22,7 @@ import "dotenv/config"
 import { basePrisma as prisma } from "@/lib/prisma"
 import { BAML_CLIENTS } from "@/lib/ai-provider"
 import { DEFAULT_SETTINGS } from "@/lib/settings"
+import { LONG_CONTEXT_TOKENS, priceCall } from "@/lib/ai-pricing"
 
 function arg(name: string, fallback: number): number {
   const i = process.argv.indexOf(`--${name}`)
@@ -34,20 +35,6 @@ const CHARS_PER_TOKEN = arg("chars-per-token", 4)
 // Gemini 3.x Pro thinks by default and bills thinking as output.
 const THINKING_TOKENS = arg("thinking", 2000)
 const TOP_N = arg("top", 10)
-
-// USD per 1M tokens, paid tier. Checked 2026-09-29 at
-// https://ai.google.dev/gemini-api/docs/pricing — update when models change.
-// Flash rates double on 2027-01-01 ($1.50 / $7.50). gemini-embedding-001 is
-// no longer on that page; $0.15 is its last listed price.
-interface Price { input: number; output: number; longInput?: number; longOutput?: number }
-const PRICES: Record<string, Price> = {
-  "gemini-3.1-pro-preview": { input: 2, output: 12, longInput: 4, longOutput: 18 },
-  "gemini-3.8-flash": { input: 0.75, output: 3.75 },
-  "gemini-3.6-flash": { input: 0.75, output: 3.75 },
-  "gemini-embedding-001": { input: 0.15, output: 0 },
-}
-const LONG_CONTEXT_TOKENS = 200_000
-const BATCH_DISCOUNT = 0.5
 
 // Mirrors lib/gemini-batch.ts MAX_HTML_CHARS; the live path sends everything.
 const BATCH_MAX_HTML_CHARS = 24_000
@@ -63,15 +50,10 @@ const ENCRYPTED_INFLATION = 4 / 3
 
 const tokens = (chars: number) => Math.ceil(chars / CHARS_PER_TOKEN)
 
-function callCost(model: string, inTok: number, outTok: number, batch: boolean): number {
-  const p = PRICES[model]
-  if (!p) throw new Error(`No price for ${model}; add it to PRICES`)
-  const long = inTok > LONG_CONTEXT_TOKENS
-  const cost =
-    (inTok * (long && p.longInput ? p.longInput : p.input) +
-      outTok * (long && p.longOutput ? p.longOutput : p.output)) /
-    1_000_000
-  return batch ? cost * BATCH_DISCOUNT : cost
+function callCost(model: string, inTok: number, outTok: number, batch: boolean, at: Date): number {
+  const cost = priceCall({ model, inputTokens: inTok, outputTokens: outTok, batch, at })
+  if (cost === null) throw new Error(`No price for ${model}; add it to lib/ai-pricing.ts`)
+  return cost
 }
 
 const usd = (n: number) => (n < 0.01 && n > 0 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`)
@@ -213,7 +195,7 @@ async function main() {
     const inTok = PROMPT_OVERHEAD_TOKENS + tokens(htmlChars)
     const outTok =
       THINKING_TOKENS + OUTPUT_OVERHEAD_TOKENS + tokens(l.outputChars) + l.children * TOKENS_PER_CHILD_LINK
-    const one = callCost(model, inTok, outTok, l.viaBatch)
+    const one = callCost(model, inTok, outTok, l.viaBatch, l.at)
     if (inTok > LONG_CONTEXT_TOKENS) longContextCalls++
 
     for (const t of tallies(l.userId, l.at)) {
@@ -222,7 +204,7 @@ async function main() {
         t.links++
       }
       // Failed attempts on links still unanalyzed; assume they ran live.
-      t.failed += l.failedAttempts * callCost(model, inTok, outTok, false)
+      t.failed += l.failedAttempts * callCost(model, inTok, outTok, false, l.at)
       const calls = (l.analyzed ? 1 : 0) + l.failedAttempts
       t.calls += calls
       t.inTok += inTok * calls
@@ -237,14 +219,14 @@ async function main() {
 
   for (const e of [...linkEmbeds, ...emailEmbeds]) {
     const chars = Math.min(e.encrypted ? e.chars / ENCRYPTED_INFLATION : e.chars, EMBED_MAX_CHARS)
-    const cost = callCost(embedModel(userById.get(e.userId)), tokens(chars), 0, e.viaBatch)
+    const cost = callCost(embedModel(userById.get(e.userId)), tokens(chars), 0, e.viaBatch, e.at)
     for (const t of tallies(e.userId, e.at)) t.embeddings += cost
   }
 
   for (const e of ingests) {
     const chars = e.encrypted ? e.chars / ENCRYPTED_INFLATION : e.chars
     const model = analysisModel(userById.get(e.userId))
-    const cost = callCost(model, PROMPT_OVERHEAD_TOKENS + tokens(chars), THINKING_TOKENS + 500, false)
+    const cost = callCost(model, PROMPT_OVERHEAD_TOKENS + tokens(chars), THINKING_TOKENS + 500, false, e.at)
     for (const t of tallies(e.userId, e.at)) t.emailIngest += cost
   }
 

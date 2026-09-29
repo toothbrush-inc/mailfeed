@@ -475,6 +475,10 @@ Refetch, Wayback, promote-attempt and X-article resolution write new content, so
 
 The "worth reading" score is `worthFieldsFromAnalysis()` in `lib/analysis.ts`, used by `fieldsFromLinkAnalysis()` (live, bulk, per-link analyze, Gemini Batch) and the Wayback route. Every re-analysis overwrites it. `markInsufficientContent()` and promote-attempt clear it (`worthinessScore` null, `isHighlighted` false, `highlightReason` null). The feed sorts by it with `GET /api/links?sort=worth` (nulls last, then newest). Links analyzed before the score existed stay unscored until re-analyzed. `uniquenessScore` is still in the schema but unused.
 
+### AI usage recording
+
+Every billed AI call writes an `AiUsage` row (`lib/ai-usage.ts`) with the model, input tokens, output tokens (thinking included, since Gemini bills it as output) and the cost at the list price in effect (`lib/ai-pricing.ts`). Live BAML calls (`analyzeLink()`, per-link analyze, Wayback, email ingest) run through `withBamlUsage()`, which attaches a BAML `Collector` and reads Gemini's raw `usageMetadata`, because BAML's own usage leaves out thinking tokens. Each call BAML made is recorded, retries included, whether or not the analysis succeeded. The Gemini Batch reaper records one `batch: true` row per analyze item from that item's `usageMetadata`, at the 50% batch price. Chat records its `generateContent` usage. Embeddings are not recorded. Recording never fails the call it describes. `GET /api/ai-usage` aggregates the rows for "Your AI Spend" in Settings.
+
 ## Link Status State Machine
 
 ```
@@ -658,6 +662,7 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 | AI HTML fallback | `lib/ai-html-parser.ts` | `parseHtmlWithAI()` |
 | Nested links | `lib/process-nested-links.ts` | `processNestedLinks()` |
 | AI analysis | `lib/analysis.ts`, `lib/gemini-batch.ts` | `analyzeLink()`, `recordAnalysisFailure()`, per-user Gemini Batch apply |
+| AI usage & pricing | `lib/ai-usage.ts`, `lib/ai-pricing.ts` | `withBamlUsage()`, `recordAiUsage()`, `priceCall()` |
 | Digest groups | `lib/link-buckets.ts`, `app/api/digest/route.ts` | `bucketWhere()`, `classifyFetchError()`: which links were analyzed and why the rest weren't |
 | Fetch attempt recording | `lib/fetch-attempts.ts` | `recordFetchAttempts()`, `recordSingleFetchAttempt()` |
 | Fetch attempts API | `app/api/links/[id]/attempts/route.ts` | List attempts (no rawHtml) |

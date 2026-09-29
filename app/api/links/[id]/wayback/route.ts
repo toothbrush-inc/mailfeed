@@ -8,6 +8,7 @@ import { b } from "@/baml_client"
 import { getUserSettings } from "@/lib/user-settings"
 import { getUserAiKeys } from "@/lib/user-keys"
 import { buildClientRegistry } from "@/lib/baml-registry"
+import { withBamlUsage } from "@/lib/ai-usage"
 import {
   recordAnalysisFailure,
   markInsufficientContent,
@@ -128,11 +129,9 @@ export async function POST(
 
       try {
         const clientRegistry = buildClientRegistry(settings, aiKeys)
-        const analysis = await b.IngestLink(
-          urlToFetch,
-          waybackResult.title,
-          waybackResult.rawHtml,
-          { clientRegistry }
+        const { title, rawHtml } = waybackResult
+        const analysis = await withBamlUsage({ userId: session.user.id, kind: "ANALYZE_LINK", linkId: id }, (collector) =>
+          b.IngestLink(urlToFetch, title, rawHtml, { clientRegistry, collector })
         )
 
         // Convert enums to strings for storage

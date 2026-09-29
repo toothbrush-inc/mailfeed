@@ -6,6 +6,7 @@ import { hashUrl, extractDomain } from "@/lib/link-extractor"
 import { getUserSettings } from "@/lib/user-settings"
 import { getUserAiKeys } from "@/lib/user-keys"
 import { buildClientRegistry } from "@/lib/baml-registry"
+import { withBamlUsage } from "@/lib/ai-usage"
 
 export async function POST(
   request: NextRequest,
@@ -44,7 +45,10 @@ export async function POST(
     const bamlStart = Date.now()
 
     const clientRegistry = buildClientRegistry(settings, aiKeys)
-    const result = await b.IngestEmail(email.subject || "", email.rawContent, { clientRegistry })
+    const rawContent = email.rawContent
+    const result = await withBamlUsage({ userId: session.user.id, kind: "INGEST_EMAIL" }, (collector) =>
+      b.IngestEmail(email.subject || "", rawContent, { clientRegistry, collector })
+    )
 
     console.log("[/api/emails/[id]/ingest] BAML completed in", Date.now() - bamlStart, "ms")
     console.log("[/api/emails/[id]/ingest] Result:", JSON.stringify(result, null, 2))
