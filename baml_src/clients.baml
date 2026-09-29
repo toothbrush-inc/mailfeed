@@ -57,7 +57,7 @@ client<llm> CustomHaiku {
 client<llm> CustomGemini {
   provider google-ai
   options {
-    model "gemini-3.1-pro-preview"
+    model "gemini-3.8-flash"
     api_key env.GEMINI_API_KEY
   }
 }

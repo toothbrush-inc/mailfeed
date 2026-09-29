@@ -256,7 +256,7 @@ async function submitAnalyzeBatch(
   aiKeys: AiKeys,
   apiKey: string
 ) {
-  const model = BAML_CLIENTS.find((c) => c.name === settings.ai.bamlClient)?.model || "gemini-3.1-pro-preview"
+  const model = BAML_CLIENTS.find((c) => c.name === settings.ai.bamlClient)?.model || "gemini-3.8-flash"
   const links = await prisma.link.findMany({
     where: { userId, id: { in: ids } },
     select: { id: true, url: true, title: true, rawHtml: true, contentText: true },
