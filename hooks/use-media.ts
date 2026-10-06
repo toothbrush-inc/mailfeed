@@ -56,6 +56,8 @@ export interface RescanProgress {
   linksFound: number
   titlesFilled: number
   addressesCleaned: number
+  /** Posts on X that FxTwitter couldn't read in full. */
+  threadsUnread: number
   finished: boolean
   error: string | null
 }
@@ -67,6 +69,7 @@ const IDLE: RescanProgress = {
   linksFound: 0,
   titlesFilled: 0,
   addressesCleaned: 0,
+  threadsUnread: 0,
   finished: false,
   error: null,
 }
@@ -105,6 +108,7 @@ export function useMediaRescan(onProgress: () => void) {
           linksFound: totals.linksFound + step.linksFound,
           titlesFilled: totals.titlesFilled + step.titlesFilled,
           addressesCleaned: totals.addressesCleaned + step.addressesCleaned,
+          threadsUnread: totals.threadsUnread + step.threadsUnread,
         }
         setProgress(totals)
         if (step.linksFound > 0 || step.titlesFilled > 0) onProgress()

@@ -6,8 +6,17 @@
  * endpoint that embedded posts are rendered from gives the rest, and needs
  * no API key. It is not a documented API: when it fails or changes shape
  * this returns null and the post is handled as before, from oEmbed alone.
+ *
+ * That endpoint cuts a long post at 280 characters, and the link to the
+ * full video is often past the cut (after the chapter timestamps) or in a
+ * follow-up post by the same author. For a long post or one with a video,
+ * FxTwitter (api.fxtwitter.com, open source, no key) gives the full text
+ * and the author's follow-up posts. When it fails, the post keeps what the
+ * embed endpoint gave and is read again the next time it is processed.
+ * READ_X_THREADS=false turns FxTwitter off.
  */
 
+import { FEATURE_FLAGS } from "@/lib/flags"
 import { safeFetch } from "@/lib/safe-fetch"
 
 export interface PostVideo {
@@ -31,6 +40,12 @@ export interface PostContext extends PostPart {
   fetchedAt: string
   /** The post this one quotes. */
   quoted: PostPart | null
+  /**
+   * The full text of long posts and the links in the author's follow-up
+   * posts were read, where there was anything to read. Absent on contexts
+   * stored before they were; those are fetched again.
+   */
+  expanded?: boolean
 }
 
 const POST_URL = /^https?:\/\/(?:www\.|mobile\.)?(?:x|twitter)\.com\/(?:[^/]+)\/status(?:es)?\/(\d+)/i
@@ -108,6 +123,84 @@ export function parsePostContext(raw: unknown, now: Date = new Date()): PostCont
   }
 }
 
+// A long post, or one with a video, may have its link past the cut or in a follow-up
+function needsExpanding(raw: Json | null): boolean {
+  return !!raw && (!!raw.note_tweet || parseVideo(raw) !== null)
+}
+
+const MAX_FOLLOW_UPS = 10
+const THREAD_TIMEOUT_MS = 5_000
+
+function idAfter(id: string, after: string): boolean {
+  try {
+    return BigInt(id) > BigInt(after)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The full text of a post and the links in it and in its author's
+ * follow-up posts, from FxTwitter's thread response. Null when the
+ * response isn't about this post.
+ */
+export function parseThread(raw: unknown, id: string): { text: string | null; urls: string[] } | null {
+  const data = asObject(raw)
+  const status = asObject(data?.status)
+  if (!status || asString(status.id) !== id) return null
+  const authorId = asString(asObject(status.author)?.id)
+
+  const linksOf = (post: Json | null) =>
+    asArray(asObject(post?.raw_text)?.facets)
+      .map(asObject)
+      .filter((facet) => facet?.type === "url")
+      .map((facet) => asString(facet?.replacement))
+      .filter((url): url is string => !!url && /^https?:\/\//i.test(url))
+
+  // The thread holds the posts before this one and replies by others too
+  const followUps = asArray(data?.thread)
+    .map(asObject)
+    .filter((post) => {
+      const postId = asString(post?.id)
+      return !!postId && !!authorId && asString(asObject(post?.author)?.id) === authorId && idAfter(postId, id)
+    })
+    .slice(0, MAX_FOLLOW_UPS)
+
+  return {
+    text: asString(status.text),
+    urls: Array.from(new Set([...linksOf(status), ...followUps.flatMap(linksOf)])),
+  }
+}
+
+/** A part with the full text and the links its thread adds. Null when FxTwitter couldn't be read. */
+async function expandPart(part: PostPart): Promise<PostPart | null> {
+  // Its own timeout, so a slow FxTwitter can't hold up a sync for long
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), THREAD_TIMEOUT_MS)
+  try {
+    const response = await safeFetch(`https://api.fxtwitter.com/2/thread/${part.id}`, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; MailFeed/1.0)", Accept: "application/json" },
+      signal: controller.signal,
+    })
+    if (!response.ok) {
+      console.log(`[Post Context] FxTwitter ${response.status} for post ${part.id}`)
+      return null
+    }
+    const thread = parseThread(await response.json(), part.id)
+    if (!thread) return null
+    return {
+      ...part,
+      text: thread.text && thread.text.length > part.text.length ? thread.text : part.text,
+      urls: Array.from(new Set([...part.urls, ...thread.urls])),
+    }
+  } catch (error) {
+    console.log(`[Post Context] Could not read the thread of post ${part.id}:`, error instanceof Error ? error.message : error)
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 /** Read a stored Link.postContext back, ignoring anything that isn't one. */
 export function readPostContext(stored: unknown): PostContext | null {
   const context = asObject(stored)
@@ -134,7 +227,24 @@ export async function fetchPostContext(url: string, options?: { timeoutMs?: numb
       console.log(`[Post Context] ${response.status} for post ${id}`)
       return null
     }
-    return parsePostContext(await response.json())
+    const raw = asObject(await response.json())
+    const context = parsePostContext(raw)
+    if (!context) return null
+
+    clearTimeout(timeout)
+    if (!FEATURE_FLAGS.readXThreads) return { ...context, expanded: false }
+
+    const [main, quoted] = await Promise.all([
+      needsExpanding(raw) ? expandPart(context) : context,
+      context.quoted && needsExpanding(asObject(raw?.quoted_tweet)) ? expandPart(context.quoted) : context.quoted,
+    ])
+    return {
+      ...context,
+      ...(main ?? {}),
+      fetchedAt: context.fetchedAt,
+      quoted: quoted ?? context.quoted,
+      expanded: main !== null && (quoted !== null || context.quoted === null),
+    }
   } catch (error) {
     console.log(`[Post Context] Could not read post ${id}:`, error instanceof Error ? error.message : error)
     return null

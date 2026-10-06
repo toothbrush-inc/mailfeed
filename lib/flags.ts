@@ -5,4 +5,8 @@ export const FEATURE_FLAGS = {
     // places (the Dockerfile does, from one ARG) or the UI and the API
     // disagree.
     enableAnalysis: process.env.NEXT_PUBLIC_ENABLE_ANALYSIS === "true",
+    // Read the full text of long posts on X, and their authors' follow-up
+    // posts, from FxTwitter (lib/post-context.ts). On unless set to "false".
+    // Server only.
+    readXThreads: process.env.READ_X_THREADS !== "false",
 }

@@ -1,16 +1,9 @@
-import type { Prisma } from "@prisma/client"
 import { prisma } from "./prisma"
-import { extractNestedUrls, isSocialMediaLink, resolveNestedUrl } from "./nested-link-extractor"
-import { createNestedLink, type NestedLinkOrigin } from "./nested-link"
+import { FEATURE_FLAGS } from "./flags"
+import { extractNestedUrls, isSocialMediaLink } from "./nested-link-extractor"
+import { createNestedLink, loadPostContext, postContextUrls, type NestedLinkOrigin } from "./nested-link"
 import { classifyMediaUrl } from "./media"
-import {
-  fetchPostContext,
-  mayNameBook,
-  mayReferToRecording,
-  postIdFromUrl,
-  readPostContext,
-  type PostContext,
-} from "./post-context"
+import { mayNameBook, mayReferToRecording, type PostContext } from "./post-context"
 import { triggerMediaLookup } from "./media-lookup"
 import type { ResolvedSettings } from "./settings"
 
@@ -18,37 +11,9 @@ interface ProcessNestedLinksResult {
   created: number
   fetched: number
   skipped: number
+  /** A post on X whose full text or follow-up posts FxTwitter didn't give. */
+  threadUnread: boolean
   errors: string[]
-}
-
-/**
- * The stored context of a post on X, fetched and saved the first time.
- * Null for other platforms and for posts the embed endpoint won't return.
- */
-async function loadPostContext(parentLink: {
-  id: string
-  userId: string
-  url: string
-  finalUrl: string | null
-}): Promise<PostContext | null> {
-  const postUrl = [parentLink.finalUrl, parentLink.url].find((url) => postIdFromUrl(url))
-  if (!postUrl) return null
-
-  const stored = await prisma.link.findFirst({
-    where: { id: parentLink.id, userId: parentLink.userId },
-    select: { postContext: true },
-  })
-  const existing = readPostContext(stored?.postContext)
-  if (existing) return existing
-
-  const context = await fetchPostContext(postUrl)
-  if (context) {
-    await prisma.link.updateMany({
-      where: { id: parentLink.id, userId: parentLink.userId },
-      data: { postContext: context as unknown as Prisma.InputJsonValue },
-    })
-  }
-  return context
 }
 
 /**
@@ -110,6 +75,7 @@ export async function processNestedLinks(
     created: 0,
     fetched: 0,
     skipped: 0,
+    threadUnread: false,
     errors: [],
   }
 
@@ -136,15 +102,12 @@ export async function processNestedLinks(
 
   const found: Array<{ url: string; origin: NestedLinkOrigin }> = nestedUrls.map((url) => ({ url, origin: {} }))
 
-  // The links of the post this one quotes: "look at this" over someone
-  // else's post is about whatever that post links to
+  // What the post's context adds: the rest of a long post, the author's
+  // follow-up posts, and the links of the post it quotes
   const context = await loadPostContext(parentLink)
-  for (const quotedUrl of context?.quoted?.urls ?? []) {
-    const url = await resolveNestedUrl(quotedUrl)
-    if (url && !found.some((entry) => entry.url === url)) {
-      console.log(`[Nested Links] Found in quoted post: ${url}`)
-      found.push({ url, origin: { foundVia: "QUOTED_POST" } })
-    }
+  result.threadUnread = !!context && !context.expanded && FEATURE_FLAGS.readXThreads
+  for (const entry of await postContextUrls(context)) {
+    if (!found.some((other) => other.url === entry.url)) found.push(entry)
   }
 
   for (const { url, origin } of found) {
