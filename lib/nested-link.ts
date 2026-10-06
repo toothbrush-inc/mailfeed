@@ -47,7 +47,8 @@ const isExcludedUrl = (url: string) => {
 
 /** How a nested link was found, when it wasn't simply linked in the post. */
 export interface NestedLinkOrigin {
-  foundVia?: "QUOTED_POST" | "AI_LOOKUP" | null
+  /** SHOW_NOTES: linked in the notes of the podcast episode this link is nested under. */
+  foundVia?: "QUOTED_POST" | "AI_LOOKUP" | "SHOW_NOTES" | null
   /** AI_LOOKUP only: a video (the full recording or the same clip), a podcast episode, or a book. */
   foundRole?: "CLIP" | "FULL" | "EPISODE" | "BOOK" | null
 }
@@ -99,6 +100,7 @@ export async function createNestedLink(
       fetchStatus: "FETCHING",
       foundVia: origin.foundVia ?? null,
       foundRole: origin.foundRole ?? null,
+      lookupStatus: awaitsShowNotes(url, origin) ? "PENDING" : null,
     },
   })
 
@@ -205,7 +207,16 @@ export async function createNestedLink(
   }
 }
 
-/** What a catalog already says about an item, so its page needn't be fetched. */
+/**
+ * A podcast link is queued for the media lookup, which reads the episode's
+ * show notes for the links it discusses. Links that came out of show notes
+ * are not: one episode's notes are followed, not the web of episodes they cite.
+ */
+export function awaitsShowNotes(url: string, origin: NestedLinkOrigin): boolean {
+  return origin.foundVia !== "SHOW_NOTES" && classifyMediaUrl(url) === "podcast"
+}
+
+/** What a catalog or a show's notes already say about an item, so its page needn't be fetched. */
 export interface FoundItem {
   url: string
   title: string
@@ -214,15 +225,17 @@ export interface FoundItem {
 }
 
 /**
- * Create a nested link for an item found in a catalog (a podcast episode, a
- * book) from the catalog's own details, without fetching its page: there
- * is nothing on a catalog page worth reading or analyzing. A URL the user
- * already has is left alone.
+ * Create a nested link from details already in hand, without fetching its
+ * page: an item found in a catalog (a podcast episode, a book), where the
+ * page has nothing worth reading or analyzing, or a link from an episode's
+ * show notes, which is kept as a reference. A URL the user already has is
+ * left alone.
  */
 export async function createFoundLink(
   parentLink: { id: string; userId: string; emailId: string | null },
   item: FoundItem,
-  origin: NestedLinkOrigin
+  origin: NestedLinkOrigin,
+  contentSource: "catalog" | "show_notes" = "catalog"
 ): Promise<NestedLinkOutcome> {
   const urlHash = hashUrl(item.url)
   const existingLink = await prisma.link.findFirst({
@@ -251,11 +264,12 @@ export async function createFoundLink(
       imageUrl: item.imageUrl,
       contentText: item.description,
       wordCount: item.description ? item.description.split(/\s+/).filter(Boolean).length : 0,
-      contentSource: "catalog",
+      contentSource,
       fetchStatus: "FETCHED",
       fetchedAt: new Date(),
       foundVia: origin.foundVia ?? null,
       foundRole: origin.foundRole ?? null,
+      lookupStatus: awaitsShowNotes(item.url, origin) ? "PENDING" : null,
     },
   })
   console.log(`[Nested Links] Created found link: ${item.url}`)

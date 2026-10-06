@@ -62,6 +62,15 @@ interface NestedLinkItemProps {
     paywallType: string | null
     foundVia?: string | null
     foundRole?: string | null
+    /** Links nested under this one: what a podcast episode's show notes link. */
+    childLinks?: Array<{
+      id: string
+      url: string
+      finalUrl: string | null
+      title: string | null
+      domain: string | null
+      finalDomain: string | null
+    }>
     contentSource: string | null
     archivedUrl: string | null
     wordCount: number | null
@@ -225,6 +234,12 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{displayDomain}</span>
+              {link.foundVia === "SHOW_NOTES" && (
+                <>
+                  <span>·</span>
+                  <span>From the show notes</span>
+                </>
+              )}
               {link.foundVia === "QUOTED_POST" && (
                 <>
                   <span>·</span>
@@ -362,6 +377,32 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
                   </Dialog>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* What a podcast episode's show notes link, kept compact: these are references */}
+          {link.childLinks && link.childLinks.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">
+                From the show notes ({link.childLinks.length})
+              </p>
+              <ul className="space-y-0.5 text-sm">
+                {link.childLinks.map((noteLink) => (
+                  <li key={noteLink.id} className="flex items-baseline gap-2">
+                    <a
+                      href={noteLink.finalUrl || noteLink.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-w-0 truncate hover:underline"
+                    >
+                      {noteLink.title || noteLink.finalUrl || noteLink.url}
+                    </a>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {(noteLink.finalDomain || noteLink.domain || "").replace(/^www\./, "")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

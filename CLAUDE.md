@@ -58,6 +58,7 @@ lib/
 ├── post-context.ts        # Quoted post and uploaded video of a post on X
 ├── media-lookup.ts        # Finds the video, podcast episode or books a post or page points at
 ├── catalogs.ts            # Apple Podcasts and Open Library searches for the lookup
+├── show-notes.ts          # A podcast episode's show notes and their links, from the show's feed
 ├── content-fetcher.ts     # Page fetching with Readability
 ├── analysis.ts            # AI analysis (BAML, baml_src/link.baml)
 └── utils.ts               # cn() utility from shadcn
@@ -123,7 +124,7 @@ The sync workflow decision tree documents the complete email → link → AI pro
 | `lib/ai-html-parser.ts` | AI fallback path |
 | `lib/process-nested-links.ts`, `lib/nested-link.ts`, `lib/nested-link-extractor.ts` | Nested links processing, which links in a post are kept |
 | `lib/post-context.ts` | Post context from X (quoted post, uploaded video) |
-| `lib/media-lookup.ts`, `lib/catalogs.ts`, `baml_src/lookup.baml` | Media lookup: the video, podcast episode and books a post or page points at without linking |
+| `lib/media-lookup.ts`, `lib/catalogs.ts`, `lib/show-notes.ts`, `baml_src/lookup.baml` | Media lookup: the video, podcast episode and books a post or page points at without linking, and the links in an episode's show notes |
 | `lib/media.ts`, `lib/media-list.ts`, `lib/media-rescan.ts` | Media links (video, podcast, book, game rules; Media page; rescan) |
 | `lib/analysis.ts`, `baml_src/link.baml` | AI analysis output fields |
 

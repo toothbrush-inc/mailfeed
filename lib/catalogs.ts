@@ -40,6 +40,11 @@ export interface PodcastEpisode {
   released: string | null
   description: string | null
   imageUrl: string | null
+  /** The show's RSS feed and the episode's id in it: where its show notes are (lib/show-notes.ts). */
+  feedUrl: string | null
+  guid: string | null
+  /** Apple's id for the episode: the ?i= of its page. */
+  trackId: string | null
 }
 
 /** Read the episodes out of an iTunes Search answer. */
@@ -62,6 +67,9 @@ export function parsePodcastEpisodes(raw: unknown): PodcastEpisode[] {
       released: str(item.releaseDate)?.slice(0, 10) ?? null,
       description: description ? description.replace(/\s+/g, " ").slice(0, 300) : null,
       imageUrl: str(item.artworkUrl600) ?? str(item.artworkUrl160),
+      feedUrl: str(item.feedUrl),
+      guid: str(item.episodeGuid),
+      trackId: typeof item.trackId === "number" ? String(item.trackId) : str(item.trackId),
     })
   }
   return episodes
@@ -81,6 +89,50 @@ export async function searchPodcastEpisodes(terms: string[], perTerm = 8): Promi
     }
   }
   return Array.from(found.values())
+}
+
+/** The show and episode ids in an Apple Podcasts episode address (…/id<show>?i=<episode>). */
+export function appleEpisodeIds(url: string | null | undefined): { showId: string; trackId: string } | null {
+  if (!url) return null
+  try {
+    const parsed = new URL(url)
+    if (!/(^|\.)podcasts\.apple\.com$/i.test(parsed.hostname)) return null
+    const showId = parsed.pathname.match(/\/id(\d+)/)?.[1]
+    const trackId = parsed.searchParams.get("i")
+    return showId && trackId && /^\d+$/.test(trackId) ? { showId, trackId } : null
+  } catch {
+    return null
+  }
+}
+
+/** A show in the directory, with its feed and the episodes the directory lists for it. */
+export interface PodcastShow {
+  name: string | null
+  feedUrl: string | null
+  episodes: PodcastEpisode[]
+}
+
+/** Read a show and its episodes out of an iTunes Lookup answer. */
+export function parsePodcastShow(raw: unknown): PodcastShow | null {
+  const results = list((raw as Json | null)?.results) as Json[]
+  const show = results.find((item) => item.kind === "podcast" || item.wrapperType === "track")
+  if (!show) return null
+  return {
+    name: str(show.collectionName),
+    feedUrl: str(show.feedUrl),
+    episodes: parsePodcastEpisodes(raw),
+  }
+}
+
+/**
+ * A show by its Apple id, with its most recent episodes (the directory
+ * returns at most 200). Null when the directory doesn't know the show;
+ * throws when it can't be reached.
+ */
+export async function lookUpPodcastShow(showId: string): Promise<PodcastShow | null> {
+  return parsePodcastShow(
+    await getJson(`https://itunes.apple.com/lookup?id=${encodeURIComponent(showId)}&entity=podcastEpisode&limit=200`)
+  )
 }
 
 // ---------------------------------------------------------------------------

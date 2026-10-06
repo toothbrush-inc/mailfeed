@@ -84,7 +84,8 @@ async function flagForLookup(
 /**
  * Extract and process nested links from a parent social media link:
  * the links in the post and, for posts on X, the links in the post it
- * quotes. Then flag the post for the media lookup if it has a video that
+ * quotes. A podcast episode is queued for the media lookup instead, which
+ * reads the links in its show notes. Then flag the post for the media lookup if it has a video that
  * none of those links leads to, or names a recording or a book.
  */
 export async function processNestedLinks(
@@ -115,6 +116,17 @@ export async function processNestedLinks(
   // Only process social media links
   const domain = parentLink.finalDomain || parentLink.domain
   if (!isSocialMediaLink(domain)) {
+    // A podcast episode's nested links are in its show notes. Reading them
+    // takes the show's feed and an AI pass, so it is left to the media lookup.
+    if ((classifyMediaUrl(parentLink.finalUrl) ?? classifyMediaUrl(parentLink.url)) === "podcast") {
+      const flagged = await prisma.link.updateMany({
+        where: { id: parentLink.id, userId: parentLink.userId, lookupStatus: null },
+        data: { lookupStatus: "PENDING" },
+      })
+      if (flagged.count === 1 && (options?.lookup ?? options?.triggerAi !== false)) {
+        triggerMediaLookup(parentLink.id, parentLink.userId)
+      }
+    }
     return result
   }
 

@@ -248,8 +248,8 @@ export function AnalyzeSection() {
             </Label>
             <p className="text-sm text-muted-foreground">
               Look for what a saved link points at without linking it, and add it to that link and to
-              Media: the public video behind a clip uploaded to a post, the podcast episode, and books a
-              post or article names. Videos are found with Google searches through Gemini, which Google
+              Media: the public video behind a clip uploaded to a post, the podcast episode, books a post or
+              article names, and what a podcast episode&apos;s show notes link. Videos are found with Google searches through Gemini, which Google
               bills beyond a free monthly allowance. Podcasts and books come from free catalogs. Links
               already synced are looked up from the Media page.
             </p>

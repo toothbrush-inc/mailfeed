@@ -418,7 +418,7 @@ Each call works for about 20 seconds and returns a cursor; the page repeats the 
 
 ## Media Lookup (what a post or page points at without linking it)
 
-A post often shows a clip uploaded to X, or quotes a post that does, with no link to where the clip comes from. It may name a podcast episode or a book. An article may recommend books. `lib/media-lookup.ts` finds the public video, the podcast episode and the books, and adds them as nested links.
+A post often shows a clip uploaded to X, or quotes a post that does, with no link to where the clip comes from. It may name a podcast episode or a book. An article may recommend books. A podcast episode's show notes link what the episode discusses. `lib/media-lookup.ts` finds the public video, the podcast episode, the books and the show-notes links, and adds them as nested links.
 
 What queues a link for a lookup (`lookupStatus = PENDING`):
 
@@ -426,6 +426,7 @@ What queues a link for a lookup (`lookupStatus = PENDING`):
 |------|------|
 | Post on X | `flagForLookup()` in `processNestedLinks()`: the post or the post it quotes has an uploaded video, or its words suggest a recording ("this talk", "interview", "episode"), and none of its nested links is a video or podcast. Or its words suggest a book ("book", "novel", "finished reading"). |
 | Any analyzed link | `flagForBookLookup()` when the analysis names books (`LinkAnalysis.books`, stored in `Link.mentionedBooks`). A page analyzed again is queued again; a post keeps the outcome of its earlier lookup. |
+| Podcast link | Any link `classifyMediaUrl()` calls a podcast, wherever it came from: emailed (`processNestedLinks()`), nested in a post (`createNestedLink()`), or an episode the lookup found (`createFoundLink()`). Not a link that itself came out of show notes: one episode's notes are followed, not the episodes they cite. |
 
 ```
 lookUpMedia(link)  (claims the link: RUNNING)
@@ -447,7 +448,20 @@ lookUpMedia(link)  (claims the link: RUNNING)
         │              the same clip (CLIP), the complete recording (FULL),
         │              the podcast episode (EPISODE)
         │
-        └── Books (from triage and from mentionedBooks, at most 8)
+        ├── Podcast episode? ──► show notes (lib/show-notes.ts)
+        │       Apple's directory gives the show's RSS feed and the episode's
+        │       guid (an Apple address carries the ids; any other podcast page
+        │       is matched by its exact title). The episode's <item> in the
+        │       feed has the notes as HTML, with their links.
+        │       └── PickShowNoteLinks (BAML), by index among the links: the
+        │           ones the episode discusses, cites or recommends. Not
+        │           sponsors, the show's own subscribe and support links,
+        │           social profiles, or the same episode elsewhere. Also
+        │           returns books the notes name without linking.
+        │           Kept links (at most 20) ──► nested under the episode,
+        │           foundVia = SHOW_NOTES
+        │
+        └── Books (from triage, mentionedBooks and show notes, at most 8)
                 └── Open Library (lib/catalogs.ts), no AI: the title must match
                     and, when an author is named, the author too; without an
                     author only a title with several editions is trusted (BOOK)
@@ -458,6 +472,8 @@ lookUpMedia(link)  (claims the link: RUNNING)
 ```
 
 The model names things and chooses among candidates; it never supplies a link. Videos are fetched like any nested link (`createNestedLink()`); episodes and books are created from the catalog's own details without fetching their pages (`createFoundLink()`).
+
+An episode the lookup finds for a post has its own show notes read straight away, so a post about an episode can end up three levels deep: post → episode → what its notes link. Show-notes links go through the same rules as links in a post (`resolveNestedUrl()`: short links followed, including `amzn.to` and other store and player shorteners; social profiles left out). A video among them gets its title and thumbnail from oEmbed. Every other link is kept as a reference, under the name the notes give it and without fetching the page (`contentSource = "show_notes"`). The feed shows them under an emailed episode like any nested links, and as a compact list under an episode that is itself nested.
 
 A find can be wrong, so found links are labelled in the feed and on the Media page. "Wrong video", "Wrong episode" and "Wrong book" (`DELETE /api/links/[id]/found`) remove the found link and record it in the parent's `lookupRejected`, so no later lookup brings it back. A video's full recording and clip go together. When nothing found is left the parent is `REJECTED` and is not looked up again on its own.
 
@@ -473,9 +489,9 @@ When lookups run:
 
 A lookup needs `NEXT_PUBLIC_ENABLE_ANALYSIS`, `analysis.enabled`, `analysis.mediaLookup` (Settings → Content Analysis → "Find sources", on by default), a key for the selected analysis model (triage and pick) and a Gemini key (the video search always runs on Gemini). A lookup left `RUNNING` for 10 minutes was interrupted and can be claimed again.
 
-Cost: triage and pick are short calls, and most posts stop at triage. The video search is one grounded request, billed for its tokens plus a fee for each Google search it runs. The prompt asks for one or two searches and tells the model not to search for links, which the result pages already provide; asked for exact URLs it ran up to six. Podcast and book lookups use free catalogs and no search. All AI calls are recorded as `MEDIA_LOOKUP` in `AiUsage`, the search call with its search count and fee (see AI usage recording).
+Cost: triage and pick are short calls, and most posts stop at triage. The video search is one grounded request, billed for its tokens plus a fee for each Google search it runs. The prompt asks for one or two searches and tells the model not to search for links, which the result pages already provide; asked for exact URLs it ran up to six. Podcast and book lookups use free catalogs and no search. Reading an episode's show notes is one short AI call. All AI calls are recorded as `MEDIA_LOOKUP` in `AiUsage`, the search call with its search count and fee (see AI usage recording).
 
-Limits: only posts on X have the context a recording lookup needs. The catalogs are literal: a book filed under its original-language title, or an episode the directory doesn't list, is not found.
+Limits: only posts on X have the context a recording lookup needs. The catalogs are literal: a book filed under its original-language title, or an episode the directory doesn't list, is not found. Show notes come from the show's public feed: a show without one in Apple's directory, or an episode no longer in its feed, has none. An episode older than the 200 the directory lists is looked for in the feed by its title.
 
 ## AI Analysis Decision Tree
 
@@ -761,7 +777,7 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 | AI HTML fallback | `lib/ai-html-parser.ts` | `parseHtmlWithAI()` |
 | Nested links | `lib/process-nested-links.ts`, `lib/nested-link.ts`, `lib/nested-link-extractor.ts` | `processNestedLinks()`, `createNestedLink()`, `extractNestedUrls()`, `resolveNestedUrl()`, `isSkippedNestedUrl()` |
 | Post context | `lib/post-context.ts` | `fetchPostContext()`, `parsePostContext()`, `mayReferToRecording()` |
-| Media lookup | `lib/media-lookup.ts`, `lib/catalogs.ts`, `baml_src/lookup.baml`, `app/api/links/[id]/lookup/route.ts`, `app/api/links/[id]/found/route.ts`, `app/api/media/lookups/route.ts` | `lookUpMedia()`, `runPendingLookups()`, `rejectFoundLink()`, `searchPodcastEpisodes()`, `findBook()` |
+| Media lookup | `lib/media-lookup.ts`, `lib/catalogs.ts`, `lib/show-notes.ts`, `baml_src/lookup.baml`, `app/api/links/[id]/lookup/route.ts`, `app/api/links/[id]/found/route.ts`, `app/api/media/lookups/route.ts` | `lookUpMedia()`, `runPendingLookups()`, `rejectFoundLink()`, `searchPodcastEpisodes()`, `findBook()`, `fetchShowNotes()` |
 | Media links | `lib/media.ts`, `lib/media-list.ts`, `app/api/media/route.ts` | `classifyMedia()`, `classifyMediaUrl()`, `listMedia()` |
 | Media rescan | `lib/media-rescan.ts`, `app/api/media/rescan/route.ts` | `rescanForMedia()`: nested links and video titles for posts synced earlier |
 | AI analysis | `lib/analysis.ts`, `lib/gemini-batch.ts` | `analyzeLink()`, `recordAnalysisFailure()`, per-user Gemini Batch apply |

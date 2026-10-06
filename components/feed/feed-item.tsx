@@ -454,7 +454,11 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
               <Link2 className="h-4 w-4" />
               <span>
                 {/* Everything the media lookup found (books a page mentions) vs. links the post carries */}
-                {link.childLinks.every((child) => child.foundVia === "AI_LOOKUP") ? "Found for this link" : "Links in this post"}{" "}
+                {link.childLinks.every((child) => child.foundVia === "SHOW_NOTES")
+                  ? "From the show notes"
+                  : link.childLinks.every((child) => child.foundVia === "AI_LOOKUP" || child.foundVia === "SHOW_NOTES")
+                    ? "Found for this link"
+                    : "Links in this post"}{" "}
                 ({link.childLinks.length})
               </span>
             </div>

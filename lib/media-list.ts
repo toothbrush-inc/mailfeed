@@ -43,6 +43,8 @@ export type MediaVia =
   | "QUOTED_POST"
   /** Found by the media lookup for something the post or page points at without linking it. */
   | "AI_LOOKUP"
+  /** Linked in the show notes of a podcast episode among the user's links. */
+  | "SHOW_NOTES"
 
 /** What a found link is: a video (the full recording or the same clip), a podcast episode, a book. */
 export type FoundRole = "FULL" | "CLIP" | "EPISODE" | "BOOK"
@@ -101,7 +103,7 @@ interface Classified {
 }
 
 function viaOf(row: CandidateRow): MediaVia | null {
-  if (row.foundVia === "AI_LOOKUP" || row.foundVia === "QUOTED_POST") return row.foundVia
+  if (row.foundVia === "AI_LOOKUP" || row.foundVia === "QUOTED_POST" || row.foundVia === "SHOW_NOTES") return row.foundVia
   return null
 }
 

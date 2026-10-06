@@ -26,6 +26,11 @@ const URL_SHORTENERS = [
   "ow.ly",
   "buff.ly",
   "tinyurl.com",
+  // Store and player short links, which hide whether the target is a book or an episode
+  "amzn.to",
+  "a.co",
+  "apple.co",
+  "spoti.fi",
 ]
 
 /**
@@ -98,12 +103,19 @@ async function resolveShortUrl(url: string): Promise<string | null> {
       return target
     }
 
-    const response = target ? await safeFetch(target, { ...request, redirect: "follow" }) : firstHop
+    // Some sites drop a HEAD from a server (stores especially). Where the
+    // shortener pointed is then still better than losing the link.
+    let finalUrl = target ?? url
+    if (target) {
+      try {
+        const response = await safeFetch(target, { ...request, redirect: "follow" })
+        finalUrl = response.url
+      } catch {
+        // Keep the shortener's own target
+      }
+    }
 
     clearTimeout(timeout)
-
-    // Return the final URL after redirects
-    const finalUrl = target ? response.url : url
 
     // Check if the final URL is excluded
     if (isSkippedNestedUrl(finalUrl)) {

@@ -4,6 +4,7 @@
  * counts, search, de-duplication, hidden domains, other users' links), and
  * the media lookup: reading a post's context, flagging posts and pages
  * for a lookup, matching podcast episodes and books in their catalogs,
+ * reading an episode's show notes from its feed,
  * how what the lookup finds is listed and rejected, and the fee for the
  * lookup's Google searches.
  *
@@ -21,7 +22,8 @@
 import { classifyMedia, classifyMediaUrl, mediaKey, youtubeVideoId, type MediaType } from "../lib/media"
 import { isSkippedNestedUrl } from "../lib/nested-link-extractor"
 import { mayNameBook, mayReferToRecording, parsePostContext, postIdFromUrl, postVideoPart } from "../lib/post-context"
-import { authorSurnames, matchBook, normalizeTitle, parsePodcastEpisodes } from "../lib/catalogs"
+import { appleEpisodeIds, authorSurnames, matchBook, normalizeTitle, parsePodcastEpisodes, parsePodcastShow } from "../lib/catalogs"
+import { findFeedItem, linksInShowNotes, parseShowNotes } from "../lib/show-notes"
 
 let failures = 0
 function check(name: string, ok: boolean, detail?: unknown) {
@@ -182,6 +184,55 @@ function ruleChecks() {
   check("with its show, date and artwork", episodes[0]?.show === "Lex Fridman Podcast" && episodes[0].released === "2022-10-29" && !!episodes[0].imageUrl, episodes[0])
   check("the episode's page is recognized as a podcast", classifyMediaUrl(episodes[0]?.url) === "podcast")
   check("an unexpected answer gives no episodes", parsePodcastEpisodes(null).length === 0 && parsePodcastEpisodes({ results: "x" }).length === 0)
+
+  console.log("Show notes")
+  check(
+    "an Apple episode address gives the show and the episode",
+    appleEpisodeIds("https://podcasts.apple.com/us/podcast/costco/id1050462261?i=1000625088063&uo=4")?.showId === "1050462261" &&
+      appleEpisodeIds("https://podcasts.apple.com/us/podcast/costco/id1050462261?i=1000625088063")?.trackId === "1000625088063"
+  )
+  check(
+    "a show's page, or another site, does not",
+    appleEpisodeIds("https://podcasts.apple.com/us/podcast/acquired/id1050462261") === null &&
+      appleEpisodeIds("https://open.spotify.com/episode/abc?i=1") === null &&
+      appleEpisodeIds("nope") === null
+  )
+  const show = parsePodcastShow({
+    results: [
+      { wrapperType: "track", kind: "podcast", collectionName: "Acquired", feedUrl: "https://feeds.example.com/acquired" },
+      { wrapperType: "podcastEpisode", trackId: 1000625088063, trackName: "Costco", episodeGuid: "guid-costco", trackViewUrl: "https://podcasts.apple.com/us/podcast/costco/id1050462261?i=1000625088063" },
+    ],
+  })
+  check(
+    "a show lookup gives the feed and each episode's id in it",
+    show?.feedUrl === "https://feeds.example.com/acquired" && show.episodes[0]?.trackId === "1000625088063" && show.episodes[0].guid === "guid-costco",
+    show
+  )
+  check("an answer without a show is no show", parsePodcastShow({ results: [] }) === null && parsePodcastShow(null) === null)
+
+  const feed = `<?xml version="1.0"?><rss><channel><title>Acquired</title>
+    <item><title>Nike</title><guid isPermaLink="false">guid-nike</guid><description><![CDATA[<p>About <a href="https://example.com/shoe-dog">Shoe Dog</a></p>]]></description></item>
+    <item><title><![CDATA[Costco]]></title><itunes:title>Costco</itunes:title><guid isPermaLink="false"><![CDATA[guid-costco]]></guid>
+      <description>Short teaser.</description>
+      <content:encoded><![CDATA[<p>Links:</p><ul><li><a href="https://thescienceofhitting.com">The Science of Hitting</a></li><li><a href="https://www.youtube.com/watch?v=Z1sTs8wkAbw">Warren Buffett's Costco joke</a></li></ul><p>Sponsors:<br>Vanta: https://bit.ly/acquiredvanta.</p><p><a href="https://thescienceofhitting.com">again</a> <a href="mailto:hi@example.com">mail</a></p>]]></content:encoded></item>
+    <item><title>Q&amp;A: Ask Us Anything</title><guid>https://example.com/?p=12&amp;v=2</guid><description>&lt;p&gt;See &lt;a href="https://example.com/answers"&gt;the answers&lt;/a&gt;&lt;/p&gt;</description></item>
+  </channel></rss>`
+  const costcoItem = findFeedItem(feed, { guid: "guid-costco" })
+  check("an episode is found in the feed by its guid", !!costcoItem && costcoItem.includes("Science of Hitting") && !costcoItem.includes("Shoe Dog"))
+  check("a guid with an escaped ampersand is found too", !!findFeedItem(feed, { guid: "https://example.com/?p=12&v=2" })?.includes("the answers"))
+  check("without a guid, the exact title finds it", !!findFeedItem(feed, { title: "Q&A: Ask Us Anything" })?.includes("the answers") && !!findFeedItem(feed, { guid: "gone", title: "nike" })?.includes("Shoe Dog"))
+  check("an episode that isn't in the feed is not found", findFeedItem(feed, { guid: "guid-other", title: "Starbucks" }) === null)
+
+  const notes = parseShowNotes(costcoItem!, "Acquired")
+  check("the fuller copy of the notes is the one read", notes?.episode === "Costco" && notes.show === "Acquired" && notes.text.includes("Sponsors"), notes?.text)
+  check(
+    "links keep their text, each address once, written-out addresses included, and nothing that isn't a web link",
+    notes?.links.map((l) => `${l.text}=${l.url}`).join(" | ") ===
+      "The Science of Hitting=https://thescienceofhitting.com/ | Warren Buffett's Costco joke=https://www.youtube.com/watch?v=Z1sTs8wkAbw | https://bit.ly/acquiredvanta=https://bit.ly/acquiredvanta",
+    notes?.links
+  )
+  check("notes whose markup arrives escaped are still read", linksInShowNotes('&lt;p&gt;See &lt;a href="https://example.com/answers"&gt;the answers&lt;/a&gt;&lt;/p&gt;').links[0]?.text === "the answers")
+  check("notes with no links have none", linksInShowNotes("<p>Thanks for listening.</p>").links.length === 0)
 
   check("titles compare without case, punctuation, accents or a leading article", normalizeTitle("The Making of the Atomic Bomb!") === "making of the atomic bomb" && normalizeTitle("Les Misérables") === "les miserables")
   const openLibrary = {
@@ -553,6 +604,61 @@ async function postVideoChecks() {
       mergeBooks([{ title: "Dune", author: null }], [{ title: "dune", author: "Frank Herbert" }, { title: "Emma" }]).map((b) => `${b.title}/${b.author}`).join() === "Dune/Frank Herbert,Emma/null"
     )
     check("stored books that aren't books are ignored", readMentionedBooks([{ title: "Dune" }, { author: "x" }, "y", null]).length === 1 && readMentionedBooks("nope").length === 0)
+
+    // Podcast episodes wait for their show notes; what the notes link does not
+    const { createFoundLink, awaitsShowNotes } = await import("../lib/nested-link")
+    const emailedEpisode = await prisma.link.create({
+      data: { userId: carol.id, url: "https://podcasts.apple.com/us/podcast/costco/id1050462261?i=1000625088063", urlHash: "carol-emailed-episode", domain: "podcasts.apple.com", title: "Costco", fetchStatus: "FETCHED" },
+    })
+    await processNestedLinks(
+      { ...emailedEpisode, emailId: null, finalUrl: null, rawHtml: null, finalDomain: null },
+      DEFAULT_SETTINGS,
+      { triggerAi: false, lookup: false }
+    )
+    const episodeFlag = await prisma.link.findUnique({ where: { id: emailedEpisode.id }, select: { lookupStatus: true } })
+    check("an emailed podcast episode waits for a lookup of its show notes", episodeFlag?.lookupStatus === "PENDING", episodeFlag)
+
+    const foundEpisode = await createFoundLink(
+      { id: bookPost.id, userId: carol.id, emailId: null },
+      { url: "https://podcasts.apple.com/us/podcast/nike/id1050462261?i=1000600000001", title: "Nike", description: "Acquired", imageUrl: null },
+      { foundVia: "AI_LOOKUP", foundRole: "EPISODE" }
+    )
+    const foundEpisodeRow = await prisma.link.findUnique({ where: { id: foundEpisode.linkId! }, select: { lookupStatus: true, contentSource: true } })
+    check("so does an episode the lookup found", foundEpisodeRow?.lookupStatus === "PENDING" && foundEpisodeRow.contentSource === "catalog", foundEpisodeRow)
+
+    const noteVideo = await createFoundLink(
+      { id: foundEpisode.linkId!, userId: carol.id, emailId: null },
+      { url: "https://www.youtube.com/watch?v=Z1sTs8wkAbw", title: "Warren Buffett's Costco joke", description: "From the show notes of Nike (Acquired)", imageUrl: null },
+      { foundVia: "SHOW_NOTES" },
+      "show_notes"
+    )
+    const noteEpisode = await createFoundLink(
+      { id: foundEpisode.linkId!, userId: carol.id, emailId: null },
+      { url: "https://podcasts.apple.com/us/podcast/other/id99?i=1000600000002", title: "Another show's episode", description: null, imageUrl: null },
+      { foundVia: "SHOW_NOTES" },
+      "show_notes"
+    )
+    const noteEpisodeRow = await prisma.link.findUnique({ where: { id: noteEpisode.linkId! }, select: { lookupStatus: true, contentSource: true } })
+    check("an episode linked from show notes is not followed in turn", noteEpisodeRow?.lookupStatus === null && noteEpisodeRow.contentSource === "show_notes", noteEpisodeRow)
+    check(
+      "only podcast links that didn't come from show notes wait for them",
+      awaitsShowNotes("https://open.spotify.com/episode/abc", {}) && !awaitsShowNotes("https://example.com/article", {}) && !awaitsShowNotes("https://open.spotify.com/episode/abc", { foundVia: "SHOW_NOTES" })
+    )
+    const duplicate = await createFoundLink(
+      { id: foundEpisode.linkId!, userId: carol.id, emailId: null },
+      { url: "https://www.youtube.com/watch?v=Z1sTs8wkAbw", title: "dup", description: null, imageUrl: null },
+      { foundVia: "SHOW_NOTES" },
+      "show_notes"
+    )
+    check("a link the user already has is not added twice", duplicate.skipped && duplicate.linkId === noteVideo.linkId, duplicate)
+
+    media = await listMedia(carol.id)
+    const fromNotes = media.items.find((i) => i.id === noteVideo.linkId)
+    check(
+      "a video from show notes is listed, pointing at the episode and opening the post it belongs to",
+      fromNotes?.type === "video" && fromNotes.via === "SHOW_NOTES" && fromNotes.post?.title === "Nike" && fromNotes.feedLinkId === bookPost.id && fromNotes.lookup === null,
+      fromNotes
+    )
 
     check(
       "and is listed once, as the linked video",

@@ -51,7 +51,7 @@ function displayDomain(domain: string | null): string | null {
 }
 
 const LOOKUP_HELP =
-  "Looks for what a saved post or page points at without linking it: the public video behind an uploaded clip, the podcast episode, the books it names. Uses your AI key, and Google searches for videos. A lookup that searches takes about half a minute."
+  "Looks for what a saved post or page points at without linking it: the public video behind an uploaded clip, the podcast episode and what its show notes link, the books it names. Uses your AI key, and Google searches for videos. A lookup that searches takes about half a minute."
 
 function shorten(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text
@@ -161,7 +161,8 @@ function MediaRow({
 }) {
   const info = TYPE_INFO[item.type]
   const Icon = info.icon
-  const blurb = item.summary || item.description
+  // A show-notes link's description only says which episode it is from, which the line below says too
+  const blurb = item.summary || (item.via === "SHOW_NOTES" && item.post ? null : item.description)
 
   return (
     <article className="flex gap-3 border-b py-4 last:border-b-0">
@@ -252,7 +253,9 @@ function MediaRow({
                 ? item.role === "BOOK"
                   ? "Mentioned in "
                   : "Found for "
-                : item.via === "QUOTED_POST"
+                : item.via === "SHOW_NOTES"
+                  ? "From the show notes of "
+                  : item.via === "QUOTED_POST"
                   ? "Linked in the post quoted by "
                   : "Linked from "}
               <a

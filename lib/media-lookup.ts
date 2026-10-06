@@ -5,6 +5,9 @@
  *   quotes), or behind a post that talks about a recording.
  * - The podcast episode, when that recording is one.
  * - The books a post names, or that a page's analysis says it recommends.
+ * - What a podcast episode discusses: the links in its show notes, read
+ *   from the show's feed (lib/show-notes.ts), minus sponsors and
+ *   housekeeping links.
  *
  * The AI names things; it never supplies a link:
  *
@@ -21,13 +24,15 @@
  *    is not.
  *
  * What it finds becomes nested links of the post or page, marked AI_LOOKUP
- * with a role: FULL, CLIP, EPISODE or BOOK.
+ * with a role: FULL, CLIP, EPISODE or BOOK. Links from an episode's show
+ * notes are nested under the episode and marked SHOW_NOTES: the show wrote
+ * them, the AI only chose which to keep.
  */
 
 import { GoogleGenAI } from "@google/genai"
 import { JSDOM } from "jsdom"
 import { b } from "@/baml_client"
-import type { EpisodeCandidate, PostForLookup, VideoCandidate } from "@/baml_client/types"
+import type { EpisodeCandidate, PostForLookup, ShowNoteLink as ShowNoteCandidate, VideoCandidate } from "@/baml_client/types"
 import { prisma } from "@/lib/prisma"
 import { BAML_CLIENTS, isAiConfigured } from "@/lib/ai-provider"
 import { recordAiUsage, withBamlUsage } from "@/lib/ai-usage"
@@ -36,6 +41,8 @@ import { FEATURE_FLAGS } from "@/lib/flags"
 import { findBook, searchPodcastEpisodes, type BookMention, type PodcastEpisode } from "@/lib/catalogs"
 import { classifyMedia, classifyMediaUrl, mediaKey, youtubeVideoId } from "@/lib/media"
 import { createFoundLink, createNestedLink } from "@/lib/nested-link"
+import { resolveNestedUrl } from "@/lib/nested-link-extractor"
+import { fetchShowNotes } from "@/lib/show-notes"
 import { fetchOEmbed, getOEmbedEndpoint } from "@/lib/oembed-fetcher"
 import { postVideoPart, readPostContext, type PostContext } from "@/lib/post-context"
 import { safeFetch } from "@/lib/safe-fetch"
@@ -339,6 +346,9 @@ async function finish(
 
 // Most books looked up for one post or page
 const MAX_BOOKS = 8
+// Most links kept from one episode's show notes
+const MAX_SHOW_NOTE_LINKS = 20
+const SHOW_NOTES_TEXT_MAX = 8000
 
 /** Read a stored Link.mentionedBooks back, ignoring anything that isn't a titled book. */
 export function readMentionedBooks(stored: unknown): BookMention[] {
@@ -396,12 +406,17 @@ export async function lookUpMedia(
       postContext: true,
       mentionedBooks: true,
       lookupRejected: true,
+      foundVia: true,
     },
   })
   const context = readPostContext(link?.postContext)
+  const ownType = link ? classifyMedia(link)?.type : null
   // A book's own page names itself; it is already on the list as that book
-  const pageBooks = link && classifyMedia(link)?.type !== "book" ? readMentionedBooks(link.mentionedBooks) : []
-  if (!link || (!context && pageBooks.length === 0)) {
+  const pageBooks = link && ownType !== "book" ? readMentionedBooks(link.mentionedBooks) : []
+  // A podcast episode has show notes to read. One episode's notes are
+  // followed, not the episodes they link in turn.
+  const isEpisode = !!link && ownType === "podcast" && link.foundVia !== "SHOW_NOTES"
+  if (!link || (!context && pageBooks.length === 0 && !isEpisode)) {
     return { status: "UNAVAILABLE", note: "There is nothing to look up for this link.", linkIds: [] }
   }
 
@@ -425,7 +440,9 @@ export async function lookUpMedia(
 
   try {
     // A repeat lookup replaces what the last one found
-    await prisma.link.deleteMany({ where: { userId, parentLinkId: linkId, foundVia: "AI_LOOKUP" } })
+    await prisma.link.deleteMany({
+      where: { userId, parentLinkId: linkId, foundVia: { in: ["AI_LOOKUP", "SHOW_NOTES"] } },
+    })
 
     const rejected = new Set(link.lookupRejected)
     const wasRejected = (url: string) => rejected.has(mediaKey({ url }))
@@ -526,9 +543,74 @@ export async function lookUpMedia(
               { foundVia: "AI_LOOKUP", foundRole: "EPISODE" }
             )
             if (outcome.linkId) linkIds.push(outcome.linkId)
+            // Go one step further: what the episode's own show notes link
+            if (outcome.created && outcome.linkId) {
+              await lookUpMedia(outcome.linkId, userId, { triggerAi: options.triggerAi })
+            }
           }
           notes.push(pick.reason || recording.description)
         }
+      }
+    }
+
+    if (isEpisode) {
+      let showNotes = null
+      try {
+        showNotes = await fetchShowNotes(link)
+      } catch (error) {
+        problems.push(`The episode's show notes couldn't be read (${error instanceof Error ? error.message : error}).`)
+      }
+      if (showNotes && showNotes.links.length > 0) {
+        somethingToFind = true
+        const candidates: ShowNoteCandidate[] = showNotes.links.map((noteLink, index) => ({ index, ...noteLink }))
+        const pick = await withBamlUsage({ userId, kind: "MEDIA_LOOKUP" as const, linkId }, (collector) =>
+          b.PickShowNoteLinks(
+            showNotes.show,
+            showNotes.episode,
+            clip(showNotes.text, SHOW_NOTES_TEXT_MAX),
+            candidates,
+            { clientRegistry: buildClientRegistry(settings, aiKeys), collector }
+          )
+        )
+        books = mergeBooks(books, pick.books ?? [])
+
+        const from = `From the show notes of ${showNotes.episode}${showNotes.show ? ` (${showNotes.show})` : ""}`
+        const kept = new Set<string>()
+        let added = 0
+        for (const picked of pick.discussed ?? []) {
+          const noteLink = showNotes.links[picked.index]
+          if (!noteLink || kept.size >= MAX_SHOW_NOTE_LINKS) continue
+          // The same rules as a link in a post: short links followed, social profiles left out
+          const url = await resolveNestedUrl(noteLink.url)
+          if (!url || kept.has(url)) continue
+          kept.add(url)
+
+          // A video's title and thumbnail come from the site in one cheap request.
+          // Anything else is kept as a reference under the name the notes give it.
+          const isVideo = classifyMediaUrl(url) === "video" && !!getOEmbedEndpoint(url)
+          const outcome = isVideo
+            ? await createNestedLink(link, url, { foundVia: "SHOW_NOTES" }, settings, { triggerAi: false })
+            : await createFoundLink(
+                link,
+                {
+                  url,
+                  title: picked.title?.trim() || (noteLink.text !== noteLink.url ? noteLink.text : url),
+                  description: from,
+                  imageUrl: null,
+                },
+                { foundVia: "SHOW_NOTES" },
+                "show_notes"
+              )
+          if (outcome.linkId) linkIds.push(outcome.linkId)
+          if (outcome.created) added++
+        }
+        notes.push(
+          added > 0
+            ? `${added} of the ${showNotes.links.length} links in the show notes are about what the episode discusses.`
+            : `None of the ${showNotes.links.length} links in the show notes are about what the episode discusses.`
+        )
+      } else if (problems.length === 0) {
+        notes.push(showNotes ? "The episode's show notes have no links." : "No show notes were found for this episode.")
       }
     }
 
@@ -571,7 +653,12 @@ export async function lookUpMedia(
     if (linkIds.length > 0) return await finish(linkId, userId, "FOUND", note, linkIds)
     if (problems.length > 0) return await finish(linkId, userId, "FAILED", note)
     if (somethingToFind) return await finish(linkId, userId, "NOT_FOUND", note)
-    return await finish(linkId, userId, "SKIPPED", "Nothing here points at a recording or a book published elsewhere.")
+    return await finish(
+      linkId,
+      userId,
+      "SKIPPED",
+      note ?? "Nothing here points at a recording or a book published elsewhere."
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`[Media Lookup] Failed for link ${linkId}:`, message)
