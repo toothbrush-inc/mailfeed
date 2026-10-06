@@ -60,6 +60,8 @@ interface NestedLinkItemProps {
     imageUrl: string | null
     isPaywalled: boolean
     paywallType: string | null
+    foundVia?: string | null
+    foundRole?: string | null
     contentSource: string | null
     archivedUrl: string | null
     wordCount: number | null
@@ -223,6 +225,31 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{displayDomain}</span>
+              {link.foundVia === "QUOTED_POST" && (
+                <>
+                  <span>·</span>
+                  <span>From the quoted post</span>
+                </>
+              )}
+              {link.foundVia === "AI_LOOKUP" && (
+                <>
+                  <span>·</span>
+                  {link.foundRole === "BOOK" ? (
+                    <span title="A book named here, matched in Open Library by title and author.">
+                      Book mentioned here
+                    </span>
+                  ) : (
+                    <span title="Found by searching for what this post is about. It may be the wrong one.">
+                      Found by AI: probably the{" "}
+                      {link.foundRole === "CLIP"
+                        ? "same clip"
+                        : link.foundRole === "EPISODE"
+                          ? "podcast episode"
+                          : "full recording"}
+                    </span>
+                  )}
+                </>
+              )}
               {link.readingTimeMin && (
                 <>
                   <span>·</span>

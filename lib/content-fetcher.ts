@@ -70,10 +70,17 @@ export async function fetchAndParseContent(url: string, options?: { timeoutMs?: 
       if (oembedResult.success) {
         const textContent = extractTextFromOEmbed(oembedResult.html)
         const wordCount = textContent.split(/\s+/).filter(Boolean).length
+        // A player embed (YouTube) has no text of its own, unlike a quoted
+        // post. Say whose video it is, so the link isn't just a title.
+        const excerpt =
+          !textContent && oembedResult.authorName
+            ? `By ${oembedResult.authorName}${oembedResult.providerName ? ` on ${oembedResult.providerName}` : ""}`
+            : undefined
 
         return {
           success: true,
           title: oembedResult.title,
+          excerpt,
           textContent,
           byline: oembedResult.authorName,
           siteName: oembedResult.providerName,

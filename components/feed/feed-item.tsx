@@ -80,6 +80,8 @@ interface FeedItemProps {
       url: string
       title: string | null
       domain: string | null
+      foundVia?: string | null
+      foundRole?: string | null
       finalUrl: string | null
       finalDomain: string | null
       wasRedirected: boolean
@@ -450,7 +452,11 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
           <div className="space-y-3">
             <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
               <Link2 className="h-4 w-4" />
-              <span>Links in this post ({link.childLinks.length})</span>
+              <span>
+                {/* Everything the media lookup found (books a page mentions) vs. links the post carries */}
+                {link.childLinks.every((child) => child.foundVia === "AI_LOOKUP") ? "Found for this link" : "Links in this post"}{" "}
+                ({link.childLinks.length})
+              </span>
             </div>
             <div className="space-y-3">
               {link.childLinks.map((childLink) => (

@@ -8,6 +8,7 @@ export interface UserSettings {
   analysis?: {
     enabled?: boolean
     autoRun?: boolean
+    mediaLookup?: boolean
   }
   embeddings?: {
     enabled?: boolean
@@ -44,6 +45,8 @@ export interface ResolvedSettings {
   analysis: {
     enabled: boolean
     autoRun: boolean
+    // Search for the public video behind a post's uploaded clip (lib/media-lookup.ts)
+    mediaLookup: boolean
   }
   embeddings: {
     enabled: boolean
@@ -80,6 +83,7 @@ export const DEFAULT_SETTINGS: ResolvedSettings = {
   analysis: {
     enabled: true,
     autoRun: false,
+    mediaLookup: true,
   },
   embeddings: {
     enabled: true,
@@ -130,6 +134,7 @@ export function resolveSettings(raw: UserSettings | null | undefined): ResolvedS
     analysis: {
       enabled: raw.analysis?.enabled ?? DEFAULT_SETTINGS.analysis.enabled,
       autoRun: raw.analysis?.autoRun ?? DEFAULT_SETTINGS.analysis.autoRun,
+      mediaLookup: raw.analysis?.mediaLookup ?? DEFAULT_SETTINGS.analysis.mediaLookup,
     },
     embeddings: {
       enabled: raw.embeddings?.enabled ?? DEFAULT_SETTINGS.embeddings.enabled,

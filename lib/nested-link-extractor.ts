@@ -1,8 +1,10 @@
 import { JSDOM } from "jsdom"
 import { shouldUseOEmbed } from "./oembed-fetcher"
 import { safeFetch } from "./safe-fetch"
+import { classifyMediaUrl } from "./media"
 
 // Domains to exclude from nested link extraction (social media, tracking, etc.)
+// A link to a specific video on one of them is still kept: see isSkippedNestedUrl.
 const EXCLUDED_NESTED_DOMAINS = [
   "twitter.com",
   "x.com",
@@ -59,29 +61,52 @@ function isExcludedNestedUrl(url: string): boolean {
 }
 
 /**
+ * Whether a link found in a post is left out. Other posts and profiles on
+ * social platforms are (a quoted tweet, a channel page), but a link to a
+ * media item is the thing the post shares, so it is kept even when it is
+ * on one of those platforms: a YouTube video, a TikTok, a reel.
+ */
+export function isSkippedNestedUrl(url: string): boolean {
+  if (classifyMediaUrl(url)) return false
+  return isExcludedNestedUrl(url) || shouldUseOEmbed(url)
+}
+
+/**
  * Resolve a shortened URL by following redirects
  */
 async function resolveShortUrl(url: string): Promise<string | null> {
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
-
-    const response = await safeFetch(url, {
+    const request = {
       method: "HEAD",
-      redirect: "follow",
       signal: controller.signal,
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; MailFeed/1.0)",
       },
-    })
+    }
+
+    // Where the shortener itself points is the address the author shared.
+    // For a media link that is the one to keep: following it further can
+    // end on a consent or bot-check page instead of the video.
+    const firstHop = await safeFetch(url, { ...request, redirect: "manual" })
+    const location = firstHop.headers.get("location")
+    const target = location ? new URL(location, url).toString() : null
+    if (target && classifyMediaUrl(target)) {
+      clearTimeout(timeout)
+      console.log(`[Nested Link Extractor] Resolved ${url} -> ${target} (media)`)
+      return target
+    }
+
+    const response = target ? await safeFetch(target, { ...request, redirect: "follow" }) : firstHop
 
     clearTimeout(timeout)
 
     // Return the final URL after redirects
-    const finalUrl = response.url
+    const finalUrl = target ? response.url : url
 
     // Check if the final URL is excluded
-    if (isExcludedNestedUrl(finalUrl)) {
+    if (isSkippedNestedUrl(finalUrl)) {
       console.log(`[Nested Link Extractor] Resolved ${url} -> ${finalUrl} (excluded)`)
       return null
     }
@@ -110,6 +135,20 @@ function isContentUrl(url: string): boolean {
   }
 }
 
+/**
+ * What to keep of one link found in a post: the link itself, where a
+ * shortened link leads, or null for links that are left out.
+ */
+export async function resolveNestedUrl(href: string): Promise<string | null> {
+  // Skip if it doesn't look like content
+  if (!isContentUrl(href)) return null
+  // Handle URL shorteners by resolving them
+  if (isUrlShortener(href)) return resolveShortUrl(href)
+  // Skip other social media posts and profiles (media links are kept)
+  if (isSkippedNestedUrl(href)) return null
+  return href
+}
+
 // Regex to find t.co links in text content
 const TCO_REGEX = /https?:\/\/t\.co\/[a-zA-Z0-9]+/g
 
@@ -125,64 +164,28 @@ export async function extractNestedUrls(html: string | undefined | null): Promis
     const dom = new JSDOM(html)
     const links = Array.from(dom.window.document.querySelectorAll("a[href]"))
     const urls = new Set<string>()
+    // Links already looked at, so one that is both an <a> and in the text is resolved once
+    const seen = new Set<string>()
 
-    console.log(`[Nested Link Extractor] Processing HTML (${html.length} chars)`)
-    console.log(`[Nested Link Extractor] Found ${links.length} <a> tags`)
+    console.log(`[Nested Link Extractor] Processing HTML (${html.length} chars), ${links.length} <a> tags`)
 
-    // First, extract from <a> tags
-    for (const link of links) {
-      const href = link.getAttribute("href")
-      if (!href) continue
-
-      console.log(`[Nested Link Extractor] Checking href: ${href}`)
-
-      // Skip if it doesn't look like content
-      if (!isContentUrl(href)) {
-        console.log(`[Nested Link Extractor] Skipped (not content URL): ${href}`)
-        continue
-      }
-
-      // Handle URL shorteners by resolving them
-      if (isUrlShortener(href)) {
-        console.log(`[Nested Link Extractor] Resolving shortener: ${href}`)
-        const resolvedUrl = await resolveShortUrl(href)
-        if (resolvedUrl && !shouldUseOEmbed(resolvedUrl)) {
-          console.log(`[Nested Link Extractor] Added resolved URL: ${resolvedUrl}`)
-          urls.add(resolvedUrl)
-        }
-        continue
-      }
-
-      // Skip if it's a social media URL
-      if (isExcludedNestedUrl(href)) {
-        console.log(`[Nested Link Extractor] Skipped (excluded domain): ${href}`)
-        continue
-      }
-
-      // Skip if it would use oEmbed (social media post)
-      if (shouldUseOEmbed(href)) {
-        console.log(`[Nested Link Extractor] Skipped (oEmbed URL): ${href}`)
-        continue
-      }
-
-      console.log(`[Nested Link Extractor] Added URL: ${href}`)
-      urls.add(href)
-    }
-
-    // Also extract t.co links from text content (they may not be in <a> tags)
+    // t.co links may also sit in the text without an <a> tag
     const textContent = dom.window.document.body?.textContent || ""
-    const tcoMatches = textContent.match(TCO_REGEX) || []
-    console.log(`[Nested Link Extractor] Found ${tcoMatches.length} t.co links in text`)
+    const hrefs = [
+      ...links.map((link) => link.getAttribute("href")),
+      ...(textContent.match(TCO_REGEX) || []),
+    ]
 
-    for (const tcoUrl of tcoMatches) {
-      // Skip if we already processed this URL
-      if (urls.has(tcoUrl)) continue
+    for (const href of hrefs) {
+      if (!href || seen.has(href)) continue
+      seen.add(href)
 
-      console.log(`[Nested Link Extractor] Resolving t.co from text: ${tcoUrl}`)
-      const resolvedUrl = await resolveShortUrl(tcoUrl)
-      if (resolvedUrl && !shouldUseOEmbed(resolvedUrl)) {
-        console.log(`[Nested Link Extractor] Added resolved t.co URL: ${resolvedUrl}`)
-        urls.add(resolvedUrl)
+      const url = await resolveNestedUrl(href)
+      if (url) {
+        console.log(`[Nested Link Extractor] Added: ${url}${url === href ? "" : ` (from ${href})`}`)
+        urls.add(url)
+      } else {
+        console.log(`[Nested Link Extractor] Skipped: ${href}`)
       }
     }
 

@@ -20,6 +20,9 @@ const OEMBED_ENDPOINTS: Record<string, string> = {
   "tiktok.com": "https://www.tiktok.com/oembed",
   "youtube.com": "https://www.youtube.com/oembed",
   "youtu.be": "https://www.youtube.com/oembed",
+  // Not in OEMBED_DOMAINS: Vimeo pages are fetched normally. The endpoint
+  // is used to confirm a video exists and read its title.
+  "vimeo.com": "https://vimeo.com/api/oembed.json",
 }
 
 // Domains that should use oEmbed instead of regular fetch

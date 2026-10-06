@@ -6,6 +6,7 @@ import { getUserSettings } from "@/lib/user-settings"
 import { getUserAiKeys } from "@/lib/user-keys"
 import { isAiConfigured, getMissingEnvVarMessage } from "@/lib/ai-provider"
 import { analyzeLink } from "@/lib/analysis"
+import { runPendingLookups } from "@/lib/media-lookup"
 import { FEATURE_FLAGS } from "@/lib/flags"
 import type { FetchStatus } from "@prisma/client"
 
@@ -101,6 +102,13 @@ export async function POST(request: NextRequest) {
         result.failed++
         result.errors.push(`Link ${link.id}: ${analysisResult.error}`)
       }
+    }
+
+    // Books the analyses named are matched in a catalog, without holding up the response
+    if (result.succeeded > 0) {
+      runPendingLookups(session.user.id, { limit: 20, budgetMs: 5 * 60 * 1000 }).catch((error) =>
+        console.error("[/api/analyze/bulk] Lookups failed:", error)
+      )
     }
 
     return NextResponse.json(result)

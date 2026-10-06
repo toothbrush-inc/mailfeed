@@ -9,6 +9,7 @@ import { getUserSettings } from "@/lib/user-settings"
 import { fetchWithFallbackChain } from "@/lib/fetchers"
 import { generateOperationId, recordFetchAttempts } from "@/lib/fetch-attempts"
 import { triggerAutoAnalysisAndEmbedding } from "@/lib/ai-triggers"
+import { runPendingLookups } from "@/lib/media-lookup"
 import { formatGmailDate, updateSyncCoverage } from "@/lib/sync-coverage"
 import { isRetryableFetchError, primaryFetchError, visibleDomainWhere } from "@/lib/link-buckets"
 import "@/lib/fetchers/direct"
@@ -210,6 +211,8 @@ async function processLink(
       triggerAutoAnalysisAndEmbedding(linkId, userId)
     }
 
+    // A sync can bring in many posts at once: their media lookups are run
+    // a few at a time after it (runSyncForUser), not one per post here
     const nestedResult = await processNestedLinks({
       id: linkId,
       userId,
@@ -219,7 +222,7 @@ async function processLink(
       rawHtml: rawHtml || null,
       finalDomain,
       domain,
-    }, settings, { triggerAi })
+    }, settings, { triggerAi, lookup: false })
     result.nestedCreated = nestedResult.created
     result.nestedFetched = nestedResult.fetched
 
@@ -630,6 +633,32 @@ async function handleInitialSync(
  * the Google account is missing or the refresh token is revoked.
  */
 export async function runSyncForUser(
+  userId: string,
+  mode: SyncMode,
+  options: RunSyncOptions = {}
+): Promise<SyncResults> {
+  const syncResults = await syncEmailsAndLinks(userId, mode, options)
+
+  // Posts and pages synced that point at something they don't link: look for it
+  // without holding up the sync. The worker passes triggerAi: false and
+  // runs its own lookups after submitting the AI batch.
+  if (options.triggerAi !== false) {
+    runPendingLookups(userId, { limit: MAX_LOOKUPS_AFTER_SYNC, budgetMs: 10 * 60 * 1000 })
+      .then((lookups) => {
+        if (lookups.processed > 0) {
+          syncLogger.info("Media lookups after sync", { userId, processed: lookups.processed, found: lookups.found })
+        }
+      })
+      .catch((error) => console.error("[Sync] Media lookups failed:", error))
+  }
+
+  return syncResults
+}
+
+// The rest stay waiting, for the next sync or the Media page's "Find sources"
+const MAX_LOOKUPS_AFTER_SYNC = 10
+
+async function syncEmailsAndLinks(
   userId: string,
   mode: SyncMode,
   options: RunSyncOptions = {}

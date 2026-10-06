@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { b } from "@/baml_client"
 import { buildClientRegistry } from "@/lib/baml-registry"
@@ -62,6 +63,7 @@ export async function markInsufficientContent(userId: string, linkIds: string[])
             linkTags: [],
             contentTags: [],
             metadataTags: [],
+            mentionedBooks: Prisma.DbNull,
             ...NO_WORTH_SCORE,
             analyzedAt: null,
             analysisError: null,
@@ -77,6 +79,24 @@ export interface LinkAnalysisInput {
     metadataTags?: Array<string | { toString(): string }> | null
     worthReading?: number | null
     worthReason?: string | null
+    books?: Array<{ title?: string | null; author?: string | null }> | null
+}
+
+// Most a page's analysis may name; the rest of a long reading list is dropped
+const MAX_MENTIONED_BOOKS = 8
+
+/** The books an analysis named, as stored in Link.mentionedBooks: titled, de-duplicated, capped. */
+export function mentionedBooksFromAnalysis(bamlResult: Pick<LinkAnalysisInput, "books">) {
+    const seen = new Set<string>()
+    const books: Array<{ title: string; author: string | null }> = []
+    for (const book of bamlResult.books ?? []) {
+        const title = book?.title?.trim()
+        if (!title || seen.has(title.toLowerCase())) continue
+        seen.add(title.toLowerCase())
+        books.push({ title, author: book.author?.trim() || null })
+        if (books.length === MAX_MENTIONED_BOOKS) break
+    }
+    return books
 }
 
 /** Score fields for a link with no (or cleared) analysis. */
@@ -107,6 +127,7 @@ export function fieldsFromLinkAnalysis(bamlResult: LinkAnalysisInput) {
     const contentTags = bamlResult.contentTags?.map((tag) => String(tag)) || []
     const metadataTags = bamlResult.metadataTags?.map((tag) => String(tag)) || []
     const aiCategory = contentTags[0] || null
+    const mentionedBooks = mentionedBooksFromAnalysis(bamlResult)
 
     const isPaywalled =
         metadataTags.includes("PAYMENT_REQUIRED") ||
@@ -130,6 +151,7 @@ export function fieldsFromLinkAnalysis(bamlResult: LinkAnalysisInput) {
         linkTags,
         contentTags,
         metadataTags,
+        mentionedBooks: mentionedBooks.length > 0 ? mentionedBooks : Prisma.DbNull,
         ...worthFieldsFromAnalysis(bamlResult),
         isPaywalled,
         paywallType,
@@ -160,6 +182,42 @@ export async function recordAnalysisFailure(
 }
 
 /**
+ * Queue a link whose analysis named books for the media lookup
+ * (lib/media-lookup.ts), which matches them in a book catalog. A page that
+ * was looked up before is queued again, since a new analysis can name
+ * different books and matching them costs no AI. A post keeps the outcome
+ * of its earlier lookup: running that again would repeat its search.
+ */
+export async function flagForBookLookup(
+    linkId: string,
+    userId: string,
+    bamlResult: Pick<LinkAnalysisInput, "books">
+): Promise<void> {
+    if (mentionedBooksFromAnalysis(bamlResult).length === 0) return
+    await prisma.link.updateMany({
+        where: {
+            id: linkId,
+            userId,
+            AND: [
+                // Links the lookup itself found are catalog pages, not sources of
+                // mentions. Spelled out because NOT over a null column matches nothing.
+                { OR: [{ foundVia: null }, { foundVia: { not: "AI_LOOKUP" } }] },
+                {
+                    OR: [
+                        { lookupStatus: null },
+                        {
+                            postContext: { equals: Prisma.DbNull },
+                            lookupStatus: { in: ["FOUND", "NOT_FOUND", "SKIPPED", "FAILED"] },
+                        },
+                    ],
+                },
+            ],
+        },
+        data: { lookupStatus: "PENDING" },
+    })
+}
+
+/**
  * Write analysis onto a link only if it belongs to userId.
  * Returns false when the row is missing or owned by someone else.
  */
@@ -172,6 +230,7 @@ export async function persistLinkAnalysis(
         where: { id: linkId, userId },
         data: fieldsFromLinkAnalysis(bamlResult),
     })
+    if (updated.count === 1) await flagForBookLookup(linkId, userId, bamlResult)
     return updated.count === 1
 }
 

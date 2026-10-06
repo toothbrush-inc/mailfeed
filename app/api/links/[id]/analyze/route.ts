@@ -9,12 +9,14 @@ import { buildClientRegistry } from "@/lib/baml-registry"
 import { withBamlUsage } from "@/lib/ai-usage"
 import {
   fieldsFromLinkAnalysis,
+  flagForBookLookup,
   recordAnalysisFailure,
   markInsufficientContent,
   analyzableWordCount,
   analyzableText,
   MIN_ANALYZABLE_WORDS,
 } from "@/lib/analysis"
+import { triggerMediaLookup } from "@/lib/media-lookup"
 
 export async function POST(
   request: NextRequest,
@@ -104,6 +106,10 @@ export async function POST(
         },
       },
     })
+
+    // Books the analysis named are matched in a catalog by the media lookup
+    await flagForBookLookup(id, session.user.id, result)
+    triggerMediaLookup(id, session.user.id)
 
     console.log("[/api/links/[id]/analyze] Total time:", Date.now() - startTime, "ms")
 

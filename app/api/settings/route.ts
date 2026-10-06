@@ -86,6 +86,9 @@ export async function PATCH(request: NextRequest) {
     fetching: { ...current.fetching, ...partial.fetching },
     feed: { ...current.feed, ...partial.feed },
     sync: { ...current.sync, ...partial.sync },
+    // Left out before, which dropped these two groups on every save
+    analysis: { ...current.analysis, ...partial.analysis },
+    embeddings: { ...current.embeddings, ...partial.embeddings },
   }
 
   // Detect if the email query changed — invalidate sync state

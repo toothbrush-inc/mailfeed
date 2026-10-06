@@ -23,6 +23,7 @@
     "test:encryption": "npx tsx scripts/test-encryption.ts",
     "test:isolation": "npx tsx scripts/test-tenant-isolation.ts",
     "test:likes": "npx tsx scripts/test-likes.ts",
+    "test:media": "npx tsx scripts/test-media.ts",
     "test:reaper": "npx tsx scripts/test-batch-reaper.ts",
     "test:recovery": "npx tsx scripts/test-stuck-recovery.ts",
     "test:safe-fetch": "npx tsx scripts/test-safe-fetch.ts",

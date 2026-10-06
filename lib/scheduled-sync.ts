@@ -6,10 +6,14 @@ import {
   AuthenticationError,
 } from "@/lib/sync-user"
 import { submitPendingAiForUser, reapPendingBatches, recoverInterruptedAnalysis } from "@/lib/gemini-batch"
+import { runPendingLookups } from "@/lib/media-lookup"
 import { getUserSettings } from "@/lib/user-settings"
 import { createLogger } from "@/lib/logger"
 
 const log = createLogger("ScheduledSync")
+
+// A lookup can be a web search and two short AI calls; the rest wait for the next run
+const MAX_LOOKUPS_PER_RUN = 20
 
 const LOCK_STALE_MS = 2 * 60 * 60 * 1000
 
@@ -137,6 +141,14 @@ export async function syncOneUser(userId: string): Promise<void> {
     await retryTransientFetchFailures(userId, { triggerAi: false })
     await recoverInterruptedAnalysis(userId)
     await submitPendingAiForUser(userId)
+    // Media lookups search the web live, so they can't ride the batch
+    const lookups = await runPendingLookups(userId, {
+      limit: MAX_LOOKUPS_PER_RUN,
+      budgetMs: 5 * 60 * 1000,
+    })
+    if (lookups.processed > 0) {
+      log.info("Media lookups finished", { userId, processed: lookups.processed, found: lookups.found })
+    }
     await releaseLock(userId)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

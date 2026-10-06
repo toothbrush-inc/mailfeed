@@ -215,6 +215,8 @@ export async function GET(request: NextRequest) {
             imageUrl: true,
             isPaywalled: true,
             paywallType: true,
+            foundVia: true,
+            foundRole: true,
             contentSource: true,
             archivedUrl: true,
             wordCount: true,

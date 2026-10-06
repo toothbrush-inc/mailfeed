@@ -8,7 +8,8 @@
  * Covered: link analysis (IngestLink), email ingest (IngestEmail), link and
  * email embeddings. Not covered: chat (no history is stored), analyses
  * that failed and later succeeded (analysisAttempts resets on success),
- * hosting, database and Gmail API (free).
+ * video lookups and their Google search fee (recorded per call in AiUsage,
+ * shown in Settings), hosting, database and Gmail API (free).
  *
  *   npm run cost:report                              # last 30 days
  *   npm run cost:report -- --days 7

@@ -1,44 +1,18 @@
+import type { Prisma } from "@prisma/client"
 import { prisma } from "./prisma"
-import { extractNestedUrls, isSocialMediaLink } from "./nested-link-extractor"
-import { hashUrl, extractDomain } from "./link-extractor"
-import { estimateReadingTime } from "./content-fetcher"
-import { fetchWithFallbackChain } from "./fetchers"
-import { recordFetchAttempts, generateOperationId } from "./fetch-attempts"
-import { triggerAutoAnalysisAndEmbedding } from "./ai-triggers"
+import { extractNestedUrls, isSocialMediaLink, resolveNestedUrl } from "./nested-link-extractor"
+import { createNestedLink, type NestedLinkOrigin } from "./nested-link"
+import { classifyMediaUrl } from "./media"
+import {
+  fetchPostContext,
+  mayNameBook,
+  mayReferToRecording,
+  postIdFromUrl,
+  readPostContext,
+  type PostContext,
+} from "./post-context"
+import { triggerMediaLookup } from "./media-lookup"
 import type { ResolvedSettings } from "./settings"
-
-// Domains to exclude for nested links (social media, images, etc.)
-const EXCLUDED_NESTED_FINAL_DOMAINS = [
-  "twitter.com",
-  "x.com",
-  "instagram.com",
-  "tiktok.com",
-  "facebook.com",
-  "linkedin.com",
-  "pic.twitter.com",
-  "pbs.twimg.com",
-  "video.twimg.com",
-]
-
-// Helper to check if a URL's domain should be excluded
-const isExcludedUrl = (url: string) => {
-  try {
-    const parsed = new URL(url)
-    const hostname = parsed.hostname.replace("www.", "").toLowerCase()
-    const pathname = parsed.pathname.toLowerCase()
-
-    // Allow X/Twitter article URLs (x.com/i/article/...)
-    if ((hostname === "x.com" || hostname === "twitter.com") && pathname.startsWith("/i/article/")) {
-      return false
-    }
-
-    return EXCLUDED_NESTED_FINAL_DOMAINS.some(
-      (d) => hostname === d || hostname.endsWith(`.${d}`)
-    )
-  } catch {
-    return false
-  }
-}
 
 interface ProcessNestedLinksResult {
   created: number
@@ -48,8 +22,70 @@ interface ProcessNestedLinksResult {
 }
 
 /**
- * Extract and process nested links from a parent social media link
- * Returns the URLs that were created as child links
+ * The stored context of a post on X, fetched and saved the first time.
+ * Null for other platforms and for posts the embed endpoint won't return.
+ */
+async function loadPostContext(parentLink: {
+  id: string
+  userId: string
+  url: string
+  finalUrl: string | null
+}): Promise<PostContext | null> {
+  const postUrl = [parentLink.finalUrl, parentLink.url].find((url) => postIdFromUrl(url))
+  if (!postUrl) return null
+
+  const stored = await prisma.link.findFirst({
+    where: { id: parentLink.id, userId: parentLink.userId },
+    select: { postContext: true },
+  })
+  const existing = readPostContext(stored?.postContext)
+  if (existing) return existing
+
+  const context = await fetchPostContext(postUrl)
+  if (context) {
+    await prisma.link.updateMany({
+      where: { id: parentLink.id, userId: parentLink.userId },
+      data: { postContext: context as unknown as Prisma.InputJsonValue },
+    })
+  }
+  return context
+}
+
+/**
+ * Mark a post for the media lookup when it points at something it doesn't
+ * link: a recording (an uploaded clip, or words like "this talk") while
+ * none of its links is one, or a book. A post that was already looked up,
+ * or whose finds were rejected, keeps its status.
+ */
+async function flagForLookup(
+  parentLink: { id: string; userId: string },
+  context: PostContext | null
+): Promise<boolean> {
+  let worthALook = mayNameBook(context)
+  if (!worthALook && mayReferToRecording(context)) {
+    const children = await prisma.link.findMany({
+      where: { userId: parentLink.userId, parentLinkId: parentLink.id },
+      select: { url: true, finalUrl: true },
+    })
+    worthALook = !children.some((child) => {
+      const type = classifyMediaUrl(child.finalUrl) ?? classifyMediaUrl(child.url)
+      return type === "video" || type === "podcast"
+    })
+  }
+  if (!worthALook) return false
+
+  const flagged = await prisma.link.updateMany({
+    where: { id: parentLink.id, userId: parentLink.userId, lookupStatus: null },
+    data: { lookupStatus: "PENDING" },
+  })
+  return flagged.count === 1
+}
+
+/**
+ * Extract and process nested links from a parent social media link:
+ * the links in the post and, for posts on X, the links in the post it
+ * quotes. Then flag the post for the media lookup if it has a video that
+ * none of those links leads to, or names a recording or a book.
  */
 export async function processNestedLinks(
   parentLink: {
@@ -63,7 +99,11 @@ export async function processNestedLinks(
     domain: string | null
   },
   settings: ResolvedSettings,
-  options?: { triggerAi?: boolean }
+  options?: {
+    triggerAi?: boolean
+    /** Start the media lookup for a post that needs one. Defaults to triggerAi. */
+    lookup?: boolean
+  }
 ): Promise<ProcessNestedLinksResult> {
   const result: ProcessNestedLinksResult = {
     created: 0,
@@ -82,143 +122,30 @@ export async function processNestedLinks(
   const nestedUrls = await extractNestedUrls(parentLink.rawHtml)
   console.log(`[Nested Links] Found ${nestedUrls.length} nested URLs in ${domain} post`)
 
-  if (nestedUrls.length === 0) {
-    return result
+  const found: Array<{ url: string; origin: NestedLinkOrigin }> = nestedUrls.map((url) => ({ url, origin: {} }))
+
+  // The links of the post this one quotes: "look at this" over someone
+  // else's post is about whatever that post links to
+  const context = await loadPostContext(parentLink)
+  for (const quotedUrl of context?.quoted?.urls ?? []) {
+    const url = await resolveNestedUrl(quotedUrl)
+    if (url && !found.some((entry) => entry.url === url)) {
+      console.log(`[Nested Links] Found in quoted post: ${url}`)
+      found.push({ url, origin: { foundVia: "QUOTED_POST" } })
+    }
   }
 
-  for (const url of nestedUrls) {
-    const urlHash = hashUrl(url)
+  for (const { url, origin } of found) {
+    const outcome = await createNestedLink(parentLink, url, origin, settings, options)
+    if (outcome.created) result.created++
+    if (outcome.fetched) result.fetched++
+    if (outcome.skipped) result.skipped++
+    if (outcome.error) result.errors.push(outcome.error)
+  }
 
-    // Check for duplicate by URL
-    const existingLink = await prisma.link.findUnique({
-      where: { userId_urlHash: { userId: parentLink.userId, urlHash } },
-    })
-
-    if (existingLink) {
-      console.log(`[Nested Links] Skipping duplicate: ${url}`)
-      result.skipped++
-      continue
-    }
-
-    // Create child link record
-    const childLink = await prisma.link.create({
-      data: {
-        userId: parentLink.userId,
-        emailId: parentLink.emailId,
-        parentLinkId: parentLink.id,
-        url,
-        urlHash,
-        domain: extractDomain(url),
-        fetchStatus: "FETCHING",
-      },
-    })
-
-    result.created++
-    console.log(`[Nested Links] Created child link: ${url}`)
-
-    // Fetch content for the child link
-    try {
-      await prisma.link.update({
-        where: { id: childLink.id },
-        data: { fetchStatus: "FETCHING" },
-      })
-
-      const operationId = generateOperationId()
-      const content = await fetchWithFallbackChain(url, settings.fetching.fallbackChain, {
-        timeoutMs: settings.fetching.fetchTimeoutMs,
-      })
-      const rawHtml = content.rawHtml
-
-      // Fire-and-forget: record fetch attempts
-      recordFetchAttempts(childLink.id, operationId, "nested_fetch", content.attempts).catch((err) =>
-        console.error("[Nested Links] Failed to record fetch attempts:", err)
-      )
-
-      if (!content.success) {
-        await prisma.link.update({
-          where: { id: childLink.id },
-          data: {
-            fetchStatus: content.isPaywalled ? "PAYWALL_DETECTED" : "FAILED",
-            fetchError: content.error,
-            isPaywalled: content.isPaywalled || false,
-            paywallType: content.paywallType,
-            rawHtml: rawHtml,
-            finalUrl: content.finalUrl,
-            finalUrlHash: content.finalUrl ? hashUrl(content.finalUrl) : null,
-            finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
-            wasRedirected: content.wasRedirected || false,
-            fetchedAt: new Date(),
-          },
-        })
-        continue
-      }
-
-      // Check if final URL is excluded
-      if (content.finalUrl && isExcludedUrl(content.finalUrl)) {
-        console.log(`[Nested Links] Skipping - final URL excluded: ${url}`)
-        await prisma.link.delete({ where: { id: childLink.id } })
-        result.created--
-        result.skipped++
-        continue
-      }
-
-      // Check for duplicate by final URL
-      const finalUrlHash = content.finalUrl ? hashUrl(content.finalUrl) : null
-      if (finalUrlHash) {
-        const existingByFinalUrl = await prisma.link.findFirst({
-          where: {
-            userId: parentLink.userId,
-            finalUrlHash,
-            id: { not: childLink.id },
-          },
-        })
-
-        if (existingByFinalUrl) {
-          console.log(`[Nested Links] Skipping - duplicate final URL: ${url}`)
-          await prisma.link.delete({ where: { id: childLink.id } })
-          result.created--
-          result.skipped++
-          continue
-        }
-      }
-
-      await prisma.link.update({
-        where: { id: childLink.id },
-        data: {
-          fetchStatus: "FETCHED",
-          title: content.title,
-          description: content.excerpt,
-          imageUrl: content.imageUrl,
-          contentText: content.textContent,
-          contentHtml: content.content,
-          rawHtml: rawHtml,
-          wordCount: content.wordCount,
-          readingTimeMin: content.wordCount ? estimateReadingTime(content.wordCount) : null,
-          isPaywalled: content.isPaywalled || false,
-          paywallType: content.paywallType,
-          finalUrl: content.finalUrl,
-          finalUrlHash,
-          finalDomain: content.finalUrl ? extractDomain(content.finalUrl) : null,
-          wasRedirected: content.wasRedirected || false,
-          fetchedAt: new Date(),
-        },
-      })
-
-      result.fetched++
-
-      if (options?.triggerAi !== false) {
-        triggerAutoAnalysisAndEmbedding(childLink.id, parentLink.userId)
-      }
-    } catch (fetchError) {
-      result.errors.push(`Failed to process nested link ${url}: ${fetchError}`)
-      await prisma.link.update({
-        where: { id: childLink.id },
-        data: {
-          fetchStatus: "FAILED",
-          fetchError: fetchError instanceof Error ? fetchError.message : "Unknown error",
-        },
-      })
-    }
+  const needsLookup = await flagForLookup(parentLink, context)
+  if (needsLookup && (options?.lookup ?? options?.triggerAi !== false)) {
+    triggerMediaLookup(parentLink.id, parentLink.userId)
   }
 
   return result
