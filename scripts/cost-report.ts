@@ -170,7 +170,7 @@ async function main() {
 
   const analysisModel = (u?: UserRow) => {
     const client = u?.settings?.ai?.bamlClient ?? DEFAULT_SETTINGS.ai.bamlClient
-    return BAML_CLIENTS.find((c) => c.name === client)?.model ?? "gemini-3.1-pro-preview"
+    return BAML_CLIENTS.find((c) => c.name === client)?.model ?? "gemini-3.8-flash"
   }
   const embedModel = (u?: UserRow) => u?.settings?.ai?.embeddingModel ?? DEFAULT_SETTINGS.ai.embeddingModel
 
