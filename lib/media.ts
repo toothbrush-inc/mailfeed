@@ -7,6 +7,8 @@
  * said). The AI's link tags are the fallback for sites no rule knows about.
  */
 
+import { AMAZON_HOST, cleanUrl } from "./clean-url"
+
 export const MEDIA_TYPES = ["video", "podcast", "book", "game"] as const
 export type MediaType = (typeof MEDIA_TYPES)[number]
 
@@ -162,7 +164,6 @@ const HOST_RULES: HostRule[] = [
   { host: "poki.com", type: "game", path: /\/g\//i },
 ]
 
-const AMAZON_HOST = /(^|\.)amazon\.(com|ca|de|fr|es|it|nl|se|pl|in|sg|ae|sa|eg|co\.uk|co\.jp|com\.au|com\.br|com\.mx|com\.tr|com\.be)$/i
 // Printed books are listed under their ISBN-10; everything else (Kindle
 // editions included) gets a "B0…" ASIN, which the URL slug or the page
 // title has to identify as a book.
@@ -317,13 +318,10 @@ export function mediaKey(link: Pick<MediaLinkFields, "url" | "finalUrl">): strin
     const asin = parsed.pathname.match(AMAZON_PRODUCT)?.[1]
     if (asin) return `amazon:${asin.toUpperCase()}`
   }
-  const params = new URLSearchParams(parsed.search)
-  for (const name of Array.from(params.keys())) {
-    if (/^(utm_|ref_?$|ref_src$|si$|feature$|fbclid$|gclid$|igsh(id)?$|share_id$|tag$)/i.test(name)) {
-      params.delete(name)
-    }
-  }
+  // The clean form of the address, with its parameters in a fixed order
+  const cleaned = parse(cleanUrl(parsed.toString())) ?? parsed
+  const params = new URLSearchParams(cleaned.search)
   params.sort()
   const query = params.toString()
-  return `${bareHost(parsed)}${parsed.pathname.replace(/\/+$/, "")}${query ? `?${query}` : ""}`
+  return `${bareHost(cleaned)}${cleaned.pathname.replace(/\/+$/, "")}${query ? `?${query}` : ""}`
 }

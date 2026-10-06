@@ -195,6 +195,10 @@ model Link {
   // FULL or CLIP (a video), EPISODE (a podcast episode), BOOK.
   foundVia  String?
   foundRole String?
+  // Where a link that was moved to the feed came from, in words, e.g.
+  // "From the show notes of Costco (Acquired)". The link no longer has a
+  // parent to say so.
+  originNote String? @db.Text
   // Books the AI analysis says this page recommends or discusses:
   // [{ title, author }]. The media lookup matches them in a book catalog.
   mentionedBooks Json?

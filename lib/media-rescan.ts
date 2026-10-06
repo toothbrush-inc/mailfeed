@@ -1,8 +1,11 @@
 /**
  * Catch up links synced before media links were kept.
  *
- * Two passes over what is already stored, with no Gmail access:
+ * Three passes over what is already stored, with no Gmail access:
  *
+ * 0. "urls": store every link's address in its clean form (lib/clean-url.ts),
+ *    as links saved now are. Two links that turn out to be the same page are
+ *    both left as they are and counted; nothing is merged or deleted.
  * 1. "posts": run nested-link extraction again on every social media post.
  *    Links that used to be dropped (a YouTube video shared in a tweet, the
  *    links of a quoted post) are created as nested links; ones that already
@@ -23,11 +26,12 @@ import { SOCIAL_MEDIA_DOMAINS } from "@/lib/constants/domains"
 import { processNestedLinks } from "@/lib/process-nested-links"
 import { fetchOEmbed, getOEmbedEndpoint } from "@/lib/oembed-fetcher"
 import { classifyMediaUrl } from "@/lib/media"
+import { cleanUrl, hashUrl } from "@/lib/link-extractor"
 import type { ResolvedSettings } from "@/lib/settings"
 import "@/lib/fetchers/direct"
 import "@/lib/fetchers/wayback"
 
-type Phase = "posts" | "titles"
+type Phase = "urls" | "posts" | "titles"
 
 export interface MediaRescanResult {
   /** Pass back to continue; null once everything has been looked at. */
@@ -42,6 +46,10 @@ export interface MediaRescanResult {
   linksFound: number
   /** Videos given a title by this call. */
   titlesFilled: number
+  /** Links whose stored address lost its tracking parameters in this call. */
+  addressesCleaned: number
+  /** Links that are the same page as another link once cleaned. Left as they are. */
+  duplicateAddresses: number
   errors: string[]
 }
 
@@ -50,8 +58,53 @@ const CONCURRENCY = 4
 
 function parseCursor(cursor: string | null | undefined): { phase: Phase; after: string | null } {
   const [phase, after] = (cursor ?? "").split(":")
-  if (phase === "posts" || phase === "titles") return { phase, after: after || null }
-  return { phase: "posts", after: null }
+  if (phase === "urls" || phase === "posts" || phase === "titles") return { phase, after: after || null }
+  return { phase: "urls", after: null }
+}
+
+// Addresses are cleaned with no network, so a page of them is large
+const URL_PAGE = 300
+
+/**
+ * Store one page of links' addresses in their clean form and bring their
+ * hashes up to date with the current rules. Returns the last id looked at,
+ * or null when there are no links left.
+ */
+async function cleanStoredAddresses(
+  userId: string,
+  after: string | null,
+  result: Pick<MediaRescanResult, "scanned" | "addressesCleaned" | "duplicateAddresses">
+): Promise<string | null> {
+  const links = await prisma.link.findMany({
+    where: { userId, ...(after ? { id: { gt: after } } : {}) },
+    orderBy: { id: "asc" },
+    take: URL_PAGE,
+    select: { id: true, url: true, urlHash: true, finalUrl: true, finalUrlHash: true },
+  })
+  for (const link of links) {
+    const url = cleanUrl(link.url)
+    const urlHash = hashUrl(url)
+    const finalUrlHash = link.finalUrl ? hashUrl(link.finalUrl) : link.finalUrlHash
+    if (url === link.url && urlHash === link.urlHash && finalUrlHash === link.finalUrlHash) continue
+
+    // Another link is already this page: (userId, urlHash) is unique, and
+    // which of the two to keep is not for a scan to decide
+    const twin =
+      urlHash !== link.urlHash
+        ? await prisma.link.findFirst({ where: { userId, urlHash, id: { not: link.id } }, select: { id: true } })
+        : null
+    if (twin) {
+      result.duplicateAddresses++
+      if (finalUrlHash !== link.finalUrlHash) {
+        await prisma.link.updateMany({ where: { id: link.id, userId }, data: { finalUrlHash } })
+      }
+      continue
+    }
+    await prisma.link.updateMany({ where: { id: link.id, userId }, data: { url, urlHash, finalUrlHash } })
+    if (url !== link.url) result.addressesCleaned++
+  }
+  result.scanned += links.length
+  return links.length > 0 ? links[links.length - 1].id : null
 }
 
 // Mirrors isSocialMediaDomain(), which processNestedLinks applies itself
@@ -102,7 +155,19 @@ export async function rescanForMedia(
     remaining: 0,
     linksFound: 0,
     titlesFilled: 0,
+    addressesCleaned: 0,
+    duplicateAddresses: 0,
     errors: [],
+  }
+
+  while (phase === "urls" && Date.now() < deadline) {
+    const last = await cleanStoredAddresses(userId, after, result)
+    if (last === null) {
+      phase = "posts"
+      after = null
+      break
+    }
+    after = last
   }
 
   while (phase === "posts" && Date.now() < deadline) {
@@ -183,11 +248,12 @@ export async function rescanForMedia(
   result.phase = phase
   if (!result.done) {
     result.cursor = `${phase}:${after ?? ""}`
-    const [posts, videos] = await Promise.all([
-      phase === "posts" ? prisma.link.count({ where: postsWhere(userId, after) }) : 0,
+    const [links, posts, videos] = await Promise.all([
+      phase === "urls" ? prisma.link.count({ where: { userId, ...(after ? { id: { gt: after } } : {}) } }) : 0,
+      phase === "titles" ? 0 : prisma.link.count({ where: postsWhere(userId, phase === "posts" ? after : null) }),
       prisma.link.count({ where: untitledVideosWhere(userId, phase === "titles" ? after : null) }),
     ])
-    result.remaining = posts + videos
+    result.remaining = links + posts + videos
   }
   return result
 }

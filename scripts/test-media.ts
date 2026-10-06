@@ -21,6 +21,8 @@
  */
 import { classifyMedia, classifyMediaUrl, mediaKey, youtubeVideoId, type MediaType } from "../lib/media"
 import { isSkippedNestedUrl } from "../lib/nested-link-extractor"
+import { cleanUrl } from "../lib/clean-url"
+import { extractLinks, hashUrl } from "../lib/link-extractor"
 import { mayNameBook, mayReferToRecording, parsePostContext, postIdFromUrl, postVideoPart } from "../lib/post-context"
 import { appleEpisodeIds, authorSurnames, matchBook, normalizeTitle, parsePodcastEpisodes, parsePodcastShow } from "../lib/catalogs"
 import { findFeedItem, linksInShowNotes, parseShowNotes } from "../lib/show-notes"
@@ -128,7 +130,50 @@ const QUOTING_POST = {
   },
 }
 
+const CLEAN_CASES: Array<[string, string, string]> = [
+  ["campaign tags go", "https://example.com/post?utm_source=newsletter&utm_medium=email&utm_id=7&id=42", "https://example.com/post?id=42"],
+  ["ad click ids go", "https://example.com/post?fbclid=abc&gclid=def&msclkid=ghi", "https://example.com/post"],
+  ["email tool ids go", "https://example.com/post?mc_cid=1&mc_eid=2&_hsenc=3&mkt_tok=4", "https://example.com/post"],
+  ["a post on X loses who shared it", "https://x.com/someone/status/123?s=46&t=AbCdEf", "https://x.com/someone/status/123"],
+  ["a video keeps where it starts", "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=90s&si=abc&feature=youtu.be", "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=90s"],
+  ["a short video link loses its share id", "https://youtu.be/dQw4w9WgXcQ?si=abc", "https://youtu.be/dQw4w9WgXcQ"],
+  ["a blog search keeps its query", "https://blog.example.com/?s=compilers", "https://blog.example.com/?s=compilers"],
+  ["a Spotify episode loses its share id", "https://open.spotify.com/episode/abc?si=123&nd=1", "https://open.spotify.com/episode/abc"],
+  ["an Apple episode keeps which episode it is", "https://podcasts.apple.com/us/podcast/costco/id1050462261?i=1000625088063&uo=4&itsct=x", "https://podcasts.apple.com/us/podcast/costco/id1050462261?i=1000625088063"],
+  ["an Amazon book loses its affiliate tag and trail", "https://www.amazon.com/Hobbit-J-R-R-Tolkien/dp/054792822X/ref=sr_1_1?tag=show-20&linkCode=ll1&qid=1&sr=8-1&pd_rd_w=x", "https://www.amazon.com/Hobbit-J-R-R-Tolkien/dp/054792822X"],
+  ["an Amazon short form too", "https://www.amazon.com/dp/0393352978/ref=nosim?tag=turingmachi08-20", "https://www.amazon.com/dp/0393352978"],
+  ["a gift link keeps its code", "https://www.nytimes.com/2026/01/02/books/a-review.html?unlocked_article_code=1.AbC&smid=url-share", "https://www.nytimes.com/2026/01/02/books/a-review.html?unlocked_article_code=1.AbC&smid=url-share"],
+  ["a friend link keeps its key", "https://medium.com/@someone/a-post-123?sk=abcdef", "https://medium.com/@someone/a-post-123?sk=abcdef"],
+  ["a trailing slash goes", "https://example.com/post/?utm_source=x", "https://example.com/post"],
+  ["an escaped ampersand is read as one", "https://example.com/post?id=1&amp;utm_source=x", "https://example.com/post?id=1"],
+  ["an address that isn't one is left alone", "not a url", "not a url"],
+]
+
 function ruleChecks() {
+  console.log("Clean addresses")
+  for (const [name, input, expected] of CLEAN_CASES) {
+    const actual = cleanUrl(input)
+    check(`${name}`, actual === expected, `got ${actual}`)
+    check(`  and cleaning it again changes nothing`, cleanUrl(actual) === actual, cleanUrl(actual))
+  }
+  check(
+    "the same page shared two ways is one link",
+    hashUrl("https://www.amazon.com/dp/0393352978/ref=nosim?tag=turingmachi08-20") === hashUrl("https://www.amazon.com/dp/0393352978") &&
+      hashUrl("https://youtu.be/dQw4w9WgXcQ?si=abc") === hashUrl("https://youtu.be/dQw4w9WgXcQ")
+  )
+  check(
+    "two moments of a video are two links",
+    hashUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=90s") !== hashUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+  )
+  check(
+    "a Kindle book is still recognized after cleaning",
+    classifyMediaUrl(cleanUrl("https://www.amazon.com/Some-Novel-Author-ebook/dp/B00ABCDEFG/ref=tmm_kin_swatch_0?tag=x-20")) === "book"
+  )
+  check(
+    "links in an email are stored clean",
+    extractLinks('<a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ&amp;si=abc&amp;t=30">watch</a>').join() === "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30"
+  )
+
   console.log("Post context")
   check("post id from an x.com URL", postIdFromUrl("https://x.com/someone/status/2106565003608502767?s=20") === "2106565003608502767")
   check("post id from a twitter.com URL", postIdFromUrl("https://twitter.com/someone/status/20") === "20")
@@ -638,6 +683,18 @@ async function postVideoChecks() {
       { foundVia: "SHOW_NOTES" },
       "show_notes"
     )
+    const noteBook = await createFoundLink(
+      { id: foundEpisode.linkId!, userId: carol.id, emailId: null },
+      { url: "https://www.amazon.com/dp/0393352978/ref=nosim?tag=show-20", title: "The Vital Question", description: null, imageUrl: null },
+      { foundVia: "SHOW_NOTES" },
+      "show_notes"
+    )
+    const noteBookRow = await prisma.link.findUnique({ where: { id: noteBook.linkId! }, select: { url: true, urlHash: true } })
+    check(
+      "a show-notes link is stored without the show's tracking, so pasting the plain address finds it",
+      noteBookRow?.url === "https://www.amazon.com/dp/0393352978" && noteBookRow.urlHash === hashUrl("https://www.amazon.com/dp/0393352978?tag=someone-else-20"),
+      noteBookRow
+    )
     const noteEpisodeRow = await prisma.link.findUnique({ where: { id: noteEpisode.linkId! }, select: { lookupStatus: true, contentSource: true } })
     check("an episode linked from show notes is not followed in turn", noteEpisodeRow?.lookupStatus === null && noteEpisodeRow.contentSource === "show_notes", noteEpisodeRow)
     check(
@@ -659,6 +716,43 @@ async function postVideoChecks() {
       fromNotes?.type === "video" && fromNotes.via === "SHOW_NOTES" && fromNotes.post?.title === "Nike" && fromNotes.feedLinkId === bookPost.id && fromNotes.lookup === null,
       fromNotes
     )
+
+    // Moving a show-notes link to the feed. A hidden domain stops before any
+    // fetch, which shows the move itself without touching the network.
+    const { moveLinkToFeed } = await import("../lib/sync-user")
+    const noteArticle = await createFoundLink(
+      { id: foundEpisode.linkId!, userId: carol.id, emailId: null },
+      { url: "https://hidden.example/an-essay", title: "An essay the episode cites", description: "From the show notes of Nike (Acquired)", imageUrl: null },
+      { foundVia: "SHOW_NOTES" },
+      "show_notes"
+    )
+    await prisma.user.update({ where: { id: carol.id }, data: { hiddenDomains: ["hidden.example"] } })
+    check("a link that doesn't exist can't be moved", (await moveLinkToFeed("no-such-link", carol.id)).status === "NOT_FOUND")
+    check("another user can't move it", (await moveLinkToFeed(noteArticle.linkId!, "someone-else")).status === "NOT_FOUND")
+    check("a link found by the lookup is not a show-notes link to move", (await moveLinkToFeed(foundEpisode.linkId!, carol.id)).status === "NOT_MOVABLE")
+    check("a top-level link has nowhere to move", (await moveLinkToFeed(post.id, carol.id)).status === "NOT_MOVABLE")
+
+    const movedResult = await moveLinkToFeed(noteArticle.linkId!, carol.id)
+    const movedRow = await prisma.link.findUnique({
+      where: { id: noteArticle.linkId! },
+      select: { parentLinkId: true, foundVia: true, originNote: true, contentSource: true, fetchStatus: true, title: true },
+    })
+    check(
+      "a moved link becomes a link of its own and remembers where it came from",
+      movedRow?.parentLinkId === null && movedRow.foundVia === null && movedRow.originNote === "From the show notes of Nike (Acquired)" && movedRow.contentSource === null && movedRow.title === "An essay the episode cites",
+      movedRow
+    )
+    check("on a hidden domain it is parked like any hidden link, unfetched", movedResult.status === "HIDDEN" && !movedResult.fetched && movedRow?.fetchStatus === "PENDING", movedResult)
+    await prisma.link.update({ where: { id: noteVideo.linkId! }, data: { parentLinkId: null, foundVia: null, originNote: "From the show notes of Nike (Acquired)" } })
+    const movedVideo = (await listMedia(carol.id)).items.find((i) => i.id === noteVideo.linkId)
+    check(
+      "a moved video stays on the Media list as a link of its own, with where it came from",
+      movedVideo?.via === null && movedVideo.post === null && movedVideo.originNote === "From the show notes of Nike (Acquired)" && movedVideo.feedLinkId === noteVideo.linkId,
+      movedVideo
+    )
+    check("it is no longer listed under the episode", (await prisma.link.count({ where: { userId: carol.id, parentLinkId: foundEpisode.linkId!, id: noteArticle.linkId! } })) === 0)
+    check("moving it a second time does nothing", (await moveLinkToFeed(noteArticle.linkId!, carol.id)).status === "NOT_MOVABLE")
+    await prisma.user.update({ where: { id: carol.id }, data: { hiddenDomains: [] } })
 
     check(
       "and is listed once, as the linked video",
@@ -819,9 +913,35 @@ async function listChecks() {
     check("Bob only sees his own", bobs.counts.all === 1 && bobs.items[0].title === "Bob's video", bobs.items)
 
     console.log("Rescan")
-    // No post has stored HTML and no network is needed: only the cursor walk is checked here
+    // No post has stored HTML and no network is needed: the cursor walk and the address pass are checked here
     const rescan = await rescanForMedia(bob.id, null, DEFAULT_SETTINGS, { budgetMs: 2000 })
     check("a rescan with nothing to do finishes", rescan.done && rescan.cursor === null && rescan.linksFound === 0, rescan)
+
+    // Links saved before addresses were cleaned this thoroughly
+    const dirty = await mk(bob.id, "https://www.amazon.com/dp/0393352978/ref=nosim?tag=show-20", { title: "A book, with the show's tag" })
+    const cleanTwin = await mk(bob.id, "https://example.com/essay", { urlHash: hashUrl("https://example.com/essay"), title: "Already clean" })
+    const dirtyTwin = await mk(bob.id, "https://example.com/essay?utm_source=newsletter&fbclid=abc", { title: "The same essay, shared with tracking" })
+    const staleHash = await mk(bob.id, "https://www.youtube.com/watch?v=bobsvideo02&t=45s", { title: "Hash from older rules" })
+    const cleaned = await rescanForMedia(bob.id, null, DEFAULT_SETTINGS, { budgetMs: 4000 })
+    const row = (id: string) => prisma.link.findUnique({ where: { id }, select: { url: true, urlHash: true } })
+    check("the scan counts what it cleaned and what turned out to be the same page", cleaned.done && cleaned.addressesCleaned === 1 && cleaned.duplicateAddresses === 1, cleaned)
+    check(
+      "a saved address loses its tracking, and its hash follows",
+      (await row(dirty.id))?.url === "https://www.amazon.com/dp/0393352978" && (await row(dirty.id))?.urlHash === hashUrl("https://www.amazon.com/dp/0393352978"),
+      await row(dirty.id)
+    )
+    check(
+      "two links that are the same page once cleaned are both left alone",
+      (await row(dirtyTwin.id))?.url === "https://example.com/essay?utm_source=newsletter&fbclid=abc" && (await row(cleanTwin.id))?.url === "https://example.com/essay",
+      await row(dirtyTwin.id)
+    )
+    check(
+      "a hash made under older rules is brought up to date without touching the address",
+      (await row(staleHash.id))?.url === "https://www.youtube.com/watch?v=bobsvideo02&t=45s" && (await row(staleHash.id))?.urlHash === hashUrl("https://www.youtube.com/watch?v=bobsvideo02&t=45s"),
+      await row(staleHash.id)
+    )
+    const secondPass = await rescanForMedia(bob.id, null, DEFAULT_SETTINGS, { budgetMs: 4000 })
+    check("a second scan has nothing left to clean", secondPass.addressesCleaned === 0 && secondPass.duplicateAddresses === 1, secondPass)
   } finally {
     await prisma.user.deleteMany({ where: { email: { in: emails } } })
   }

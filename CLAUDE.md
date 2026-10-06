@@ -119,7 +119,7 @@ The sync workflow decision tree documents the complete email → link → AI pro
 |------|------------------------|
 | `app/api/sync/route.ts` | Main flow, parallel processing, pagination |
 | `lib/gmail.ts` | Gmail API integration, batch fetching |
-| `lib/link-extractor.ts` | Link extraction logic |
+| `lib/link-extractor.ts`, `lib/clean-url.ts` | Link extraction logic, the clean form of an address (which parameters are tracking) |
 | `lib/content-fetcher.ts` | Content fetching decision tree, paywall detection |
 | `lib/ai-html-parser.ts` | AI fallback path |
 | `lib/process-nested-links.ts`, `lib/nested-link.ts`, `lib/nested-link-extractor.ts` | Nested links processing, which links in a post are kept |

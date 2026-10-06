@@ -347,6 +347,19 @@ When the email query is changed in settings:
 4. SyncButton UI shows an amber warning and changes the primary action to "Resync"
 5. Clicking "Resync" triggers `initial` mode sync with the new query
 
+## Clean Addresses
+
+Every link is stored and compared in one clean form, so the same page reached through different share links is one link. `normalizeUrl()` in `lib/clean-url.ts` decodes HTML entities, drops a trailing slash, and removes:
+
+- parameters that are tracking on any site: the `utm_` family, ad click ids (`fbclid`, `gclid`, `msclkid`, …), email-tool ids (`mc_cid`, `_hsenc`, `mkt_tok`, …), share ids (`igshid`, `share_id`), and `ref`, `source`;
+- parameters that are tracking only on one site: `s` and `t` on X (who shared the post), `si` and `feature` on YouTube, `si` on Spotify, `uo` and friends on Apple, and on Amazon the affiliate tag, referral trail and the `/ref=…` path segment.
+
+Parameters that decide which page it is are kept: a video's start time (`t` on YouTube), a search query (`s` on a blog), an Apple episode id (`i`), a gift or friend link's code.
+
+`hashUrl()` hashes the clean form; `(userId, urlHash)` is the duplicate check. The stored `url` is the clean form too, wherever a link enters: `extractLinks()` for emails, `POST /api/links/add`, `createNestedLink()` and `createFoundLink()` for nested, found and show-notes links, and the email ingest route. `finalUrl` is stored as the site returned it and hashed clean.
+
+Links saved under older rules are brought up to date by the first pass of "Scan saved posts" (`cleanStoredAddresses()` in `lib/media-rescan.ts`): the address is rewritten in its clean form and the hash recomputed. When that makes a link the same page as another of the user's links, both are left as they are and counted; nothing is merged or deleted.
+
 ## Nested Links Processing (Social Media)
 
 ```
@@ -409,7 +422,7 @@ Video pages skip the direct fetcher's poor-content check. YouTube's oEmbed respo
 
 A post with an uploaded video is one entry, whatever is known about it: the post itself ("Video on X") while its source is unknown, or the recording the media lookup found, with the matching short clip attached to the same entry. Podcast episodes and books it found are entries of their own. A post is not listed as itself when one of its links already is the video.
 
-`POST /api/media/rescan` (`lib/media-rescan.ts`, the "Scan saved posts" button) catches up links synced before these rules, using only what is stored:
+`POST /api/media/rescan` (`lib/media-rescan.ts`, the "Scan saved posts" button) catches up links synced before these rules, using only what is stored. It first cleans stored addresses (see Clean Addresses), then:
 
 1. `processNestedLinks()` runs again on every social media post. Links that already exist are skipped, so only links that used to be dropped are created. Posts on X get their context stored and are queued for the media lookup where it applies. The scan makes no AI calls.
 2. Videos saved without a title get their title, thumbnail and description from oEmbed.
@@ -474,6 +487,10 @@ lookUpMedia(link)  (claims the link: RUNNING)
 The model names things and chooses among candidates; it never supplies a link. Videos are fetched like any nested link (`createNestedLink()`); episodes and books are created from the catalog's own details without fetching their pages (`createFoundLink()`).
 
 An episode the lookup finds for a post has its own show notes read straight away, so a post about an episode can end up three levels deep: post → episode → what its notes link. Show-notes links go through the same rules as links in a post (`resolveNestedUrl()`: short links followed, including `amzn.to` and other store and player shorteners; social profiles left out). A video among them gets its title and thumbnail from oEmbed. Every other link is kept as a reference, under the name the notes give it and without fetching the page (`contentSource = "show_notes"`). The feed shows them under an emailed episode like any nested links, and as a compact list under an episode that is itself nested.
+
+"Move to feed" on a show-notes link (`POST /api/links/[id]/move-to-feed`, `moveLinkToFeed()` in `lib/sync-user.ts`) turns the reference into a feed link of its own. It is detached from the episode, `originNote` records where it came from ("From the show notes of …"), and it goes through `processLink()` exactly like a link from an email: fetched, checked against hidden domains and duplicates, its own nested links processed. It is then analyzed whether or not analysis is set to run on its own, since asking for one link is asking for its analysis. Only show-notes links can be moved.
+
+"Add Link" does not move anything on its own. When the pasted address is already saved as a show-notes link, `POST /api/links/add` answers 409 with `code: "IN_SHOW_NOTES"`, the link and its episode, and the dialog asks "Move this link to your feed?" before calling the move endpoint. Any other address the user already has is refused as a duplicate, as before.
 
 A find can be wrong, so found links are labelled in the feed and on the Media page. "Wrong video", "Wrong episode" and "Wrong book" (`DELETE /api/links/[id]/found`) remove the found link and record it in the parent's `lookupRejected`, so no later lookup brings it back. A video's full recording and clip go together. When nothing found is left the parent is `REJECTED` and is not looked up again on its own.
 
@@ -770,6 +787,7 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 | AI provider config | `lib/ai-provider.ts`, `lib/baml-registry.ts` | `isAiConfigured()`, `buildClientRegistry()` |
 | Gmail integration | `lib/gmail.ts` | `fetchEmails()`, `batchGetEmailContents()` |
 | Link extraction | `lib/link-extractor.ts` | `extractLinks()`, `hashUrl()`, `extractDomain()` |
+| Clean addresses | `lib/clean-url.ts` | `normalizeUrl()`, `cleanUrl()`: tracking parameters removed, one form per page |
 | Fallback chain | `lib/fetchers/index.ts` | `fetchWithFallbackChain()` |
 | Direct fetcher | `lib/fetchers/direct.ts`, `lib/content-fetcher.ts` | `fetchAndParseContent()`, `isPoorContent()` |
 | Private-network block | `lib/safe-fetch.ts` | `safeFetch()`, `isBlockedAddress()`, `checkFetchUrlResolved()` |
@@ -778,6 +796,7 @@ Nested link fetches (`lib/process-nested-links.ts`) are **not** instrumented.
 | Nested links | `lib/process-nested-links.ts`, `lib/nested-link.ts`, `lib/nested-link-extractor.ts` | `processNestedLinks()`, `createNestedLink()`, `extractNestedUrls()`, `resolveNestedUrl()`, `isSkippedNestedUrl()` |
 | Post context | `lib/post-context.ts` | `fetchPostContext()`, `parsePostContext()`, `mayReferToRecording()` |
 | Media lookup | `lib/media-lookup.ts`, `lib/catalogs.ts`, `lib/show-notes.ts`, `baml_src/lookup.baml`, `app/api/links/[id]/lookup/route.ts`, `app/api/links/[id]/found/route.ts`, `app/api/media/lookups/route.ts` | `lookUpMedia()`, `runPendingLookups()`, `rejectFoundLink()`, `searchPodcastEpisodes()`, `findBook()`, `fetchShowNotes()` |
+| Move to feed | `lib/sync-user.ts`, `app/api/links/[id]/move-to-feed/route.ts` | `moveLinkToFeed()`: a show-notes link becomes a feed link, fetched and analyzed |
 | Media links | `lib/media.ts`, `lib/media-list.ts`, `app/api/media/route.ts` | `classifyMedia()`, `classifyMediaUrl()`, `listMedia()` |
 | Media rescan | `lib/media-rescan.ts`, `app/api/media/rescan/route.ts` | `rescanForMedia()`: nested links and video titles for posts synced earlier |
 | AI analysis | `lib/analysis.ts`, `lib/gemini-batch.ts` | `analyzeLink()`, `recordAnalysisFailure()`, per-user Gemini Batch apply |

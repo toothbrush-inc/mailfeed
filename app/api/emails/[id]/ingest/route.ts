@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { b } from "@/baml_client"
-import { hashUrl, extractDomain } from "@/lib/link-extractor"
+import { hashUrl, extractDomain, cleanUrl } from "@/lib/link-extractor"
 import { getUserSettings } from "@/lib/user-settings"
 import { getUserAiKeys } from "@/lib/user-keys"
 import { buildClientRegistry } from "@/lib/baml-registry"
@@ -69,7 +69,9 @@ export async function POST(
     // Create Link records for extracted links
     const linksCreated: string[] = []
     for (const extractedLink of result.links) {
-      const urlHash = hashUrl(extractedLink.url)
+      // Stored without tracking parameters, like links found any other way
+      const linkUrl = cleanUrl(extractedLink.url)
+      const urlHash = hashUrl(linkUrl)
 
       // Check if link already exists for this user
       const existingLink = await prisma.link.findUnique({
@@ -86,10 +88,10 @@ export async function POST(
         data: {
           userId: session.user.id,
           emailId: id,
-          url: extractedLink.url,
+          url: linkUrl,
           urlHash,
           title: extractedLink.title || null,
-          domain: extractDomain(extractedLink.url),
+          domain: extractDomain(linkUrl),
           fetchStatus: "PENDING",
         },
       })

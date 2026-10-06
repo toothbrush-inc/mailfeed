@@ -48,6 +48,7 @@ interface FeedItemProps {
     worthinessScore: number | null
     uniquenessScore: number | null
     isHighlighted: boolean
+    originNote?: string | null
     highlightReason: string | null
     isPaywalled: boolean
     paywallType: string | null
@@ -424,6 +425,12 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
                     {emailDate}
                   </span>
                 </>
+              )}
+              {/* A link moved here from an episode's show notes says where it came from */}
+              {link.originNote && (
+                <span className="min-w-0 basis-full truncate" title={link.originNote}>
+                  {link.originNote}
+                </span>
               )}
             </div>
           </div>

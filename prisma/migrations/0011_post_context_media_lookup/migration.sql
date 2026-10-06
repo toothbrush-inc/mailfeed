@@ -4,6 +4,7 @@
 ALTER TABLE "Link" ADD COLUMN "postContext" JSONB;
 ALTER TABLE "Link" ADD COLUMN "foundVia" TEXT;
 ALTER TABLE "Link" ADD COLUMN "foundRole" TEXT;
+ALTER TABLE "Link" ADD COLUMN "originNote" TEXT;
 ALTER TABLE "Link" ADD COLUMN "mentionedBooks" JSONB;
 ALTER TABLE "Link" ADD COLUMN "lookupStatus" TEXT;
 ALTER TABLE "Link" ADD COLUMN "lookupAt" TIMESTAMP(3);

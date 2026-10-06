@@ -34,7 +34,7 @@ const TYPE_INFO: Record<MediaType, { label: string; singular: string; icon: Luci
 }
 
 const SCAN_HELP =
-  "Looks through posts you already synced for videos and other links that weren't kept at the time, including links in quoted posts, and fills in missing video titles. No AI is used. New posts are covered automatically."
+  "Looks through posts you already synced for videos and other links that weren't kept at the time, including links in quoted posts, fills in missing video titles, and removes tracking parameters from saved addresses. No AI is used. New posts are covered automatically."
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString)
@@ -161,6 +161,26 @@ function MediaRow({
 }) {
   const info = TYPE_INFO[item.type]
   const Icon = info.icon
+  const [moving, setMoving] = useState(false)
+  const [moveMessage, setMoveMessage] = useState<string | null>(null)
+
+  // Make a link from an episode's show notes a feed link of its own: fetched and analyzed
+  const moveToFeed = async () => {
+    setMoving(true)
+    setMoveMessage(null)
+    try {
+      const res = await fetch(`/api/links/${item.id}/move-to-feed`, { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "Couldn't move the link")
+      if (data.message) setMoveMessage(data.message)
+      onChanged()
+    } catch (err) {
+      setMoveMessage(err instanceof Error ? err.message : "Couldn't move the link")
+    } finally {
+      setMoving(false)
+    }
+  }
+
   // A show-notes link's description only says which episode it is from, which the line below says too
   const blurb = item.summary || (item.via === "SHOW_NOTES" && item.post ? null : item.description)
 
@@ -271,9 +291,26 @@ function MediaRow({
               {" · "}
             </>
           )}
+          {!item.post && item.originNote && <>{shorten(item.originNote, 90)} · </>}
           <Link href={`/feed?link=${item.feedLinkId}`} className="underline-offset-2 hover:underline">
             Open in feed
           </Link>
+          {item.via === "SHOW_NOTES" && (
+            <>
+              {" · "}
+              <button
+                type="button"
+                onClick={moveToFeed}
+                disabled={moving}
+                title="Fetch this page and analyze it as a link of its own in your feed"
+                className="inline-flex items-center gap-1 underline underline-offset-2 hover:text-foreground disabled:opacity-60"
+              >
+                {moving && <Loader2 className="h-3 w-3 animate-spin" />}
+                Move to feed
+              </button>
+            </>
+          )}
+          {moveMessage && <span className="ml-1.5">{moveMessage}</span>}
         </p>
       </div>
     </article>
@@ -413,12 +450,13 @@ export function MediaContainer() {
           {progress.error
             ? `${progress.error}. Checked ${progress.scanned} before it stopped.`
             : progress.finished
-              ? `Scan done. Checked ${progress.scanned} ${progress.scanned === 1 ? "post or video" : "posts and videos"}.`
+              ? `Scan done. Checked ${progress.scanned} ${progress.scanned === 1 ? "link" : "links"}.`
               : progress.running
-                ? `Scanning saved posts: ${progress.scanned} of ${scanTotal} checked…`
+                ? `Scanning saved links: ${progress.scanned} of ${scanTotal} checked…`
                 : `Scan stopped after ${progress.scanned} of ${scanTotal}.`}{" "}
           {progress.linksFound} new {progress.linksFound === 1 ? "link" : "links"} found,{" "}
-          {progress.titlesFilled} {progress.titlesFilled === 1 ? "title" : "titles"} filled in.
+          {progress.titlesFilled} {progress.titlesFilled === 1 ? "title" : "titles"} filled in,{" "}
+          {progress.addressesCleaned} {progress.addressesCleaned === 1 ? "address" : "addresses"} cleaned.
         </p>
       )}
 

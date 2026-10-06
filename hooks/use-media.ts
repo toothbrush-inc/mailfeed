@@ -55,6 +55,7 @@ export interface RescanProgress {
   remaining: number
   linksFound: number
   titlesFilled: number
+  addressesCleaned: number
   finished: boolean
   error: string | null
 }
@@ -65,6 +66,7 @@ const IDLE: RescanProgress = {
   remaining: 0,
   linksFound: 0,
   titlesFilled: 0,
+  addressesCleaned: 0,
   finished: false,
   error: null,
 }
@@ -102,6 +104,7 @@ export function useMediaRescan(onProgress: () => void) {
           remaining: step.remaining,
           linksFound: totals.linksFound + step.linksFound,
           titlesFilled: totals.titlesFilled + step.titlesFilled,
+          addressesCleaned: totals.addressesCleaned + step.addressesCleaned,
         }
         setProgress(totals)
         if (step.linksFound > 0 || step.titlesFilled > 0) onProgress()

@@ -67,6 +67,8 @@ export interface MediaItem {
   isLiked: boolean
   /** The link to open in the feed: the post it was found in, or itself. */
   feedLinkId: string
+  /** For a link moved to the feed: where it came from, e.g. "From the show notes of Costco (Acquired)". */
+  originNote: string | null
   /** The post or page this was found in or for, for links that weren't emailed directly. */
   post: { id: string; url: string; title: string | null; domain: string | null } | null
   /** Other links to the same item (the same video shared twice). */
@@ -231,6 +233,7 @@ export async function listMedia(userId: string, options: MediaListOptions = {}):
       imageUrl: true,
       isRead: true,
       isLiked: true,
+      originNote: true,
       parentLink: {
         where: { userId },
         select: {
@@ -275,6 +278,7 @@ export async function listMedia(userId: string, options: MediaListOptions = {}):
         (via === "POST_VIDEO" ? row.postVideo?.poster : null) ??
         (youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/mqdefault.jpg` : null),
       sharedAt: new Date(row.sharedAt).toISOString(),
+      originNote: detail?.originNote ?? null,
       isRead: detail?.isRead ?? false,
       isLiked: detail?.isLiked ?? false,
       // The feed lists top-level links: a page found inside a post opens as that post

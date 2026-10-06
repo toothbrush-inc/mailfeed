@@ -1,5 +1,5 @@
 import { prisma } from "./prisma"
-import { hashUrl, extractDomain } from "./link-extractor"
+import { hashUrl, extractDomain, cleanUrl } from "./link-extractor"
 import { estimateReadingTime } from "./content-fetcher"
 import { fetchWithFallbackChain } from "./fetchers"
 import { recordFetchAttempts, generateOperationId } from "./fetch-attempts"
@@ -71,11 +71,13 @@ export interface NestedLinkOutcome {
  */
 export async function createNestedLink(
   parentLink: { id: string; userId: string; emailId: string | null },
-  url: string,
+  foundUrl: string,
   origin: NestedLinkOrigin,
   settings: ResolvedSettings,
   options?: { triggerAi?: boolean }
 ): Promise<NestedLinkOutcome> {
+  // Stored without tracking parameters, so the same page is one link however it was shared
+  const url = cleanUrl(foundUrl)
   const urlHash = hashUrl(url)
 
   // Check for duplicate by URL
@@ -233,10 +235,11 @@ export interface FoundItem {
  */
 export async function createFoundLink(
   parentLink: { id: string; userId: string; emailId: string | null },
-  item: FoundItem,
+  found: FoundItem,
   origin: NestedLinkOrigin,
   contentSource: "catalog" | "show_notes" = "catalog"
 ): Promise<NestedLinkOutcome> {
+  const item = { ...found, url: cleanUrl(found.url) }
   const urlHash = hashUrl(item.url)
   const existingLink = await prisma.link.findFirst({
     where: { userId: parentLink.userId, OR: [{ urlHash }, { finalUrlHash: urlHash }] },
