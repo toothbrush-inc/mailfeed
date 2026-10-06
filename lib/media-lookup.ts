@@ -40,7 +40,7 @@ import { buildClientRegistry } from "@/lib/baml-registry"
 import { FEATURE_FLAGS } from "@/lib/flags"
 import { findBook, searchPodcastEpisodes, type BookMention, type PodcastEpisode } from "@/lib/catalogs"
 import { classifyMedia, classifyMediaUrl, mediaKey, youtubeVideoId } from "@/lib/media"
-import { createFoundLink, createNestedLink } from "@/lib/nested-link"
+import { createFoundLink, createNestedLink, loadPostContext, postContextUrls } from "@/lib/nested-link"
 import { resolveNestedUrl } from "@/lib/nested-link-extractor"
 import { fetchShowNotes } from "@/lib/show-notes"
 import { fetchOEmbed, getOEmbedEndpoint } from "@/lib/oembed-fetcher"
@@ -409,7 +409,7 @@ export async function lookUpMedia(
       foundVia: true,
     },
   })
-  const context = readPostContext(link?.postContext)
+  let context = readPostContext(link?.postContext)
   const ownType = link ? classifyMedia(link)?.type : null
   // A book's own page names itself; it is already on the list as that book
   const pageBooks = link && ownType !== "book" ? readMentionedBooks(link.mentionedBooks) : []
@@ -452,6 +452,15 @@ export async function lookUpMedia(
     const problems: string[] = []
     let somethingToFind = false
     let books = pageBooks
+
+    // A post stored before its full text and follow-up posts were read is
+    // read again, and the links that adds are kept before anything is searched for
+    if (context && !context.expanded && FEATURE_FLAGS.readXThreads) {
+      context = (await loadPostContext(link)) ?? context
+      for (const { url, origin } of await postContextUrls(context)) {
+        await createNestedLink(link, url, origin, settings, { triggerAi: options.triggerAi })
+      }
+    }
 
     if (context) {
       // What the post already links needs no finding

@@ -23,7 +23,7 @@ import { classifyMedia, classifyMediaUrl, mediaKey, youtubeVideoId, type MediaTy
 import { isSkippedNestedUrl } from "../lib/nested-link-extractor"
 import { cleanUrl } from "../lib/clean-url"
 import { extractLinks, hashUrl } from "../lib/link-extractor"
-import { mayNameBook, mayReferToRecording, parsePostContext, postIdFromUrl, postVideoPart } from "../lib/post-context"
+import { mayNameBook, mayReferToRecording, parsePostContext, parseThread, postIdFromUrl, postVideoPart } from "../lib/post-context"
 import { appleEpisodeIds, authorSurnames, matchBook, normalizeTitle, parsePodcastEpisodes, parsePodcastShow } from "../lib/catalogs"
 import { findFeedItem, linksInShowNotes, parseShowNotes } from "../lib/show-notes"
 
@@ -194,6 +194,34 @@ function ruleChecks() {
     "a GIF is not a video",
     parsePostContext({ id_str: "1", text: "lol", mediaDetails: [{ type: "animated_gif" }], video: { poster: "x" } })?.video === null
   )
+
+  // FxTwitter's thread: the post, with the posts before it and replies by others
+  const author = { id: "7", screen_name: "a16z" }
+  const urlFacet = (url: string) => ({ type: "url", original: "https://t.co/x", replacement: url })
+  const thread = parseThread(
+    {
+      status: {
+        id: "200",
+        text: "A long post… YouTube: https://youtu.be/ekK8urKHPMQ",
+        author,
+        raw_text: { facets: [{ type: "media", replacement: "https://x.com/a16z/status/200/video/1" }, urlFacet("https://youtu.be/ekK8urKHPMQ")] },
+      },
+      thread: [
+        { id: "100", author, raw_text: { facets: [urlFacet("https://example.com/before")] } },
+        { id: "200", author, raw_text: { facets: [urlFacet("https://youtu.be/ekK8urKHPMQ")] } },
+        { id: "300", author, raw_text: { facets: [urlFacet("https://example.com/full-episode")] } },
+        { id: "400", author: { id: "8" }, raw_text: { facets: [urlFacet("https://example.com/someone-else")] } },
+      ],
+    },
+    "200"
+  )
+  check("a long post's full text is read", thread?.text?.endsWith("https://youtu.be/ekK8urKHPMQ") === true, thread)
+  check(
+    "its links and its author's follow-ups are kept, not the uploaded video, earlier posts or others' replies",
+    thread?.urls.join() === "https://youtu.be/ekK8urKHPMQ,https://example.com/full-episode",
+    thread?.urls
+  )
+  check("a thread about another post is ignored", parseThread({ status: { id: "201" } }, "200") === null)
 
   const plain = (text: string) => parsePostContext({ id_str: "1", text, user: { screen_name: "a" } })
   check("a post with an uploaded video may refer to a recording", mayReferToRecording(context))

@@ -457,6 +457,8 @@ export function MediaContainer() {
           {progress.linksFound} new {progress.linksFound === 1 ? "link" : "links"} found,{" "}
           {progress.titlesFilled} {progress.titlesFilled === 1 ? "title" : "titles"} filled in,{" "}
           {progress.addressesCleaned} {progress.addressesCleaned === 1 ? "address" : "addresses"} cleaned.
+          {progress.threadsUnread > 0 &&
+            ` ${progress.threadsUnread} ${progress.threadsUnread === 1 ? "post on X" : "posts on X"} couldn't be read in full (FxTwitter didn't answer); the next scan tries again.`}
         </p>
       )}
 

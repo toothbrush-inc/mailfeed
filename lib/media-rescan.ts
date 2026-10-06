@@ -44,6 +44,8 @@ export interface MediaRescanResult {
   remaining: number
   /** Nested links created by this call. */
   linksFound: number
+  /** Posts on X that FxTwitter couldn't read in full in this call. They are read again on the next scan. */
+  threadsUnread: number
   /** Videos given a title by this call. */
   titlesFilled: number
   /** Links whose stored address lost its tracking parameters in this call. */
@@ -155,6 +157,7 @@ export async function rescanForMedia(
     remaining: 0,
     linksFound: 0,
     titlesFilled: 0,
+    threadsUnread: 0,
     addressesCleaned: 0,
     duplicateAddresses: 0,
     errors: [],
@@ -197,12 +200,14 @@ export async function rescanForMedia(
         // lookup: false — the scan is free; lookups are started separately
         processNestedLinks(post, settings, { triggerAi: options.triggerAi, lookup: false }).catch((error) => ({
           created: 0,
+          threadUnread: false,
           errors: [`${post.url}: ${error instanceof Error ? error.message : error}`],
         }))
       )
     )
     for (const outcome of outcomes) {
       result.linksFound += outcome.created
+      if (outcome.threadUnread) result.threadsUnread++
       result.errors.push(...outcome.errors)
     }
     result.scanned += posts.length

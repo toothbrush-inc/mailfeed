@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client"
 import { prisma } from "./prisma"
 import { hashUrl, extractDomain, cleanUrl } from "./link-extractor"
 import { estimateReadingTime } from "./content-fetcher"
@@ -5,6 +6,9 @@ import { fetchWithFallbackChain } from "./fetchers"
 import { recordFetchAttempts, generateOperationId } from "./fetch-attempts"
 import { triggerAutoAnalysisAndEmbedding } from "./ai-triggers"
 import { classifyMediaUrl } from "./media"
+import { FEATURE_FLAGS } from "./flags"
+import { resolveNestedUrl } from "./nested-link-extractor"
+import { fetchPostContext, postIdFromUrl, readPostContext, type PostContext } from "./post-context"
 import type { ResolvedSettings } from "./settings"
 
 // Domains to exclude for nested links (social media, images, etc.)
@@ -51,6 +55,66 @@ export interface NestedLinkOrigin {
   foundVia?: "QUOTED_POST" | "AI_LOOKUP" | "SHOW_NOTES" | null
   /** AI_LOOKUP only: a video (the full recording or the same clip), a podcast episode, or a book. */
   foundRole?: "CLIP" | "FULL" | "EPISODE" | "BOOK" | null
+}
+
+/**
+ * The stored context of a post on X, fetched and saved the first time.
+ * A context stored before long posts and follow-up posts were read is
+ * fetched again (and kept when that fails), unless FxTwitter is off. Null for other platforms and
+ * for posts the embed endpoint won't return.
+ */
+export async function loadPostContext(parentLink: {
+  id: string
+  userId: string
+  url: string
+  finalUrl: string | null
+}): Promise<PostContext | null> {
+  const postUrl = [parentLink.finalUrl, parentLink.url].find((url) => postIdFromUrl(url))
+  if (!postUrl) return null
+
+  const stored = await prisma.link.findFirst({
+    where: { id: parentLink.id, userId: parentLink.userId },
+    select: { postContext: true },
+  })
+  const existing = readPostContext(stored?.postContext)
+  // With FxTwitter off there is nothing more to read
+  if (existing && (existing.expanded || !FEATURE_FLAGS.readXThreads)) return existing
+
+  const context = await fetchPostContext(postUrl)
+  if (!context) return existing
+  await prisma.link.updateMany({
+    where: { id: parentLink.id, userId: parentLink.userId },
+    data: { postContext: context as unknown as Prisma.InputJsonValue },
+  })
+  return context
+}
+
+/**
+ * The links a post's context adds to what its page shows, resolved and
+ * filtered like the post's own: the rest of a long post and the author's
+ * follow-up posts (linked in the post itself), and the links of the post it
+ * quotes, since "look at this" over someone else's post is about whatever
+ * that post links to.
+ */
+export async function postContextUrls(
+  context: PostContext | null
+): Promise<Array<{ url: string; origin: NestedLinkOrigin }>> {
+  if (!context) return []
+  const found: Array<{ url: string; origin: NestedLinkOrigin }> = []
+  const sources: Array<[string[], NestedLinkOrigin]> = [
+    [context.urls, {}],
+    [context.quoted?.urls ?? [], { foundVia: "QUOTED_POST" }],
+  ]
+  for (const [urls, origin] of sources) {
+    for (const written of urls) {
+      const url = await resolveNestedUrl(written)
+      if (url && !found.some((entry) => entry.url === url)) {
+        console.log(`[Nested Links] Found in ${origin.foundVia ? "quoted post" : "post"}: ${url}`)
+        found.push({ url, origin })
+      }
+    }
+  }
+  return found
 }
 
 export interface NestedLinkOutcome {
