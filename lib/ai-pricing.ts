@@ -43,6 +43,44 @@ function rateFor(model: string, at: Date): Rate | null {
   return PRICES[key].find((p) => !p.from || p.from <= day)?.rate ?? null
 }
 
+// Grounding with Google Search, checked 2026-10-06 on the same page. A
+// request can run several searches and each one is billed. The free
+// searches are per month and shared by every Gemini 3.x model on the
+// billing account.
+interface SearchRate {
+  perThousand: number
+  freePerMonth: number
+}
+
+const SEARCH_PRICES: Array<{ modelPrefix: string; rate: SearchRate }> = [
+  { modelPrefix: "gemini-3.", rate: { perThousand: 14, freePerMonth: 5000 } },
+]
+
+export function searchRateFor(model: string): SearchRate | null {
+  return SEARCH_PRICES.find((price) => model.startsWith(price.modelPrefix))?.rate ?? null
+}
+
+export interface PricedSearches {
+  model: string
+  /** Searches this call ran. */
+  requests: number
+  /** Searches already run this month, which use up the free ones first. */
+  usedThisMonth: number
+}
+
+/**
+ * Search fee of one call in USD: only the searches past the month's free
+ * allowance cost anything. Null when the model's search price isn't known.
+ */
+export function priceSearches({ model, requests, usedThisMonth }: PricedSearches): number | null {
+  if (requests <= 0) return 0
+  const rate = searchRateFor(model)
+  if (!rate) return null
+  const billable =
+    Math.max(0, usedThisMonth + requests - rate.freePerMonth) - Math.max(0, usedThisMonth - rate.freePerMonth)
+  return (billable * rate.perThousand) / 1000
+}
+
 export interface PricedCall {
   model: string
   inputTokens: number

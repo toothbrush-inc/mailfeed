@@ -7,6 +7,8 @@ export interface AiUsageKindTotal {
   calls: number
   inputTokens: number
   outputTokens: number
+  /** Google searches these calls ran. */
+  searches: number
   costUsd: number
 }
 
@@ -20,6 +22,12 @@ export interface AiUsage {
   analyzedLinks: number
   costPerLinkUsd: number | null
   byKind: AiUsageKindTotal[]
+  search: {
+    inWindow: number
+    thisMonth: number
+    freePerMonth: number | null
+    usdPerThousand: number | null
+  }
   daily: Array<{ date: string; costUsd: number; calls: number }>
 }
 

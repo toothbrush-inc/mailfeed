@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { searchesThisMonth } from "@/lib/ai-usage"
+import { searchRateFor } from "@/lib/ai-pricing"
+import { BAML_CLIENTS } from "@/lib/ai-provider"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const MAX_DAYS = 365
@@ -29,16 +32,17 @@ export async function GET(request: NextRequest) {
   const since = new Date(now.getTime() - days * DAY_MS)
   const where = { userId, createdAt: { gte: since } }
 
-  const [first, byKind, links, unpriced, daily] = await Promise.all([
+  const [first, byKind, links, unpriced, searchesMonth, daily] = await Promise.all([
     prisma.aiUsage.findFirst({ where: { userId }, orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
     prisma.aiUsage.groupBy({
       by: ["kind"],
       where,
       _count: true,
-      _sum: { inputTokens: true, outputTokens: true, costUsd: true },
+      _sum: { inputTokens: true, outputTokens: true, searchRequests: true, costUsd: true },
     }),
     prisma.aiUsage.groupBy({ by: ["linkId"], where: { ...where, kind: "ANALYZE_LINK", linkId: { not: null } } }),
     prisma.aiUsage.count({ where: { ...where, costUsd: null } }),
+    searchesThisMonth(userId),
     prisma.$queryRaw<Array<{ date: string; cost: number; calls: number }>>`
       SELECT to_char(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE ${timeZone}, 'YYYY-MM-DD') AS date,
         COALESCE(SUM("costUsd"), 0)::float AS cost,
@@ -60,8 +64,11 @@ export async function GET(request: NextRequest) {
     calls: k._count,
     inputTokens: k._sum.inputTokens ?? 0,
     outputTokens: k._sum.outputTokens ?? 0,
+    searches: k._sum.searchRequests ?? 0,
     costUsd: k._sum.costUsd ?? 0,
   }))
+  // Searches only run on Gemini (the video lookup's search step)
+  const searchRate = searchRateFor(BAML_CLIENTS.find((c) => c.name === "CustomGemini")?.model ?? "")
   const totalUsd = kinds.reduce((n, k) => n + k.costUsd, 0)
   const analysisUsd = kinds.find((k) => k.kind === "ANALYZE_LINK")?.costUsd ?? 0
 
@@ -75,6 +82,13 @@ export async function GET(request: NextRequest) {
     analyzedLinks: links.length,
     costPerLinkUsd: links.length ? analysisUsd / links.length : null,
     byKind: kinds,
+    // Google searches run by AI calls: free up to a monthly allowance, then billed each
+    search: {
+      inWindow: kinds.reduce((n, k) => n + k.searches, 0),
+      thisMonth: searchesMonth,
+      freePerMonth: searchRate?.freePerMonth ?? null,
+      usdPerThousand: searchRate?.perThousand ?? null,
+    },
     daily: [...dates].sort().map((date) => ({
       date,
       costUsd: byDate.get(date)?.cost ?? 0,

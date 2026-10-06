@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Clapperboard,
   Flag,
   Globe,
   Link2,
@@ -25,6 +26,7 @@ export interface NavItem {
  */
 export const PRIMARY_NAV: NavItem[] = [
   { href: "/feed", label: "Links", icon: Link2, countKey: "links" },
+  { href: "/media", label: "Media", icon: Clapperboard },
   { href: "/emails", label: "Emails", icon: Mail, countKey: "emails" },
   { href: "/domains", label: "Domains", icon: Globe, countKey: "domains" },
 ]

@@ -14,6 +14,7 @@ const KIND_LABELS: Record<string, string> = {
   ANALYZE_LINK: "Link analysis",
   INGEST_EMAIL: "Email ingest",
   CHAT: "Chat",
+  MEDIA_LOOKUP: "Source lookup",
 }
 
 // Sub-cent amounts matter here: a link can cost a fraction of a cent.
@@ -82,7 +83,7 @@ export function AiSpend() {
               Your AI Spend
             </CardTitle>
             <CardDescription>
-              What your AI features cost on your Gemini key, from the tokens each call used.
+              What your AI features cost on your Gemini key, from the tokens and searches each call used.
             </CardDescription>
           </div>
           <div className="flex items-center gap-1">
@@ -164,7 +165,14 @@ export function AiSpend() {
                     .sort((a, b) => b.costUsd - a.costUsd)
                     .map((k) => (
                       <tr key={k.kind} className="border-b last:border-0">
-                        <td className="py-1.5">{KIND_LABELS[k.kind] ?? k.kind}</td>
+                        <td className="py-1.5">
+                          {KIND_LABELS[k.kind] ?? k.kind}
+                          {k.searches > 0 && (
+                            <span className="ml-1.5 text-xs text-muted-foreground">
+                              {k.searches} {k.searches === 1 ? "search" : "searches"}
+                            </span>
+                          )}
+                        </td>
                         <td className="py-1.5 text-right">{k.calls}</td>
                         <td className="py-1.5 text-right">
                           {tokens(k.inputTokens)} / {tokens(k.outputTokens)}
@@ -187,6 +195,14 @@ export function AiSpend() {
                 <p>
                   {usage.unpricedCalls} {usage.unpricedCalls === 1 ? "call" : "calls"} used a model without a
                   known price and {usage.unpricedCalls === 1 ? "isn't" : "aren't"} counted.
+                </p>
+              )}
+              {(usage.search.inWindow > 0 || usage.search.thisMonth > 0) && usage.search.freePerMonth !== null && (
+                <p>
+                  Google searches this month: {usage.search.thisMonth.toLocaleString()} of{" "}
+                  {usage.search.freePerMonth.toLocaleString()} free, then ${usage.search.usdPerThousand} per
+                  1,000. A source lookup for a video runs a few. The free searches are shared with anything else on
+                  the same Google billing account, which isn&apos;t counted here.
                 </p>
               )}
               <p>

@@ -16,6 +16,8 @@ const LINK_TAGS = [
   { value: "VIDEO", label: "Video" },
   { value: "IMAGE", label: "Image" },
   { value: "AUDIO", label: "Audio" },
+  { value: "PODCAST", label: "Podcast" },
+  { value: "BOOK", label: "Book" },
   { value: "REAL_TIME_CHAT", label: "Chat" },
 ]
 

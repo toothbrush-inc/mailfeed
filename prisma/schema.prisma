@@ -186,6 +186,33 @@ model Link {
   embeddedAt      DateTime?
   embeddingError  String?
 
+  // Social posts: what the embed endpoint says about the post beyond its
+  // text (attached video, the post it quotes). See lib/post-context.ts.
+  postContext Json?
+  // Nested links: how the link was found. null = linked in the post itself,
+  // QUOTED_POST = linked in the post it quotes, AI_LOOKUP = found by the
+  // media lookup (lib/media-lookup.ts), with foundRole saying what it is:
+  // FULL or CLIP (a video), EPISODE (a podcast episode), BOOK.
+  foundVia  String?
+  foundRole String?
+  // Where a link that was moved to the feed came from, in words, e.g.
+  // "From the show notes of Costco (Acquired)". The link no longer has a
+  // parent to say so.
+  originNote String? @db.Text
+  // Books the AI analysis says this page recommends or discusses:
+  // [{ title, author }]. The media lookup matches them in a book catalog.
+  mentionedBooks Json?
+  // Media lookup, for a post whose video links nowhere or that names a
+  // recording or a book, and for a page with mentionedBooks: PENDING,
+  // RUNNING, FOUND, NOT_FOUND, SKIPPED, FAILED or REJECTED (everything it
+  // found was marked wrong). null = nothing to look up.
+  lookupStatus String?
+  lookupAt     DateTime?
+  lookupNote   String?   @db.Text
+  // Found links the user marked as wrong (their media keys), so a later
+  // lookup doesn't bring them back
+  lookupRejected String[] @default([])
+
   // Automatic retries of temporary fetch failures (worker)
   fetchRetryCount  Int       @default(0)
   lastFetchRetryAt DateTime?
@@ -217,6 +244,7 @@ model Link {
   @@index([worthinessScore])
   @@index([finalUrlHash])
   @@index([embeddingStatus])
+  @@index([userId, lookupStatus])
 }
 
 model Category {
@@ -324,6 +352,9 @@ model AiUsage {
   inputTokens    Int
   outputTokens   Int      // includes thinking tokens, billed as output
   thinkingTokens Int      @default(0)
+  // Google searches the call ran (search grounding), billed per search on
+  // top of tokens. costUsd includes that fee.
+  searchRequests Int      @default(0)
   costUsd        Float?   // null when the model has no known price
   linkId         String?
   createdAt      DateTime @default(now())

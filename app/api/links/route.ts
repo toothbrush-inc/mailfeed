@@ -215,6 +215,8 @@ export async function GET(request: NextRequest) {
             imageUrl: true,
             isPaywalled: true,
             paywallType: true,
+            foundVia: true,
+            foundRole: true,
             contentSource: true,
             archivedUrl: true,
             wordCount: true,
@@ -223,6 +225,12 @@ export async function GET(request: NextRequest) {
             embeddingError: true,
             createdAt: true,
             updatedAt: true,
+            // One level further, for what a found podcast episode's show notes link
+            childLinks: {
+              where: { userId: session.user.id },
+              select: { id: true, url: true, finalUrl: true, title: true, domain: true, finalDomain: true },
+              orderBy: { createdAt: "asc" },
+            },
           },
           orderBy: {
             createdAt: "desc",

@@ -9,6 +9,11 @@ import { getUserSettings } from "@/lib/user-settings"
 import { fetchWithFallbackChain } from "@/lib/fetchers"
 import { generateOperationId, recordFetchAttempts } from "@/lib/fetch-attempts"
 import { triggerAutoAnalysisAndEmbedding } from "@/lib/ai-triggers"
+import { runPendingLookups, triggerMediaLookup } from "@/lib/media-lookup"
+import { analyzeLink } from "@/lib/analysis"
+import { isAiConfigured } from "@/lib/ai-provider"
+import { FEATURE_FLAGS } from "@/lib/flags"
+import { getUserAiKeys } from "@/lib/user-keys"
 import { formatGmailDate, updateSyncCoverage } from "@/lib/sync-coverage"
 import { isRetryableFetchError, primaryFetchError, visibleDomainWhere } from "@/lib/link-buckets"
 import "@/lib/fetchers/direct"
@@ -210,6 +215,8 @@ async function processLink(
       triggerAutoAnalysisAndEmbedding(linkId, userId)
     }
 
+    // A sync can bring in many posts at once: their media lookups are run
+    // a few at a time after it (runSyncForUser), not one per post here
     const nestedResult = await processNestedLinks({
       id: linkId,
       userId,
@@ -219,7 +226,7 @@ async function processLink(
       rawHtml: rawHtml || null,
       finalDomain,
       domain,
-    }, settings, { triggerAi })
+    }, settings, { triggerAi, lookup: false })
     result.nestedCreated = nestedResult.created
     result.nestedFetched = nestedResult.fetched
 
@@ -236,6 +243,92 @@ async function processLink(
     result.error = `Failed to process ${url}: ${fetchError}`
     return result
   }
+}
+
+export interface MoveToFeedResult {
+  /**
+   * MOVED: now a link of its own in the feed. HIDDEN: moved, but its domain
+   * is hidden, so it is parked like any hidden link. DUPLICATE: the page was
+   * already in the feed, so the reference was dropped in its favour.
+   * EXCLUDED: its final address is one the app never keeps.
+   */
+  status: "MOVED" | "HIDDEN" | "DUPLICATE" | "EXCLUDED" | "NOT_FOUND" | "NOT_MOVABLE"
+  /** The page's content was fetched. */
+  fetched: boolean
+  error?: string
+}
+
+/**
+ * Move a link from a podcast episode's show notes into the feed, as if it
+ * had been emailed: it stops being a reference under the episode, its page
+ * is fetched, and it is analyzed. Asking for one link is asking for its
+ * analysis, so that runs whether or not analysis is set to run on its own.
+ */
+export async function moveLinkToFeed(linkId: string, userId: string): Promise<MoveToFeedResult> {
+  const link = await prisma.link.findFirst({
+    where: { id: linkId, userId },
+    select: {
+      id: true,
+      url: true,
+      emailId: true,
+      parentLinkId: true,
+      foundVia: true,
+      description: true,
+      parentLink: { where: { userId }, select: { title: true } },
+    },
+  })
+  if (!link) return { status: "NOT_FOUND", fetched: false }
+  if (!link.parentLinkId || link.foundVia !== "SHOW_NOTES") return { status: "NOT_MOVABLE", fetched: false }
+
+  // Its description says which episode it came from; the fetch is about to replace it
+  const originNote = link.description?.startsWith("From the show notes of")
+    ? link.description
+    : `From the show notes of ${link.parentLink?.title ?? "a podcast episode"}`
+  const moved = await prisma.link.updateMany({
+    where: { id: linkId, userId, parentLinkId: { not: null }, foundVia: "SHOW_NOTES" },
+    data: {
+      parentLinkId: null,
+      foundVia: null,
+      foundRole: null,
+      originNote,
+      // A link of its own now: a podcast episode or a post gets its own lookup
+      lookupStatus: null,
+      contentSource: null,
+      fetchStatus: "PENDING",
+    },
+  })
+  if (moved.count === 0) return { status: "NOT_MOVABLE", fetched: false }
+
+  const [settings, user, aiKeys] = await Promise.all([
+    getUserSettings(userId),
+    prisma.user.findUnique({ where: { id: userId }, select: { hiddenDomains: true } }),
+    getUserAiKeys(userId),
+  ])
+  const result = await processLink(
+    link.id,
+    link.url,
+    userId,
+    link.emailId,
+    new Set(user?.hiddenDomains || []),
+    settings,
+    true
+  )
+  if (result.skippedDuplicate) return { status: "DUPLICATE", fetched: false }
+  if (result.skippedExcluded) return { status: "EXCLUDED", fetched: false }
+  if (result.skippedHidden) return { status: "HIDDEN", fetched: false }
+
+  if (result.fetched) {
+    // processLink started the analysis already when it is set to run on its own
+    if (!settings.analysis.autoRun && FEATURE_FLAGS.enableAnalysis && settings.analysis.enabled && isAiConfigured(settings, aiKeys)) {
+      analyzeLink(link.id, settings, aiKeys, userId)
+        // Books the analysis names are matched by the media lookup
+        .then(() => triggerMediaLookup(link.id, userId))
+        .catch((error) => console.error("[Move to feed] Analysis failed:", error))
+    }
+    // A moved post or podcast episode was queued for its lookup by processLink
+    triggerMediaLookup(link.id, userId)
+  }
+  return { status: "MOVED", fetched: result.fetched, error: result.error }
 }
 
 async function processLinksInParallel(
@@ -630,6 +723,32 @@ async function handleInitialSync(
  * the Google account is missing or the refresh token is revoked.
  */
 export async function runSyncForUser(
+  userId: string,
+  mode: SyncMode,
+  options: RunSyncOptions = {}
+): Promise<SyncResults> {
+  const syncResults = await syncEmailsAndLinks(userId, mode, options)
+
+  // Posts and pages synced that point at something they don't link: look for it
+  // without holding up the sync. The worker passes triggerAi: false and
+  // runs its own lookups after submitting the AI batch.
+  if (options.triggerAi !== false) {
+    runPendingLookups(userId, { limit: MAX_LOOKUPS_AFTER_SYNC, budgetMs: 10 * 60 * 1000 })
+      .then((lookups) => {
+        if (lookups.processed > 0) {
+          syncLogger.info("Media lookups after sync", { userId, processed: lookups.processed, found: lookups.found })
+        }
+      })
+      .catch((error) => console.error("[Sync] Media lookups failed:", error))
+  }
+
+  return syncResults
+}
+
+// The rest stay waiting, for the next sync or the Media page's "Find sources"
+const MAX_LOOKUPS_AFTER_SYNC = 10
+
+async function syncEmailsAndLinks(
   userId: string,
   mode: SyncMode,
   options: RunSyncOptions = {}

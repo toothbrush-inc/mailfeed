@@ -37,6 +37,7 @@ app/
 ├── (auth)/login/          # Login page (public)
 ├── (dashboard)/           # Protected dashboard routes
 │   ├── feed/              # Main feed page
+│   ├── media/             # Videos, podcasts, books and games among the links
 │   └── settings/          # User settings
 ├── api/
 │   ├── auth/[...nextauth]/ # NextAuth route handler
@@ -53,6 +54,11 @@ lib/
 ├── prisma.ts              # Prisma client singleton
 ├── gmail.ts               # Gmail API integration
 ├── link-extractor.ts      # URL extraction from HTML
+├── media.ts               # Which links are a video, podcast, book or game
+├── post-context.ts        # Quoted post and uploaded video of a post on X
+├── media-lookup.ts        # Finds the video, podcast episode or books a post or page points at
+├── catalogs.ts            # Apple Podcasts and Open Library searches for the lookup
+├── show-notes.ts          # A podcast episode's show notes and their links, from the show's feed
 ├── content-fetcher.ts     # Page fetching with Readability
 ├── analysis.ts            # AI analysis (BAML, baml_src/link.baml)
 └── utils.ts               # cn() utility from shadcn
@@ -113,10 +119,13 @@ The sync workflow decision tree documents the complete email → link → AI pro
 |------|------------------------|
 | `app/api/sync/route.ts` | Main flow, parallel processing, pagination |
 | `lib/gmail.ts` | Gmail API integration, batch fetching |
-| `lib/link-extractor.ts` | Link extraction logic |
+| `lib/link-extractor.ts`, `lib/clean-url.ts` | Link extraction logic, the clean form of an address (which parameters are tracking) |
 | `lib/content-fetcher.ts` | Content fetching decision tree, paywall detection |
 | `lib/ai-html-parser.ts` | AI fallback path |
-| `lib/process-nested-links.ts` | Nested links processing |
+| `lib/process-nested-links.ts`, `lib/nested-link.ts`, `lib/nested-link-extractor.ts` | Nested links processing, which links in a post are kept |
+| `lib/post-context.ts` | Post context from X (quoted post, uploaded video) |
+| `lib/media-lookup.ts`, `lib/catalogs.ts`, `lib/show-notes.ts`, `baml_src/lookup.baml` | Media lookup: the video, podcast episode and books a post or page points at without linking, and the links in an episode's show notes |
+| `lib/media.ts`, `lib/media-list.ts`, `lib/media-rescan.ts` | Media links (video, podcast, book, game rules; Media page; rescan) |
 | `lib/analysis.ts`, `baml_src/link.baml` | AI analysis output fields |
 
 See `docs/sync-workflow.md` for the complete decision tree diagram.

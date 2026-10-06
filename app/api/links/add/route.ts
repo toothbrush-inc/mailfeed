@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
-import { hashUrl, extractDomain } from "@/lib/link-extractor"
+import { hashUrl, extractDomain, cleanUrl } from "@/lib/link-extractor"
 import { isExcludedUrl } from "@/lib/constants/domains"
 import { checkFetchUrlResolved } from "@/lib/safe-fetch"
 import { fetchAndParseContent, estimateReadingTime } from "@/lib/content-fetcher"
@@ -22,11 +22,13 @@ export async function POST(request: NextRequest) {
 
   const settings = await getUserSettings(session.user.id)
   const body = await request.json()
-  const { url } = body as { url?: string }
+  const { url: pastedUrl } = body as { url?: string }
 
-  if (!url) {
+  if (!pastedUrl) {
     return NextResponse.json({ error: "URL is required" }, { status: 400 })
   }
+  // Stored and compared without tracking parameters, like every other link
+  const url = cleanUrl(pastedUrl.trim())
 
   // Validate URL: http(s) only, and not a private/internal address (the
   // fetch checks every redirect hop again)
@@ -49,6 +51,22 @@ export async function POST(request: NextRequest) {
   })
 
   if (existingLink) {
+    // Saved as a reference under a podcast episode's show notes: it can
+    // become a feed link of its own, but only if the user says so. The
+    // dialog asks, then calls POST /api/links/[id]/move-to-feed.
+    if (existingLink.parentLinkId && existingLink.foundVia === "SHOW_NOTES") {
+      const episode = await prisma.link.findFirst({
+        where: { id: existingLink.parentLinkId, userId: session.user.id },
+        select: { title: true },
+      })
+      return NextResponse.json({
+        error: "This link is already saved from a podcast episode's show notes.",
+        code: "IN_SHOW_NOTES",
+        link: { id: existingLink.id, title: existingLink.title, url: existingLink.url },
+        episode: episode?.title ?? null,
+      }, { status: 409 })
+    }
+
     return NextResponse.json({
       error: "This URL already exists in your feed",
       link: existingLink,

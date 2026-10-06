@@ -48,6 +48,7 @@ interface FeedItemProps {
     worthinessScore: number | null
     uniquenessScore: number | null
     isHighlighted: boolean
+    originNote?: string | null
     highlightReason: string | null
     isPaywalled: boolean
     paywallType: string | null
@@ -80,6 +81,8 @@ interface FeedItemProps {
       url: string
       title: string | null
       domain: string | null
+      foundVia?: string | null
+      foundRole?: string | null
       finalUrl: string | null
       finalDomain: string | null
       wasRedirected: boolean
@@ -423,6 +426,12 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
                   </span>
                 </>
               )}
+              {/* A link moved here from an episode's show notes says where it came from */}
+              {link.originNote && (
+                <span className="min-w-0 basis-full truncate" title={link.originNote}>
+                  {link.originNote}
+                </span>
+              )}
             </div>
           </div>
           {link.imageUrl && (
@@ -450,7 +459,15 @@ export function FeedItem({ link, searchTerm, expanded, onAnalyzeComplete, onHide
           <div className="space-y-3">
             <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
               <Link2 className="h-4 w-4" />
-              <span>Links in this post ({link.childLinks.length})</span>
+              <span>
+                {/* Everything the media lookup found (books a page mentions) vs. links the post carries */}
+                {link.childLinks.every((child) => child.foundVia === "SHOW_NOTES")
+                  ? "From the show notes"
+                  : link.childLinks.every((child) => child.foundVia === "AI_LOOKUP" || child.foundVia === "SHOW_NOTES")
+                    ? "Found for this link"
+                    : "Links in this post"}{" "}
+                ({link.childLinks.length})
+              </span>
             </div>
             <div className="space-y-3">
               {link.childLinks.map((childLink) => (

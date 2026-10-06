@@ -5,6 +5,8 @@ import useSWR from "swr"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Loader2, AlertCircle, CheckCircle, Brain, KeyRound, RotateCcw } from "lucide-react"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { useSettings } from "@/hooks/use-settings"
 import { missingAiKeyHint } from "@/lib/ai-key-hint"
 
@@ -35,7 +37,19 @@ export function AnalyzeSection() {
   const [isReanalyzing, setIsReanalyzing] = useState(false)
   const [lastResult, setLastResult] = useState<AnalyzeResult | null>(null)
   const [aiNotConfigured, setAiNotConfigured] = useState(false)
-  const { requiredEnvVar, encryptionEnabled } = useSettings()
+  const { requiredEnvVar, encryptionEnabled, settings, updateSettings } = useSettings()
+  const [savingLookup, setSavingLookup] = useState(false)
+
+  const setMediaLookup = async (enabled: boolean) => {
+    setSavingLookup(true)
+    try {
+      await updateSettings({ analysis: { mediaLookup: enabled } })
+    } catch (error) {
+      console.error("Failed to save the video lookup setting:", error)
+    } finally {
+      setSavingLookup(false)
+    }
+  }
 
   const { data: status, mutate } = useSWR<AnalyzeStatus>(
     "/api/analyze/status",
@@ -225,6 +239,28 @@ export function AnalyzeSection() {
             </ul>
           </div>
         )}
+
+        {/* Video lookup */}
+        <div className="flex items-start justify-between gap-4 border-t pt-4">
+          <div className="space-y-1">
+            <Label htmlFor="media-lookup" className="text-sm font-medium">
+              Find sources
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Look for what a saved link points at without linking it, and add it to that link and to
+              Media: the public video behind a clip uploaded to a post, the podcast episode, books a post or
+              article names, and what a podcast episode&apos;s show notes link. Videos are found with Google searches through Gemini, which Google
+              bills beyond a free monthly allowance. Podcasts and books come from free catalogs. Links
+              already synced are looked up from the Media page.
+            </p>
+          </div>
+          <Switch
+            id="media-lookup"
+            checked={settings?.analysis.mediaLookup ?? true}
+            disabled={!settings || savingLookup}
+            onCheckedChange={setMediaLookup}
+          />
+        </div>
       </CardContent>
     </Card>
   )

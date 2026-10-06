@@ -6,7 +6,11 @@ import { Input } from "@/components/ui/input"
 import { Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-export function LinkSearch() {
+export function LinkSearch({
+  placeholder = "Search links by title, URL, content...",
+}: {
+  placeholder?: string
+} = {}) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -78,7 +82,7 @@ export function LinkSearch() {
       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="text"
-        placeholder="Search links by title, URL, content..."
+        placeholder={placeholder}
         value={inputValue}
         onChange={handleChange}
         onKeyDown={handleKeyDown}

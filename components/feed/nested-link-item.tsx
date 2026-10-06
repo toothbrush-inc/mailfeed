@@ -16,6 +16,7 @@ import {
   Flag,
   CheckCircle,
   Heart,
+  ArrowUpFromLine,
 } from "lucide-react"
 import {
   Dialog,
@@ -60,6 +61,17 @@ interface NestedLinkItemProps {
     imageUrl: string | null
     isPaywalled: boolean
     paywallType: string | null
+    foundVia?: string | null
+    foundRole?: string | null
+    /** Links nested under this one: what a podcast episode's show notes link. */
+    childLinks?: Array<{
+      id: string
+      url: string
+      finalUrl: string | null
+      title: string | null
+      domain: string | null
+      finalDomain: string | null
+    }>
     contentSource: string | null
     archivedUrl: string | null
     wordCount: number | null
@@ -150,6 +162,25 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
     }
   }
 
+  // Make a link from the show notes a feed link of its own: fetched and analyzed
+  const [movingId, setMovingId] = useState<string | null>(null)
+  const [moveMessage, setMoveMessage] = useState<string | null>(null)
+  const moveToFeed = async (id: string) => {
+    setMovingId(id)
+    setMoveMessage(null)
+    try {
+      const response = await fetch(`/api/links/${id}/move-to-feed`, { method: "POST" })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || "Couldn't move the link")
+      if (data.message) setMoveMessage(data.message)
+      onUpdate?.()
+    } catch (error) {
+      setMoveMessage(error instanceof Error ? error.message : "Couldn't move the link")
+    } finally {
+      setMovingId(null)
+    }
+  }
+
   const handleResolveXArticle = async (autoResolve: boolean = false) => {
     setIsResolvingXArticle(true)
     setXArticleError(null)
@@ -223,6 +254,37 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>{displayDomain}</span>
+              {link.foundVia === "SHOW_NOTES" && (
+                <>
+                  <span>·</span>
+                  <span>From the show notes</span>
+                </>
+              )}
+              {link.foundVia === "QUOTED_POST" && (
+                <>
+                  <span>·</span>
+                  <span>From the quoted post</span>
+                </>
+              )}
+              {link.foundVia === "AI_LOOKUP" && (
+                <>
+                  <span>·</span>
+                  {link.foundRole === "BOOK" ? (
+                    <span title="A book named here, matched in Open Library by title and author.">
+                      Book mentioned here
+                    </span>
+                  ) : (
+                    <span title="Found by searching for what this post is about. It may be the wrong one.">
+                      Found by AI: probably the{" "}
+                      {link.foundRole === "CLIP"
+                        ? "same clip"
+                        : link.foundRole === "EPISODE"
+                          ? "podcast episode"
+                          : "full recording"}
+                    </span>
+                  )}
+                </>
+              )}
               {link.readingTimeMin && (
                 <>
                   <span>·</span>
@@ -338,6 +400,47 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
             </div>
           )}
 
+          {/* What a podcast episode's show notes link, kept compact: these are references */}
+          {link.childLinks && link.childLinks.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">
+                From the show notes ({link.childLinks.length})
+              </p>
+              <ul className="space-y-0.5 text-sm">
+                {link.childLinks.map((noteLink) => (
+                  <li key={noteLink.id} className="flex items-baseline gap-2">
+                    <a
+                      href={noteLink.finalUrl || noteLink.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-w-0 truncate hover:underline"
+                    >
+                      {noteLink.title || noteLink.finalUrl || noteLink.url}
+                    </a>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {(noteLink.finalDomain || noteLink.domain || "").replace(/^www\./, "")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => moveToFeed(noteLink.id)}
+                      disabled={movingId !== null}
+                      title="Fetch this page and analyze it as a link of its own in your feed"
+                      className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-60"
+                    >
+                      {movingId === noteLink.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <ArrowUpFromLine className="h-3 w-3" />
+                      )}
+                      Move to feed
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {moveMessage && <p className="text-xs text-muted-foreground">{moveMessage}</p>}
+            </div>
+          )}
+
           {/* AI Summary */}
           {FEATURE_FLAGS.enableAnalysis && link.aiSummary && (
             <p className="text-sm text-muted-foreground">{link.aiSummary}</p>
@@ -411,6 +514,23 @@ export function NestedLinkItem({ link, onUpdate }: NestedLinkItemProps) {
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-1 pt-2">
+            {link.foundVia === "SHOW_NOTES" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => moveToFeed(link.id)}
+                disabled={movingId !== null}
+                title="Fetch this page and analyze it as a link of its own in your feed"
+              >
+                {movingId === link.id ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <ArrowUpFromLine className="mr-1 h-3 w-3" />
+                )}
+                Move to feed
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
