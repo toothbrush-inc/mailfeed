@@ -222,6 +222,9 @@ model Link {
   updatedAt  DateTime  @updatedAt
   fetchedAt  DateTime?
   analyzedAt DateTime?
+  // When the link was shared: its email's receivedAt, or when it was added
+  // when it came from no email. The feed sorts by it.
+  sharedAt   DateTime  @default(now())
 
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   email         Email?        @relation(fields: [emailId], references: [id], onDelete: SetNull)
@@ -245,6 +248,7 @@ model Link {
   @@index([finalUrlHash])
   @@index([embeddingStatus])
   @@index([userId, lookupStatus])
+  @@index([userId, sharedAt])
 }
 
 model Category {

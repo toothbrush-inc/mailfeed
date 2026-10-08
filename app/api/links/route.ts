@@ -34,25 +34,26 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get("limit") || String(settings.feed.pageSize))
 
   // Build orderBy based on sort parameter
-  // Use email.receivedAt for date sorting (when the email was received, not when link was processed)
+  // Dates sort by sharedAt: when the email was received (not when the link was
+  // processed), or when the link was added if it came from no email
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let orderBy: any[]
   switch (sort) {
     case "date_asc":
-      orderBy = [{ email: { receivedAt: "asc" } }, { createdAt: "asc" }]
+      orderBy = [{ sharedAt: "asc" }, { createdAt: "asc" }]
       break
     case "reading_time_asc":
-      orderBy = [{ readingTimeMin: "asc" }, { email: { receivedAt: "desc" } }]
+      orderBy = [{ readingTimeMin: { sort: "asc", nulls: "last" } }, { sharedAt: "desc" }]
       break
     case "reading_time_desc":
-      orderBy = [{ readingTimeMin: "desc" }, { email: { receivedAt: "desc" } }]
+      orderBy = [{ readingTimeMin: { sort: "desc", nulls: "last" } }, { sharedAt: "desc" }]
       break
     case "worth":
-      orderBy = [{ worthinessScore: { sort: "desc", nulls: "last" } }, { email: { receivedAt: "desc" } }, { createdAt: "desc" }]
+      orderBy = [{ worthinessScore: { sort: "desc", nulls: "last" } }, { sharedAt: "desc" }, { createdAt: "desc" }]
       break
     case "date_desc":
     default:
-      orderBy = [{ email: { receivedAt: "desc" } }, { createdAt: "desc" }]
+      orderBy = [{ sharedAt: "desc" }, { createdAt: "desc" }]
       break
   }
 

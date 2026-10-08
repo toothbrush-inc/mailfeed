@@ -88,6 +88,7 @@ export async function POST(
         data: {
           userId: session.user.id,
           emailId: id,
+          sharedAt: updatedEmail.receivedAt,
           url: linkUrl,
           urlHash,
           title: extractedLink.title || null,

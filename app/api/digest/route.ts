@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     ),
     prisma.link.findMany({
       where,
-      orderBy: [{ email: { receivedAt: "desc" } }, { createdAt: "desc" }],
+      orderBy: [{ sharedAt: "desc" }, { createdAt: "desc" }],
       skip: (page - 1) * limit,
       take: limit,
       select: {

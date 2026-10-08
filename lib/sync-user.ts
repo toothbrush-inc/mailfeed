@@ -406,6 +406,7 @@ async function processEmailPage(
           data: {
             userId,
             emailId: email.id,
+            sharedAt: email.receivedAt,
             url: linkUrl,
             urlHash,
             domain: extractDomain(linkUrl),
