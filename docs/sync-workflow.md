@@ -358,6 +358,8 @@ Parameters that decide which page it is are kept: a video's start time (`t` on Y
 
 `hashUrl()` hashes the clean form; `(userId, urlHash)` is the duplicate check. The stored `url` is the clean form too, wherever a link enters: `extractLinks()` for emails, `POST /api/links/add`, `createNestedLink()` and `createFoundLink()` for nested, found and show-notes links, and the email ingest route. `finalUrl` is stored as the site returned it and hashed clean.
 
+`sharedAt` is when a link was shared: its email's `receivedAt` (set by the sync and the email ingest route), or the time it was added for a link that came from no email (`POST /api/links/add`, nested and found links). The feed and the Digest sort by it, so a link added by hand sits among the emails of the same time.
+
 Links saved under older rules are brought up to date by the first pass of "Scan saved posts" (`cleanStoredAddresses()` in `lib/media-rescan.ts`): the address is rewritten in its clean form and the hash recomputed. When that makes a link the same page as another of the user's links, both are left as they are and counted; nothing is merged or deleted.
 
 ## Nested Links Processing (Social Media)
