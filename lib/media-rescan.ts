@@ -11,6 +11,8 @@
  *    links of a quoted post) are created as nested links; ones that already
  *    exist are skipped. Posts on X also get their context stored, and are
  *    queued for the media lookup when they point at something they don't link.
+ *    A post whose stored text oEmbed cut gets its full text, and goes back
+ *    to waiting for analysis.
  *    The lookup itself costs AI calls and is not run here.
  * 2. "titles": videos saved without a title, because a player page has no
  *    article text and used to be recorded as a failed fetch, get their
@@ -46,6 +48,8 @@ export interface MediaRescanResult {
   linksFound: number
   /** Posts on X that FxTwitter couldn't read in full in this call. They are read again on the next scan. */
   threadsUnread: number
+  /** Posts on X whose cut text was replaced with the full text in this call. They are analyzed again by Analyze. */
+  textsCompleted: number
   /** Videos given a title by this call. */
   titlesFilled: number
   /** Links whose stored address lost its tracking parameters in this call. */
@@ -158,6 +162,7 @@ export async function rescanForMedia(
     linksFound: 0,
     titlesFilled: 0,
     threadsUnread: 0,
+    textsCompleted: 0,
     addressesCleaned: 0,
     duplicateAddresses: 0,
     errors: [],
@@ -201,6 +206,7 @@ export async function rescanForMedia(
         processNestedLinks(post, settings, { triggerAi: options.triggerAi, lookup: false }).catch((error) => ({
           created: 0,
           threadUnread: false,
+          textCompleted: false,
           errors: [`${post.url}: ${error instanceof Error ? error.message : error}`],
         }))
       )
@@ -208,6 +214,7 @@ export async function rescanForMedia(
     for (const outcome of outcomes) {
       result.linksFound += outcome.created
       if (outcome.threadUnread) result.threadsUnread++
+      if (outcome.textCompleted) result.textsCompleted++
       result.errors.push(...outcome.errors)
     }
     result.scanned += posts.length

@@ -1,4 +1,5 @@
 import { BLOCKED_FETCH_ERROR } from "@/lib/safe-fetch"
+import type { PostContext } from "@/lib/post-context"
 
 export interface FetchResult {
   success: boolean
@@ -20,6 +21,8 @@ export interface FetchResult {
   finalUrl?: string
   wasRedirected?: boolean
   rawHtml?: string
+  // A post on X: its context, full text included (lib/post-context.ts)
+  postContext?: PostContext
 }
 
 export interface ContentFetcher {

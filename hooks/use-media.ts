@@ -58,6 +58,8 @@ export interface RescanProgress {
   addressesCleaned: number
   /** Posts on X that FxTwitter couldn't read in full. */
   threadsUnread: number
+  /** Posts on X whose cut text was replaced with the full text. */
+  textsCompleted: number
   finished: boolean
   error: string | null
 }
@@ -70,6 +72,7 @@ const IDLE: RescanProgress = {
   titlesFilled: 0,
   addressesCleaned: 0,
   threadsUnread: 0,
+  textsCompleted: 0,
   finished: false,
   error: null,
 }
@@ -109,6 +112,7 @@ export function useMediaRescan(onProgress: () => void) {
           titlesFilled: totals.titlesFilled + step.titlesFilled,
           addressesCleaned: totals.addressesCleaned + step.addressesCleaned,
           threadsUnread: totals.threadsUnread + step.threadsUnread,
+          textsCompleted: totals.textsCompleted + step.textsCompleted,
         }
         setProgress(totals)
         if (step.linksFound > 0 || step.titlesFilled > 0) onProgress()

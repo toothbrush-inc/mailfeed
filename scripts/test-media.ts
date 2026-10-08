@@ -23,7 +23,7 @@ import { classifyMedia, classifyMediaUrl, mediaKey, youtubeVideoId, type MediaTy
 import { isSkippedNestedUrl } from "../lib/nested-link-extractor"
 import { cleanUrl } from "../lib/clean-url"
 import { extractLinks, hashUrl } from "../lib/link-extractor"
-import { mayNameBook, mayReferToRecording, parsePostContext, parseThread, postIdFromUrl, postVideoPart } from "../lib/post-context"
+import { fullPostText, mayNameBook, mayReferToRecording, parsePostContext, parseThread, postIdFromUrl, postVideoPart } from "../lib/post-context"
 import { appleEpisodeIds, authorSurnames, matchBook, normalizeTitle, parsePodcastEpisodes, parsePodcastShow } from "../lib/catalogs"
 import { findFeedItem, linksInShowNotes, parseShowNotes } from "../lib/show-notes"
 
@@ -230,6 +230,22 @@ function ruleChecks() {
   check("no context, no lookup", !mayReferToRecording(null) && !mayNameBook(null))
   check("a post about a book may name one", mayNameBook(plain("Just finished The Making of the Atomic Bomb. What a book.")))
   check("'worth a read' is not a book", !mayNameBook(plain("This thread is worth a read")))
+
+  // oEmbed's text of a long post: cut, then the byline
+  const longText = "AI will change how films are made. " + "Here is what I learned running a studio for forty years. ".repeat(8)
+  const cutEmbed = `AI will change how films are made. Here is what I learned running a studio for forty years. Here is what…— Jeffrey Katzenberg (@jeffreykWNDR) September 23, 2026`
+  const whole = fullPostText({ ...plain(longText)! }, cutEmbed)
+  check(
+    "a cut post gets its full text, with oEmbed's byline after it",
+    whole === `${longText.trim()}\n\n— Jeffrey Katzenberg (@jeffreykWNDR) September 23, 2026`,
+    whole
+  )
+  check("a post that already has its full text is left as it is", fullPostText(plain(longText), whole) === null)
+  check(
+    "a short post is left as it is, links and pictures included",
+    fullPostText(plain("Shipping today"), "Shipping today pic.twitter.com/abc123— A (@a) October 7, 2026") === null
+  )
+  check("no context, nothing to add", fullPostText(null, cutEmbed) === null)
 
   console.log("Catalogs")
   const itunes = {
@@ -975,12 +991,59 @@ async function listChecks() {
   }
 }
 
+async function postTextChecks() {
+  const { prisma } = await import("../lib/prisma")
+  const { completePostText } = await import("../lib/nested-link")
+
+  console.log("Full text of long posts")
+  const email = "dana-media@example.com"
+  await prisma.user.deleteMany({ where: { email } })
+  const dana = await prisma.user.create({ data: { email } })
+  const fullText = "The whole post, long enough to have been cut by the embed. ".repeat(10).trim()
+  const context = parsePostContext({ id_str: "77", text: fullText, user: { screen_name: "dana" } })!
+  const cut = "The whole post, long enough to have been cut by the embed. The whole…— Dana (@dana) October 7, 2026"
+
+  try {
+    const make = (n: number, data: object) =>
+      prisma.link.create({
+        data: { userId: dana.id, url: `https://x.com/dana/status/${n}`, urlHash: `dana-${n}`, contentText: cut, ...data },
+      })
+    const analyzed = await make(1, { fetchStatus: "COMPLETED", aiSummary: "From the cut text" })
+    const thin = await make(2, { fetchStatus: "PAYWALL_DETECTED", isPaywalled: true, paywallType: "insufficient_content" })
+    const waiting = await make(3, { fetchStatus: "FETCHED" })
+
+    check("a cut post's text is completed", await completePostText(analyzed, context))
+    const after = await prisma.link.findUniqueOrThrow({ where: { id: analyzed.id } })
+    check("its stored text is the full text", after.contentText?.startsWith(fullText) === true, after.contentText)
+    check("its word count and reading time follow", after.wordCount === after.contentText?.split(/\s+/).filter(Boolean).length && after.readingTimeMin === 1, after)
+    check("an analyzed post waits to be analyzed again", after.fetchStatus === "FETCHED", after.fetchStatus)
+
+    await completePostText(thin, context)
+    const thinAfter = await prisma.link.findUniqueOrThrow({ where: { id: thin.id } })
+    check(
+      "a post marked Not enough content gets another try",
+      thinAfter.fetchStatus === "FETCHED" && !thinAfter.isPaywalled && thinAfter.paywallType === null,
+      thinAfter
+    )
+
+    await completePostText(waiting, context)
+    check(
+      "a post not analyzed yet keeps its status",
+      (await prisma.link.findUniqueOrThrow({ where: { id: waiting.id } })).fetchStatus === "FETCHED"
+    )
+    check("a post done once is not done again", !(await completePostText(analyzed, context)))
+  } finally {
+    await prisma.user.deleteMany({ where: { email } })
+  }
+}
+
 async function main() {
   ruleChecks()
   await lookupChecks()
   if (process.env.DATABASE_URL) {
     await listChecks()
     await postVideoChecks()
+    await postTextChecks()
     await usageChecks()
   } else console.log("Media list: skipped (no DATABASE_URL)")
 

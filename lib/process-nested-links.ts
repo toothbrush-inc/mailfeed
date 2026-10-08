@@ -1,7 +1,7 @@
 import { prisma } from "./prisma"
 import { FEATURE_FLAGS } from "./flags"
 import { extractNestedUrls, isSocialMediaLink } from "./nested-link-extractor"
-import { createNestedLink, loadPostContext, postContextUrls, type NestedLinkOrigin } from "./nested-link"
+import { completePostText, createNestedLink, loadPostContext, postContextUrls, type NestedLinkOrigin } from "./nested-link"
 import { classifyMediaUrl } from "./media"
 import { mayNameBook, mayReferToRecording, type PostContext } from "./post-context"
 import { triggerMediaLookup } from "./media-lookup"
@@ -13,6 +13,8 @@ interface ProcessNestedLinksResult {
   skipped: number
   /** A post on X whose full text or follow-up posts FxTwitter didn't give. */
   threadUnread: boolean
+  /** A post on X whose stored text was cut and is now its full text. */
+  textCompleted: boolean
   errors: string[]
 }
 
@@ -76,6 +78,7 @@ export async function processNestedLinks(
     fetched: 0,
     skipped: 0,
     threadUnread: false,
+    textCompleted: false,
     errors: [],
   }
 
@@ -106,6 +109,7 @@ export async function processNestedLinks(
   // follow-up posts, and the links of the post it quotes
   const context = await loadPostContext(parentLink)
   result.threadUnread = !!context && !context.expanded && FEATURE_FLAGS.readXThreads
+  result.textCompleted = await completePostText(parentLink, context)
   for (const entry of await postContextUrls(context)) {
     if (!found.some((other) => other.url === entry.url)) found.push(entry)
   }
