@@ -8,7 +8,7 @@ import { triggerAutoAnalysisAndEmbedding } from "./ai-triggers"
 import { classifyMediaUrl } from "./media"
 import { FEATURE_FLAGS } from "./flags"
 import { resolveNestedUrl } from "./nested-link-extractor"
-import { fetchPostContext, postIdFromUrl, readPostContext, type PostContext } from "./post-context"
+import { fetchPostContext, fullPostText, postIdFromUrl, readPostContext, storedPostContext, type PostContext } from "./post-context"
 import type { ResolvedSettings } from "./settings"
 
 // Domains to exclude for nested links (social media, images, etc.)
@@ -87,6 +87,41 @@ export async function loadPostContext(parentLink: {
     data: { postContext: context as unknown as Prisma.InputJsonValue },
   })
   return context
+}
+
+/**
+ * Replace a post's stored text with its full text where oEmbed cut it: posts
+ * fetched before the full text was read at fetch time. Their analysis was
+ * made from the cut text, so they go back to waiting for analysis (FETCHED),
+ * and a post marked "Not enough content" for it gets another try. Nothing is
+ * analyzed here. Returns whether the text changed.
+ */
+export async function completePostText(
+  link: { id: string; userId: string },
+  context: PostContext | null
+): Promise<boolean> {
+  if (!context) return false
+  const stored = await prisma.link.findFirst({
+    where: { id: link.id, userId: link.userId },
+    select: { contentText: true, fetchStatus: true, paywallType: true },
+  })
+  const text = stored ? fullPostText(context, stored.contentText) : null
+  if (!stored || !text) return false
+
+  const wordCount = text.split(/\s+/).filter(Boolean).length
+  const analyzedCut =
+    stored.fetchStatus === "COMPLETED" ||
+    (stored.fetchStatus === "PAYWALL_DETECTED" && stored.paywallType === "insufficient_content")
+  await prisma.link.updateMany({
+    where: { id: link.id, userId: link.userId },
+    data: {
+      contentText: text,
+      wordCount,
+      readingTimeMin: estimateReadingTime(wordCount),
+      ...(analyzedCut ? { fetchStatus: "FETCHED", isPaywalled: false, paywallType: null } : {}),
+    },
+  })
+  return true
 }
 
 /**
@@ -237,6 +272,7 @@ export async function createNestedLink(
         description: content.excerpt,
         imageUrl: content.imageUrl,
         contentText: content.textContent,
+        postContext: storedPostContext(content.postContext),
         contentHtml: content.content,
         rawHtml: rawHtml,
         wordCount: content.wordCount,

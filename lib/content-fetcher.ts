@@ -3,6 +3,7 @@ import { JSDOM } from "jsdom"
 import { shouldUseOEmbed, fetchOEmbed, extractTextFromOEmbed } from "./oembed-fetcher"
 import { isMajorNewsSite, extractNewsMetadata } from "./news-extractor"
 import { safeFetch } from "./safe-fetch"
+import { fetchPostContext, fullPostText, postIdFromUrl, type PostContext } from "./post-context"
 
 interface FetchResult {
   success: boolean
@@ -26,6 +27,10 @@ interface FetchResult {
   wasRedirected?: boolean
   // Raw HTML for AI fallback
   rawHtml?: string
+  // A post on X: its quoted post, video and full text (lib/post-context.ts),
+  // read while fetching so the stored text is the whole post. Store it in
+  // Link.postContext.
+  postContext?: PostContext
 }
 
 const PAYWALL_INDICATORS = {
@@ -68,7 +73,10 @@ export async function fetchAndParseContent(url: string, options?: { timeoutMs?: 
       const oembedResult = await fetchOEmbed(url)
 
       if (oembedResult.success) {
-        const textContent = extractTextFromOEmbed(oembedResult.html)
+        const embedText = extractTextFromOEmbed(oembedResult.html)
+        // oEmbed cuts a long post; its full text comes with the post's context
+        const postContext = postIdFromUrl(url) ? await fetchPostContext(url) : null
+        const textContent = fullPostText(postContext, embedText) ?? embedText
         const wordCount = textContent.split(/\s+/).filter(Boolean).length
         // A player embed (YouTube) has no text of its own, unlike a quoted
         // post. Say whose video it is, so the link isn't just a title.
@@ -89,6 +97,7 @@ export async function fetchAndParseContent(url: string, options?: { timeoutMs?: 
           finalUrl: url,
           wasRedirected: false,
           rawHtml: oembedResult.html,
+          postContext: postContext ?? undefined,
         }
       }
 

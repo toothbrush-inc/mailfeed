@@ -10,6 +10,7 @@ import { triggerAutoAnalysisAndEmbedding } from "@/lib/ai-triggers"
 import { getUserSettings } from "@/lib/user-settings"
 import { fetchWithFallbackChain } from "@/lib/fetchers"
 import { generateOperationId, recordFetchAttempts } from "@/lib/fetch-attempts"
+import { storedPostContext } from "@/lib/post-context"
 import "@/lib/fetchers/direct"
 import "@/lib/fetchers/wayback"
 
@@ -141,6 +142,7 @@ export async function POST(request: NextRequest) {
         description: content.excerpt,
         imageUrl: content.imageUrl,
         contentText: content.textContent,
+        postContext: storedPostContext(content.postContext),
         contentHtml: content.content,
         rawHtml: content.rawHtml,
         wordCount: content.wordCount,

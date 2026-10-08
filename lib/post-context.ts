@@ -14,8 +14,13 @@
  * and the author's follow-up posts. When it fails, the post keeps what the
  * embed endpoint gave and is read again the next time it is processed.
  * READ_X_THREADS=false turns FxTwitter off.
+ *
+ * oEmbed cuts a long post too, so the full text also replaces the post's
+ * stored text (fullPostText), which is what the feed shows and the
+ * analysis reads.
  */
 
+import type { Prisma } from "@prisma/client"
 import { FEATURE_FLAGS } from "@/lib/flags"
 import { safeFetch } from "@/lib/safe-fetch"
 
@@ -123,9 +128,13 @@ export function parsePostContext(raw: unknown, now: Date = new Date()): PostCont
   }
 }
 
+// The embed endpoint marks a long post with note_tweet, and its cut text ends in an ellipsis
+const CUT_TEXT = /…\s*(https:\/\/t\.co\/\S+\s*)*$/
+
 // A long post, or one with a video, may have its link past the cut or in a follow-up
 function needsExpanding(raw: Json | null): boolean {
-  return !!raw && (!!raw.note_tweet || parseVideo(raw) !== null)
+  if (!raw) return false
+  return !!raw.note_tweet || CUT_TEXT.test(asString(raw.text) ?? "") || parseVideo(raw) !== null
 }
 
 const MAX_FOLLOW_UPS = 10
@@ -199,6 +208,11 @@ async function expandPart(part: PostPart): Promise<PostPart | null> {
   } finally {
     clearTimeout(timeout)
   }
+}
+
+/** A context to store in Link.postContext; undefined leaves the stored one as it is. */
+export function storedPostContext(context: PostContext | null | undefined): Prisma.InputJsonValue | undefined {
+  return context ? (context as unknown as Prisma.InputJsonValue) : undefined
 }
 
 /** Read a stored Link.postContext back, ignoring anything that isn't one. */
@@ -286,4 +300,27 @@ const BOOK_WORDS =
 export function mayNameBook(context: PostContext | null): boolean {
   if (!context) return false
   return BOOK_WORDS.test(`${context.text} ${context.quoted?.text ?? ""}`)
+}
+
+// oEmbed's text ends with who posted it and when: "— Name (@handle) October 7, 2026"
+const OEMBED_BYLINE = /—\s*[^—]*\(@\w+\)\s+[A-Z][a-z]+ \d{1,2}, \d{4}\s*$/
+
+function words(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length
+}
+
+/**
+ * The text of a post made whole: its full text, followed by the byline the
+ * oEmbed text ends with. Null when the context has nothing more than the
+ * stored text, so a post can be checked again and again.
+ */
+export function fullPostText(context: PostContext | null, storedText: string | null | undefined): string | null {
+  if (!context?.text.trim()) return null
+  const stored = (storedText ?? "").trim()
+  const byline = stored.match(OEMBED_BYLINE)?.[0].trim() ?? null
+  const postText = byline ? stored.slice(0, stored.length - byline.length).trim() : stored
+  // The stored text has no more words than the full text, links shortened or not
+  if (words(context.text) <= words(postText) && !CUT_TEXT.test(postText)) return null
+  if (context.text.trim().length <= postText.length) return null
+  return byline ? `${context.text.trim()}\n\n${byline}` : context.text.trim()
 }

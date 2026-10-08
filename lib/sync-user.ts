@@ -10,6 +10,7 @@ import { fetchWithFallbackChain } from "@/lib/fetchers"
 import { generateOperationId, recordFetchAttempts } from "@/lib/fetch-attempts"
 import { triggerAutoAnalysisAndEmbedding } from "@/lib/ai-triggers"
 import { runPendingLookups, triggerMediaLookup } from "@/lib/media-lookup"
+import { storedPostContext } from "@/lib/post-context"
 import { analyzeLink } from "@/lib/analysis"
 import { isAiConfigured } from "@/lib/ai-provider"
 import { FEATURE_FLAGS } from "@/lib/flags"
@@ -192,6 +193,7 @@ async function processLink(
         description: content.excerpt,
         imageUrl: content.imageUrl,
         contentText: content.textContent,
+        postContext: storedPostContext(content.postContext),
         contentHtml: content.content,
         rawHtml: rawHtml,
         wordCount: content.wordCount,

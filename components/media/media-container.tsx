@@ -459,6 +459,8 @@ export function MediaContainer() {
           {progress.addressesCleaned} {progress.addressesCleaned === 1 ? "address" : "addresses"} cleaned.
           {progress.threadsUnread > 0 &&
             ` ${progress.threadsUnread} ${progress.threadsUnread === 1 ? "post on X" : "posts on X"} couldn't be read in full (FxTwitter didn't answer); the next scan tries again.`}
+          {progress.textsCompleted > 0 &&
+            ` ${progress.textsCompleted} ${progress.textsCompleted === 1 ? "post on X was" : "posts on X were"} cut short and now ${progress.textsCompleted === 1 ? "has its" : "have their"} full text; Analyze Links in Settings analyzes them again.`}
         </p>
       )}
 
