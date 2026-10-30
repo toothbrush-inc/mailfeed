@@ -512,7 +512,7 @@ async function postVideoChecks() {
   const carol = await prisma.user.create({ data: { email } })
 
   try {
-    const context = { ...parsePostContext(QUOTING_POST)!, quoted: { ...parsePostContext(QUOTING_POST)!.quoted!, urls: [] } }
+    const context = { ...parsePostContext(QUOTING_POST)!, expanded: true, quoted: { ...parsePostContext(QUOTING_POST)!.quoted!, urls: [] } }
     const post = await prisma.link.create({
       data: {
         userId: carol.id,
@@ -617,7 +617,7 @@ async function postVideoChecks() {
         urlHash: "carol-linked-post",
         domain: "x.com",
         title: "Full talk below",
-        postContext: { ...parsePostContext({ id_str: "42", text: "Full talk below", mediaDetails: [{ type: "video" }] })! },
+        postContext: { ...parsePostContext({ id_str: "42", text: "Full talk below", mediaDetails: [{ type: "video" }] })!, expanded: true },
       },
     })
     await prisma.link.create({
@@ -639,7 +639,7 @@ async function postVideoChecks() {
         urlHash: "carol-book-post",
         domain: "x.com",
         title: "Just finished reading Dune, and this talk about it is great",
-        postContext: { ...parsePostContext({ id_str: "43", text: "Just finished reading Dune, and this talk about it is great" })! },
+        postContext: { ...parsePostContext({ id_str: "43", text: "Just finished reading Dune, and this talk about it is great" })!, expanded: true },
       },
     })
     await prisma.link.create({
